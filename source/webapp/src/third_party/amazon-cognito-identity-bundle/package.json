@@ -1,0 +1,16 @@
+{
+  "name": "amazon-cognito-identity-bundle",
+  "version": "1.0.0",
+  "description": "simply copy amazon-cognito-identity-bundle dist for browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "copy": "rm -rf ./dist && mkdir ./dist && cp -v ./node_modules/amazon-cognito-identity-js/dist/amazon-cognito-identity*.js"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "amazon-cognito-identity-js": "*"
+  },
+  "devDependencies": {}
+}

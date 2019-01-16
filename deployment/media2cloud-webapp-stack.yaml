@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-cloudfront) Media2Cloud - create CloudFront distribution and website bucket.
+
+#
+# Mappings to store fixed value of the solution
+#
+Mappings:
+    Solution:
+        Package:
+            Media2Cloud: "%PACKAGENAME%"
+        WebApp:
+            Package: "%WEBAPP_PACKAGE%"
+        Website:
+            MainPage: "demo.html"
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: "part of the resource naming"
+    RootStackName:
+        Type: String
+        Description: "part of the resource naming"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    CustomResourceArn:
+        Type: String
+        Description: for post-processing
+    BucketName:
+        Type: String
+        Description: "store website content"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    PriceClass:
+        Type: String
+        Description: "see http://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html for details"
+        AllowedValues: [PriceClass_100, PriceClass_200, PriceClass_All]
+        Default: PriceClass_100
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "Solution Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: "CloudFront Configuration"
+                Parameters:
+                    - BucketName
+                    - PriceClass
+            -
+                Label:
+                    default: "Other resources"
+                Parameters:
+                    - CustomResourceArn
+        ParameterLabels:
+            SolutionId:
+                default: "Solution Id"
+            RootStackName:
+                default: "Top Stack Name"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution KeyPrefix"
+            PriceClass:
+                default: "Price Class"
+            BucketName:
+                default: "Website Bucket"
+            CustomResourceArn:
+                default: "Custom Resource Arn"
+
+Conditions:
+    bUSEast1: !Equals [!Ref "AWS::Region", "us-east-1"]
+
+Resources:
+    #
+    # Website bucket
+    #
+    Bucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Ref BucketName
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+                DestinationBucketName: !Ref BucketName
+                LogFilePrefix: "access_log/"
+            WebsiteConfiguration:
+                IndexDocument: !FindInMap ["Solution", "Website", "MainPage"]
+                ErrorDocument: !FindInMap ["Solution", "Website", "MainPage"]
+
+    #
+    # OAID
+    #
+    OriginAccessIdentity:
+        Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+        Properties:
+            CloudFrontOriginAccessIdentityConfig:
+                Comment: !Sub "access-identity-${Bucket}"
+
+    #
+    # Bucket Policy
+    #
+    BucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: F16
+                        reason: "website bucket policy requires a wildcard principal"
+        Properties:
+            Bucket: !Ref Bucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: ["s3:GetObject"]
+                        Resource: [!Sub "arn:aws:s3:::${Bucket}/*"]
+                        Principal:
+                            CanonicalUser: !GetAtt OriginAccessIdentity.S3CanonicalUserId
+
+    #
+    # copy web content to web bucket
+    #
+    CopyWebContent:
+        Type: Custom::CopyWebContent
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+            FunctionName: CopyWebContent
+            SolutionId: !Ref SolutionId
+            # web zip package to be extracted adn copied to media analysis bucket
+            SourceBucket: !Ref S3Bucket
+            SourceKey: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "WebApp", "Package"]}]
+            ContentBucket: !Ref Bucket
+
+    #
+    # CloudFront distribution
+    #
+    Distribution:
+        Type: AWS::CloudFront::Distribution
+        Properties:
+            DistributionConfig:
+                Comment: "Website distribution for Media2Cloud solution"
+                Origins:
+                    -
+                        Id: !Sub "S3-${Bucket}"
+                        DomainName: !If [
+                            bUSEast1,
+                            !Sub "${Bucket}.s3.amazonaws.com",
+                            !Sub "${Bucket}.s3.${AWS::Region}.amazonaws.com"
+                        ]
+                        S3OriginConfig:
+                            OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OriginAccessIdentity}"
+                DefaultCacheBehavior:
+                    TargetOriginId: !Sub "S3-${Bucket}"
+                    AllowedMethods: [
+                        GET,
+                        HEAD,
+                        OPTIONS,
+                        PUT,
+                        POST,
+                        DELETE,
+                        PATCH
+                    ]
+                    CachedMethods: [
+                        GET,
+                        HEAD,
+                        OPTIONS
+                    ]
+                    ForwardedValues:
+                        QueryString: 'false'
+                    ViewerProtocolPolicy: redirect-to-https
+                DefaultRootObject: !FindInMap ["Solution", "Website", "MainPage"]
+                CustomErrorResponses:
+                    -
+                        ErrorCode: "403"
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponseCode: "200"
+                    -
+                        ErrorCode: "404"
+                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
+                        ResponseCode: "200"
+                IPV6Enabled: "true"
+                ViewerCertificate:
+                    CloudFrontDefaultCertificate: "true"
+                Enabled: "true"
+                HttpVersion: "http2"
+                PriceClass: !Ref PriceClass
+                Logging:
+                    Bucket: !Sub "${Bucket}.s3.amazonaws.com"
+                    Prefix: cf_logs/
+                    IncludeCookies: true
+
+Outputs:
+    BucketName:
+        Value: !Ref Bucket
+        Description: Bucket Name (Website)
+
+    DistributionId:
+        Value: !Ref Distribution
+        Description: "Distribution Id"
+
+    WebsiteUrl:
+        Value: !Sub https://${Distribution.DomainName}
+        Description: "Website URL"

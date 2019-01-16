@@ -1,0 +1,1011 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (SO0050-media-analysis-statemachine) Media Analysis Solution - create backend Step Functions resource to run AI/ML services.
+
+Parameters:
+  MediaAnalysisFunction:
+      Type: String
+      Description: "ARN of the Media Analysis Lambda function"
+  StateMachineName:
+      Type: String
+      Description: "Name of the Media Analysis state machine"
+
+Resources:
+  MediaAnalysisStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      Properties:
+          StateMachineName: !Ref StateMachineName
+          DefinitionString:
+            !Sub
+              - |-
+                {
+                  "Comment": "A state machine that orchestrates the analysis.",
+                  "StartAt": "Analyze Media",
+                  "States": {
+                    "Analyze Media": {
+                      "Type": "Parallel",
+                      "Next": "Store Results",
+                      "ResultPath": "$.final_metadata",
+                      "Branches": [{
+                          "StartAt": "Is Image",
+                          "States": {
+                            "Is Image": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                "Or": [{
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "png"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "jpg"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "jpeg"
+                                  }
+                                ],
+                                "Next": "Analyze Image"
+                              }],
+                              "Default": "Not an Image"
+                            },
+                            "Not an Image": {
+                              "Type": "Succeed"
+                            },
+                            "Analyze Image": {
+                              "Type": "Parallel",
+                              "End": true,
+                              "Branches": [{
+                                  "StartAt": "Image-Label Params",
+                                  "States": {
+                                    "Image-Label Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "image",
+                                        "function_name": "get_labels"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Image-Get Labels"
+                                    },
+                                    "Image-Get Labels": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.labels",
+                                      "End": true
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Image-Celeb Params",
+                                  "States": {
+                                    "Image-Celeb Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "image",
+                                        "function_name": "get_celebs"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Image-Get Celebs"
+                                    },
+                                    "Image-Get Celebs": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.celebs",
+                                      "End": true
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Image-Face Params",
+                                  "States": {
+                                    "Image-Face Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "image",
+                                        "function_name": "get_faces"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Image-Get Faces"
+                                    },
+                                    "Image-Get Faces": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.faces",
+                                      "Next": "Image-Face-Match Params"
+                                    },
+                                    "Image-Face-Match Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "image",
+                                        "function_name": "get_face_matches"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Image-Get Face-Matches"
+                                    },
+                                    "Image-Get Face-Matches": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.face_matches",
+                                      "End": true
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "StartAt": "Is Audio",
+                          "States": {
+                            "Is Audio": {
+                              "Type": "Choice",
+                              "Choices": [
+                                {
+                                  "Variable": "$.file_type",
+                                  "StringEquals": "mp4",
+                                  "Next": "Convert to Audio"
+                                },
+                                {
+                                "Or": [{
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mp3"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "wav"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "wave"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "flac"
+                                  }
+                                ],
+                                "Next": "Audio-Submit Params"
+                              }],
+                              "Default": "Not Audio"
+                            },
+                            "Not Audio": {
+                              "Type": "Succeed"
+                            },
+                            "Convert to Audio": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "media_convert",
+                                "function_name": "start_media_convert"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Start MediaConvert"
+                            },
+                            "Start MediaConvert": {
+                              "Type": "Task",
+                              "Resource": "${lambdaArn}",
+                              "InputPath": "$",
+                              "ResultPath": "$.mediaConvert",
+                              "Next": "Did MediaConvert Start"
+                            },
+                            "Did MediaConvert Start": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                "Variable": "$.mediaConvert.jobDidStart",
+                                "BooleanEquals": true,
+                                "Next": "MediaConvert Wait"
+                              }],
+                              "Default": "Job Failed"
+                            },
+                            "MediaConvert Wait": {
+                              "Type": "Wait",
+                              "Seconds": 30,
+                              "Next": "Get MediaConvert Status Params"
+                            },
+                            "Get MediaConvert Status Params": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "media_convert",
+                                "function_name": "get_status"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Get MediaConvert Status"
+                            },
+                            "Get MediaConvert Status": {
+                              "Type": "Task",
+                              "Resource": "${lambdaArn}",
+                              "InputPath": "$",
+                              "ResultPath": "$",
+                              "Next": "Did MediaConvert Complete"
+                            },
+                            "Did MediaConvert Complete": {
+                              "Type": "Choice",
+                              "Choices": [
+                                {
+                                  "Variable": "$.mediaConvert.status",
+                                  "StringEquals": "FAILED",
+                                  "Next": "Job Failed"
+                                },
+                                {
+                                  "Variable": "$.mediaConvert.status",
+                                  "StringEquals": "COMPLETE",
+                                  "Next": "Audio-Submit Params"
+                                }
+                              ],
+                              "Default": "MediaConvert Wait"
+                            },
+                            "Audio-Submit Params": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "transcribe",
+                                "function_name": "start_transcription"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Start Transcription"
+                            },
+                            "Start Transcription": {
+                              "Type": "Task",
+                              "Resource": "${lambdaArn}",
+                              "InputPath": "$",
+                              "ResultPath": "$.transcribe",
+                              "Next": "Did Transcription Start"
+                            },
+                            "Did Transcription Start": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                  "Variable": "$.transcribe.jobDidStart",
+                                  "BooleanEquals": true,
+                                  "Next": "Transcription Wait"
+                                }
+                              ],
+                              "Default": "Job Failed"
+                            },
+                            "Transcription Wait": {
+                              "Type": "Wait",
+                              "Seconds": 30,
+                              "Next": "Get Transcription Status Params"
+                            },
+                            "Get Transcription Status Params": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "transcribe",
+                                "function_name": "get_status"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Get Transcription Status"
+                            },
+                            "Get Transcription Status": {
+                              "Type": "Task",
+                              "Resource": "${lambdaArn}",
+                              "Next": "Did Transcription Complete",
+                              "InputPath": "$",
+                              "ResultPath": "$.transcribe.status"
+                            },
+                            "Did Transcription Complete": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                  "Variable": "$.transcribe.status",
+                                  "StringEquals": "FAILED",
+                                  "Next": "Job Failed"
+                                },
+                                {
+                                  "Variable": "$.transcribe.status",
+                                  "StringEquals": "MP4 FAILED",
+                                  "Next": "Audio-Results Params"
+                                },
+                                {
+                                  "Variable": "$.transcribe.status",
+                                  "StringEquals": "COMPLETED",
+                                  "Next": "Audio-Results Params"
+                                }
+                              ],
+                              "Default": "Transcription Wait"
+                            },
+                            "Audio-Results Params": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "transcribe",
+                                "function_name": "get_results"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Get Results"
+                            },
+                            "Get Results": {
+                              "Type": "Task",
+                              "Resource": "${lambdaArn}",
+                              "Next": "Get Comprehension",
+                              "InputPath": "$",
+                              "ResultPath": "$.results.transcript"
+                            },
+                            "Job Failed": {
+                              "Type": "Fail",
+                              "Cause": "Transcription failed"
+                            },
+                            "Get Comprehension": {
+                              "Type": "Parallel",
+                              "End": true,
+                              "Branches": [{
+                                  "StartAt": "Entity Params",
+                                  "States": {
+                                    "Entity Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "comprehend",
+                                        "function_name": "get_entities"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Entities"
+                                    },
+                                    "Get Entities": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.entities",
+                                      "End": true
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Phrase Params",
+                                  "States": {
+                                    "Phrase Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "comprehend",
+                                        "function_name": "get_phrases"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Phrases"
+                                    },
+                                    "Get Phrases": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.phrases",
+                                      "End": true
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "StartAt": "Is Video",
+                          "States": {
+                            "Is Video": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                "Or": [{
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mov"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mp4"
+                                  }
+                                ],
+                                "Next": "Analyze Video"
+                              }],
+                              "Default": "Not a Video"
+                            },
+                            "Not a Video": {
+                              "Type": "Succeed"
+                            },
+                            "Analyze Video": {
+                              "Type": "Parallel",
+                              "End": true,
+                              "Branches": [{
+                                  "StartAt": "Video-Label Params",
+                                  "States": {
+                                    "Video-Label Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "start_labels"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Video-Start Labels"
+                                    },
+                                    "Video-Start Labels": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video",
+                                      "Next": "Labels Wait"
+                                    },
+                                    "Labels Wait": {
+                                      "Type": "Wait",
+                                      "Seconds": 30,
+                                      "Next": "Labels Status Params"
+                                    },
+                                    "Labels Status Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "check_status"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Labels Get Status"
+                                    },
+                                    "Labels Get Status": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "Next": "Labels Complete",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video.status"
+                                    },
+                                    "Labels Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "FAILED",
+                                          "Next": "Labels Failed"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "SUCCEEDED",
+                                          "Next": "Labels-Results Params"
+                                        }
+                                      ],
+                                      "Default": "Labels Wait"
+                                    },
+                                    "Labels-Results Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "get_results"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Label Results"
+                                    },
+                                    "Get Label Results": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.labels",
+                                      "Next": "Label Results Complete"
+                                    },
+                                    "Label Results Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.results.labels.status",
+                                          "StringEquals": "IN PROGRESS",
+                                          "Next": "Get Label Results"
+                                        },
+                                        {
+                                          "Variable": "$.results.labels.status",
+                                          "StringEquals": "COMPLETE",
+                                          "Next": "Labels Succeeded"
+                                        }
+                                      ],
+                                      "Default": "Labels Failed"
+                                    },
+                                    "Labels Failed": {
+                                      "Type": "Fail",
+                                      "Cause": "Video label detection failed"
+                                    },
+                                    "Labels Succeeded": {
+                                      "Type": "Succeed"
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Video-Celeb Params",
+                                  "States": {
+                                    "Video-Celeb Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "start_celebs"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Video-Start Celebs"
+                                    },
+                                    "Video-Start Celebs": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video",
+                                      "Next": "Celebs Wait"
+                                    },
+                                    "Celebs Wait": {
+                                      "Type": "Wait",
+                                      "Seconds": 30,
+                                      "Next": "Celeb Status Params"
+                                    },
+                                    "Celeb Status Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "check_status"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Celeb Get Status"
+                                    },
+                                    "Celeb Get Status": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "Next": "Celebs Complete",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video.status"
+                                    },
+                                    "Celebs Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "FAILED",
+                                          "Next": "Celebs Failed"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "SUCCEEDED",
+                                          "Next": "Celebs-Results Params"
+                                        }
+                                      ],
+                                      "Default": "Celebs Wait"
+                                    },
+                                    "Celebs-Results Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "get_results"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Celeb Results"
+                                    },
+                                    "Get Celeb Results": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.celebs",
+                                      "Next": "Celeb Results Complete"
+                                    },
+                                    "Celeb Results Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.results.celebs.status",
+                                          "StringEquals": "IN PROGRESS",
+                                          "Next": "Get Celeb Results"
+                                        },
+                                        {
+                                          "Variable": "$.results.celebs.status",
+                                          "StringEquals": "COMPLETE",
+                                          "Next": "Celebs Succeeded"
+                                        }
+                                      ],
+                                      "Default": "Celebs Failed"
+                                    },
+                                    "Celebs Failed": {
+                                      "Type": "Fail",
+                                      "Cause": "Video celeb detection failed"
+                                    },
+                                    "Celebs Succeeded": {
+                                      "Type": "Succeed"
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Video-Face Params",
+                                  "States": {
+                                    "Video-Face Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "start_faces"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Video-Start Faces"
+                                    },
+                                    "Video-Start Faces": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video",
+                                      "Next": "Faces Wait"
+                                    },
+                                    "Faces Wait": {
+                                      "Type": "Wait",
+                                      "Seconds": 30,
+                                      "Next": "Face Status Params"
+                                    },
+                                    "Face Status Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "check_status"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Face Get Status"
+                                    },
+                                    "Face Get Status": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "Next": "Faces Complete",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video.status"
+                                    },
+                                    "Faces Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "FAILED",
+                                          "Next": "Faces Failed"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "SUCCEEDED",
+                                          "Next": "Faces-Results Params"
+                                        }
+                                      ],
+                                      "Default": "Faces Wait"
+                                    },
+                                    "Faces-Results Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "get_results"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Face Results"
+                                    },
+                                    "Get Face Results": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.faces",
+                                      "Next": "Face Results Complete"
+                                    },
+                                    "Face Results Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.results.faces.status",
+                                          "StringEquals": "IN PROGRESS",
+                                          "Next": "Get Face Results"
+                                        },
+                                        {
+                                          "Variable": "$.results.faces.status",
+                                          "StringEquals": "COMPLETE",
+                                          "Next": "Faces Succeeded"
+                                        }
+                                      ],
+                                      "Default": "Faces Failed"
+                                    },
+                                    "Faces Failed": {
+                                      "Type": "Fail",
+                                      "Cause": "Video face detection failed"
+                                    },
+                                    "Faces Succeeded": {
+                                      "Type": "Succeed"
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt" : "Video-Face-Match Params",
+                                  "States": {
+                                    "Video-Face-Match Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "start_face_search"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Video-Start Face-Match"
+                                    },
+                                    "Video-Start Face-Match": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video",
+                                      "Next": "Face-Match Wait"
+                                    },
+                                    "Face-Match Wait": {
+                                      "Type": "Wait",
+                                      "Seconds": 30,
+                                      "Next": "Face-Match Status Params"
+                                    },
+                                    "Face-Match Status Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "check_status"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Face-Match Get Status"
+                                    },
+                                    "Face-Match Get Status": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "Next": "Face-Match Complete",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video.status"
+                                    },
+                                    "Face-Match Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "FAILED",
+                                          "Next": "Face-Match Failed"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "SUCCEEDED",
+                                          "Next": "Face-Match-Results Params"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "NO COLLECTION",
+                                          "Next": "Face-Match No Collection"
+                                        }
+                                      ],
+                                      "Default": "Face-Match Wait"
+                                    },
+                                    "Face-Match Failed": {
+                                      "Type": "Fail",
+                                      "Cause": "Video face matching failed"
+                                    },
+                                    "Face-Match Succeeded": {
+                                      "Type": "Succeed"
+                                    },
+                                    "Face-Match No Collection": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "face_matches": null,
+                                        "key": null,
+                                        "status": "COMPLETE"
+                                      },
+                                      "ResultPath": "$.results.face_matches",
+                                      "Next": "Face-Match End"
+                                    },
+                                    "Face-Match End": {
+                                      "Type": "Succeed"
+                                    },
+                                    "Face-Match-Results Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "get_results"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Face-Match Results"
+                                    },
+                                    "Get Face-Match Results": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.face_matches",
+                                      "Next": "Face-Match Results Complete"
+                                    },
+                                    "Face-Match Results Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.results.face_matches.status",
+                                          "StringEquals": "IN PROGRESS",
+                                          "Next": "Get Face-Match Results"
+                                        },
+                                        {
+                                          "Variable": "$.results.face_matches.status",
+                                          "StringEquals": "COMPLETE",
+                                          "Next": "Face-Match Succeeded"
+                                        }
+                                      ],
+                                      "Default": "Face-Match Failed"
+                                    }
+                                  }
+                                },
+                                {
+                                  "StartAt": "Video-Person Params",
+                                  "States": {
+                                    "Video-Person Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "start_persons"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Video-Start Persons"
+                                    },
+                                    "Video-Start Persons": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video",
+                                      "Next": "Persons Wait"
+                                    },
+                                    "Persons Wait": {
+                                      "Type": "Wait",
+                                      "Seconds": 30,
+                                      "Next": "Persons Status Params"
+                                    },
+                                    "Persons Status Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "check_status"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Persons Get Status"
+                                    },
+                                    "Persons Get Status": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "Next": "Persons Complete",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.video.status"
+                                    },
+                                    "Persons Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "FAILED",
+                                          "Next": "Persons Failed"
+                                        },
+                                        {
+                                          "Variable": "$.video.status",
+                                          "StringEquals": "SUCCEEDED",
+                                          "Next": "Persons-Results Params"
+                                        }
+                                      ],
+                                      "Default": "Persons Wait"
+                                    },
+                                    "Persons-Results Params": {
+                                      "Type": "Pass",
+                                      "Result": {
+                                        "service_name": "video",
+                                        "function_name": "get_results"
+                                      },
+                                      "ResultPath": "$.lambda",
+                                      "Next": "Get Persons Results"
+                                    },
+                                    "Get Persons Results": {
+                                      "Type": "Task",
+                                      "Resource": "${lambdaArn}",
+                                      "InputPath": "$",
+                                      "ResultPath": "$.results.persons",
+                                      "Next": "Persons Results Complete"
+                                    },
+                                    "Persons Results Complete": {
+                                      "Type": "Choice",
+                                      "Choices": [{
+                                          "Variable": "$.results.persons.status",
+                                          "StringEquals": "IN PROGRESS",
+                                          "Next": "Get Persons Results"
+                                        },
+                                        {
+                                          "Variable": "$.results.persons.status",
+                                          "StringEquals": "COMPLETE",
+                                          "Next": "Persons Succeeded"
+                                        }
+                                      ],
+                                      "Default": "Persons Failed"
+                                    },
+                                    "Persons Failed": {
+                                      "Type": "Fail",
+                                      "Cause": "Video face detection failed"
+                                    },
+                                    "Persons Succeeded": {
+                                      "Type": "Succeed"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "Store Results": {
+                      "Type": "Parallel",
+                      "End": true,
+                      "Branches": [
+                        {
+                          "StartAt": "Is Valid Format",
+                          "States": {
+                            "Is Valid Format": {
+                              "Type": "Choice",
+                              "Choices": [{
+                                "Or": [{
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "png"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "jpg"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "jpeg"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mp4"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mov"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "mp3"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "flac"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "wav"
+                                  },
+                                  {
+                                    "Variable": "$.file_type",
+                                    "StringEquals": "wave"
+                                  }
+                                ],
+                                "Next": "ElasticSearch Params"
+                              }],
+                              "Default": "Not Valid Format"
+                            },
+                            "ElasticSearch Params": {
+                              "Type": "Pass",
+                              "Result": {
+                                "service_name": "elasticsearch",
+                                "function_name": "index_doc"
+                              },
+                              "ResultPath": "$.lambda",
+                              "Next": "Index Metadata"
+                            },
+                            "Index Metadata": {
+                              "Type": "Task",
+                              "InputPath": "$",
+                              "Resource": "${lambdaArn}",
+                              "End": true
+                            },
+                            "Not Valid Format": {
+                              "Type": "Succeed"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              - {lambdaArn: !Ref MediaAnalysisFunction}
+          RoleArn: !GetAtt MediaAnalysisStateMachineRole.Arn
+
+  MediaAnalysisStateMachineRole:
+      Type: AWS::IAM::Role
+      Properties:
+          AssumeRolePolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Principal:
+                  Service:
+                    - !Join ["", ["states.", Ref: "AWS::Region", ".amazonaws.com"]]
+                Action:
+                  - "sts:AssumeRole"
+          Path: /
+          Policies:
+            -
+              PolicyName: mas-state-machine-policy
+              PolicyDocument:
+                  Version: "2012-10-17"
+                  Statement:
+                    -
+                      Effect: "Allow"
+                      Action:
+                        - "lambda:InvokeFunction"
+                      Resource: !Ref MediaAnalysisFunction
+
+Outputs:
+    StateMachineRoleArn:
+        Description: "IAM Role Arn (State Machine)"
+        Value: !GetAtt MediaAnalysisStateMachineRole.Arn
+    StateMachineName:
+        Description: "Name (State Machine)"
+        Value: !GetAtt MediaAnalysisStateMachine.Name
+    StateMachineArn:
+        Description: "Arn (State Machine)"
+        Value: !Ref MediaAnalysisStateMachine

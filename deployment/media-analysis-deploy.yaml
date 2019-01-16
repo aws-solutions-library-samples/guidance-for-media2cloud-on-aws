@@ -1,0 +1,461 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (SO0050-media-analysis) Media Analysis Solution - create resources related to Media Analysis Solution.
+
+Mappings:
+    MediaAnalysis:
+        Package:
+            S3Bucket: "solutions"
+            KeyPrefix: "media-analysis-solution/latest"
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    SolutionId:
+        Type: String
+        Description: solution ID
+    RootStackName:
+        Type: String
+        Description: used to suffix resources
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    CustomResourceArn:
+        Type: String
+        Description: created by parent stack and used for string manipulation
+    AnonymousUsage:
+        Type: String
+        Description: send ananymous usage data
+        Default: "No"
+        AllowedValues:
+          - "No"
+          - "Yes"
+    BucketName:
+        Type: String
+        Description: "store media-analysis and proxy files"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    Size:
+        Type: String
+        Description: Amazon Elasticsearch cluster sizing
+        Default: Small
+        AllowedValues:
+            - Small
+            - Medium
+            - Large
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "General Configuration"
+                Parameters:
+                    - S3Bucket
+                    - KeyPrefix
+                    - SolutionId
+                    - RootStackName
+                    - BucketName
+                    - CustomResourceArn
+            -
+                Label:
+                    default: "Media Analysis Configuration"
+                Parameters:
+                    - AnonymousUsage
+                    - Size
+        ParameterLabels:
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution Key Prefix"
+            SolutionId:
+                default: "Solution ID"
+            AnonymousUsage:
+                default: "Anonymous Usage"
+            RootStackName:
+                default: "Top Stack Name"
+            CustomResourceArn:
+                default: "Custom Resource Arn"
+            BucketName:
+                default: "Media Analysis Bucket"
+            Size:
+                default: "Amazon Elasticsearch cluster sizing"
+
+Resources:
+    # Bucket to store assets from media-analysis-soluton engine
+    MediaAnalysisBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Ref BucketName
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+              DestinationBucketName: !Ref BucketName
+              LogFilePrefix: "access_log/"
+            CorsConfiguration:
+                CorsRules:
+                  -
+                    AllowedHeaders:
+                      - '*'
+                    AllowedMethods:
+                      - 'PUT'
+                      - 'GET'
+                      - 'POST'
+                    AllowedOrigins:
+                      - '*'
+                    ExposedHeaders:
+                      - 'ETAG'
+                    MaxAge: 3000
+
+    MediaAnalysisHelperRole:
+        Type: AWS::IAM::Role
+        Metadata:
+          cfn_nag:
+            rules_to_suppress:
+              - id: W11
+                reason: "The wildcard is present as this is a custom resource function that some resources aren't created."
+        Properties:
+            AssumeRolePolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Principal:
+                    Service:
+                      - "lambda.amazonaws.com"
+                  Action:
+                    - "sts:AssumeRole"
+            Path: /
+            Policies:
+              -
+                PolicyName: media-analysis-helper-policy
+                PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "es:ESHttpPut"
+                        Resource:
+                          - !Sub ["arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${x0}/*", {x0: !GetAtt LowerCaseDomainName.OutputString}]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "logs:CreateLogGroup"
+                          - "logs:CreateLogStream"
+                          - "logs:PutLogEvents"
+                        Resource: [
+                          !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                        ]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "s3:GetObject"
+                        Resource: !Join ["", ["arn:aws:s3:::", "*"]]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "s3:PutObject"
+                          - "s3:GetObject"
+                        Resource: !Join ["", ["arn:aws:s3:::", !Ref MediaAnalysisBucket, "/*"]]
+
+    MediaAnalysisHelperFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "(MAS) AWS Lambda function to help the Media Analysis Solution template"
+            Code:
+                S3Bucket: !Sub ["${x0}-${AWS::Region}", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "S3Bucket"]
+                }]
+                S3Key: !Sub ["${x0}/media-analysis-helper.zip", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "KeyPrefix"]
+                }]
+            Handler: index.handler
+            Runtime: nodejs8.10
+            Role: !GetAtt MediaAnalysisHelperRole.Arn
+            Timeout: 300
+            MemorySize: 256
+
+    MediaAnalysisESHelper:
+        Type: Custom::CreateIndex
+        Properties:
+            ServiceToken: !GetAtt MediaAnalysisHelperFunction.Arn
+            customAction: "createIndex"
+            clusterUrl: !GetAtt MediaAnalysisStorageStack.Outputs.EsCluster
+            # index could be the same as long as the Elasticsearch domain name is unique
+            es_index: media-analysis
+
+    GenerateUuid:
+        Type: Custom::CreateUuid
+        Properties:
+            ServiceToken: !GetAtt MediaAnalysisHelperFunction.Arn
+            customAction: "createUuid"
+
+    SendConfiguration:
+        Type: Custom::SendConfig
+        Properties:
+            ServiceToken: !GetAtt MediaAnalysisHelperFunction.Arn
+            customAction: "sendConfig"
+            uuid: !GetAtt GenerateUuid.uuid
+            solutionId: !Ref SolutionId
+            version: 1
+            size: !Ref Size
+            metrics: !Ref AnonymousUsage
+
+    # ES domain name must be lowercase
+    LowerCaseDomainName:
+        Type: Custom::LowerCaseDomainName
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+            FunctionName: StringManipulation
+            InputString: !Sub "${SolutionId}-${RootStackName}-storage"
+            Operations: "lower,maxlen=28,minlen=3,dash"
+
+    MediaAnalysisStorageStack:
+        Type: "AWS::CloudFormation::Stack"
+        Properties:
+            TemplateURL: !Sub "https://${S3Bucket}.s3.amazonaws.com/${KeyPrefix}/media-analysis-storage-stack.template"
+            Parameters:
+                Size: !Ref Size
+                DomainName: !GetAtt LowerCaseDomainName.OutputString
+
+    MediaAnalysisStateMachineStack:
+        Type: "AWS::CloudFormation::Stack"
+        Properties:
+            TemplateURL: !Sub "https://${S3Bucket}.s3.amazonaws.com/${KeyPrefix}/media-analysis-state-machine-stack.template"
+            Parameters:
+                MediaAnalysisFunction: !GetAtt MediaAnalysisFunction.Arn
+                StateMachineName: !Sub "${SolutionId}-${RootStackName}-media-analysis"
+
+    MediaAnalysisApiStack:
+        Type: "AWS::CloudFormation::Stack"
+        Properties:
+            TemplateURL: !Sub "https://${S3Bucket}.s3.amazonaws.com/${KeyPrefix}/media-analysis-api-stack.template"
+            Parameters:
+                S3Bucket: !Ref S3Bucket
+                KeyPrefix: !Ref KeyPrefix
+                DomainEndpoint: !GetAtt MediaAnalysisStorageStack.Outputs.EsCluster
+                DomainName: !GetAtt MediaAnalysisStorageStack.Outputs.DomainName
+                MediaAnalysisBucket: !Ref MediaAnalysisBucket
+                StateMachineName: !Sub "${SolutionId}-${RootStackName}-media-analysis"
+                ApiGatewayEndpointName: !Sub "${SolutionId}-${RootStackName}-media-analysis-api"
+
+    MediaConvertRole:
+      Type: AWS::IAM::Role
+      Metadata:
+        cfn_nag:
+          rules_to_suppress:
+            - id: W11
+              reason: "The wildcard is present as MediaConvert needs to be able to acces files within the bucket."
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Principal:
+                Service:
+                  - "mediaconvert.amazonaws.com"
+              Action:
+                - "sts:AssumeRole"
+        Path: /
+        Policies:
+          - PolicyName: media-analysis-mediaconvert-policy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+
+                # Read input object
+                - Effect: "Allow"
+                  Action:
+                    - s3:GetObject
+                  Resource: !Sub "arn:aws:s3:::${MediaAnalysisBucket}/*"
+
+                # Write output object
+                - Effect: "Allow"
+                  Action:
+                    - s3:PutObject
+                  Resource: !Sub "arn:aws:s3:::${MediaAnalysisBucket}/*"
+
+    MediaAnalysisFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "AWS Lambda function to execute analysis"
+            Code:
+                S3Bucket: !Sub ["${x0}-${AWS::Region}", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "S3Bucket"]
+                }]
+                S3Key: !Sub ["${x0}/media-analysis-function.zip", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "KeyPrefix"]
+                }]
+            Handler: index.handler
+            Runtime: nodejs8.10
+            Role: !GetAtt MediaAnalysisFunctionRole.Arn
+            Timeout: 60
+            MemorySize: 256
+            Environment:
+                Variables:
+                    CONFIDENCE_SCORE: '0'
+                    DOMAIN_ENDPOINT: !GetAtt MediaAnalysisStorageStack.Outputs.EsCluster
+                    ES_INDEX: media-analysis
+                    S3_BUCKET: !Ref MediaAnalysisBucket
+                    STATE_MACHINE: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-media-analysis"
+                    UUID: !GetAtt GenerateUuid.uuid
+                    METRICS: !Ref "AnonymousUsage"
+                    SOLUTIONID: !Ref SolutionId
+                    MEDIACONVERT_ROLE: !GetAtt MediaConvertRole.Arn
+
+    MediaAnalysisFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+          cfn_nag:
+            rules_to_suppress:
+              - id: W11
+                reason: "Refer to inline comments for the wildcard justification."
+        Properties:
+            AssumeRolePolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Principal:
+                    Service:
+                      - "lambda.amazonaws.com"
+                  Action:
+                    - "sts:AssumeRole"
+            Path: /
+            Policies:
+              -
+                PolicyName: media-analysis-function-policy
+                PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "es:ESHttpPut"
+                          - "es:ESHttpPost"
+                        Resource:
+                          # Wildcards on ElasticSearch domain resources are
+                          # present because documents are indexed based off of
+                          # the Step Function job ID, which is unique per
+                          # invocation.
+                          - !Sub ["arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${x0}", {x0: !GetAtt LowerCaseDomainName.OutputString}]
+                          - !Sub ["arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${x0}/*", {x0: !GetAtt LowerCaseDomainName.OutputString}]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "rekognition:CreateCollection"
+                          - "rekognition:DetectFaces"
+                          - "rekognition:DetectLabels"
+                          - "rekognition:GetCelebrityRecognition"
+                          - "rekognition:GetFaceDetection"
+                          - "rekognition:GetFaceSearch"
+                          - "rekognition:GetLabelDetection"
+                          - "rekognition:GetPersonTracking"
+                          - "rekognition:IndexFaces"
+                          - "rekognition:RecognizeCelebrities"
+                          - "rekognition:SearchFacesByImage"
+                          - "rekognition:StartCelebrityRecognition"
+                          - "rekognition:StartFaceDetection"
+                          - "rekognition:StartFaceSearch"
+                          - "rekognition:StartLabelDetection"
+                          - "rekognition:StartPersonTracking"
+                        # Wildcards in the Rekognition resource ARNs are present
+                        # due to Rekognition needing access to collections that
+                        # have IDs based off of a UUID generator.
+                        # https://docs.aws.amazon.com/rekognition/latest/dg/api-permissions-reference.html
+                        Resource: !Join ["", ["*"]]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "comprehend:BatchDetectEntities"
+                          - "comprehend:BatchDetectKeyPhrases"
+                        # These actions require resource wildcards per the
+                        # Comprehend documentation.
+                        # https://docs.aws.amazon.com/comprehend/latest/dg/comprehend-api-permissions-ref.html
+                        Resource: !Join ["", ["*"]]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "transcribe:GetTranscriptionJob"
+                          - "transcribe:StartTranscriptionJob"
+                        # These actions require resource wildcards per the
+                        # Transcribe documentation.
+                        # https://docs.aws.amazon.com/transcribe/latest/dg/asc-api-permissions-ref.html
+                        Resource: !Join ["", ["*"]]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "s3:GetObject"
+                          - "s3:PutObject"
+                        Resource:
+                          # The bucket name is constructed rather than referenced
+                          # due to a circular dependency between the S3 Bucket
+                          # and the Lambda events. The wildcard is present because
+                          # the step function will need access to objects in the
+                          # bucket that have a path based off of UUIDs.
+                          - !Sub "arn:aws:s3:::${MediaAnalysisBucket}/*"
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "states:StartExecution"
+                        Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-media-analysis"
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "mediaConvert:DescribeEndpoints"
+                          - "mediaConvert:CreateJob"
+                          - "mediaConvert:GetJob"
+                        # This wildcard is present because the MediaConvert job
+                        # IDs are randomly generated.
+                        Resource: [
+                          !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*"
+                        ]
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "iam:GetRole"
+                          - "iam:PassRole"
+                        Resource: !GetAtt MediaConvertRole.Arn
+
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "logs:CreateLogGroup"
+                          - "logs:CreateLogStream"
+                          - "logs:PutLogEvents"
+                        Resource: [
+                          !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                        ]
+
+Outputs:
+    MediaAnalysisBucket:
+        Description: "Media Analysis Bucket"
+        Value: !Ref MediaAnalysisBucket
+    MediaAnalysisApiId:
+        Description: "Media Analysis API Id"
+        Value: !GetAtt MediaAnalysisApiStack.Outputs.ApiId
+    MediaAnalysisApiEndpoint:
+        Description: "Media Analysis API Gateway Endpoint"
+        Value: !Join ["", ["https://",!GetAtt MediaAnalysisApiStack.Outputs.ApiId, ".execute-api.", !Ref "AWS::Region", ".amazonaws.com/prod"]]
+    SolutionUUID:
+        Description: "Solution UUID"
+        Value: !GetAtt GenerateUuid.uuid
+    ElasticsearchDomainName:
+        Description: "Media Analysis Elasticsearch Domain Name"
+        Value: !GetAtt MediaAnalysisStorageStack.Outputs.DomainName
+    ElasticsearchDomainEndpoint:
+        Description: "Media Analysis Elasticsearch Domain Endpoint"
+        Value: !GetAtt MediaAnalysisStorageStack.Outputs.EsCluster
+    MediaAnalysisStateMachineName:
+        Description: "Media Analysis State Machine Name"
+        Value: !GetAtt MediaAnalysisStateMachineStack.Outputs.StateMachineName
+    MediaAnalysisStateMachineRoleArn:
+        Description: "Media Analysis State Machine Role Arn"
+        Value: !GetAtt MediaAnalysisStateMachineStack.Outputs.StateMachineRoleArn

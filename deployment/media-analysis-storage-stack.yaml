@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (SO0050-media-analysis-storage) Media Analysis Solution - create Elasticsearch engine for hot search.
+
+Parameters:
+    Size:
+        Type: String
+        Description: Amazon Elasticsearch cluster sizing
+        Default: Small
+        AllowedValues:
+            - Small
+            - Medium
+            - Large
+    DomainName:
+        Type: String
+        Description: Name of the Amazon Elasitcsearch cluster
+
+Mappings:
+    RegionMap:
+        us-east-1:
+            InstanceType: "m4.large.elasticsearch"
+        us-east-2:
+            InstanceType: "m4.large.elasticsearch"
+        us-west-2:
+            InstanceType: "m4.large.elasticsearch"
+        eu-west-1:
+            InstanceType: "m4.large.elasticsearch"
+        ap-southeast-2:
+            InstanceType: "m4.large.elasticsearch"
+
+    SizeMap:
+        Small:
+            InstanceCount: 2
+            VolumeSize: 25
+            MasterSize: "t2.small.elasticsearch"
+        Medium:
+            InstanceCount: 4
+            VolumeSize: 25
+            MasterSize: "t2.medium.elasticsearch"
+        Large:
+            InstanceCount: 8
+            VolumeSize: 25
+            MasterSize: "t2.medium.elasticsearch"
+
+Resources:
+    MediaAnalysisElasticSearch:
+        Type: AWS::Elasticsearch::Domain
+        Properties:
+            DomainName: !Ref DomainName
+            ElasticsearchClusterConfig:
+                DedicatedMasterEnabled: true
+                DedicatedMasterCount: 3
+                DedicatedMasterType: !FindInMap ["SizeMap", !Ref Size, "MasterSize"]
+                InstanceCount: !FindInMap ["SizeMap", !Ref Size, "InstanceCount"]
+                ZoneAwarenessEnabled: true
+                InstanceType: !FindInMap ["RegionMap", Ref: "AWS::Region", "InstanceType"]
+            ElasticsearchVersion: 6.0
+            EBSOptions:
+                EBSEnabled: true
+                Iops: 0
+                VolumeSize: !FindInMap ["SizeMap", !Ref Size, "VolumeSize"]
+                VolumeType: "gp2"
+            AdvancedOptions:
+                rest.action.multi.allow_explicit_index: "true"
+
+Outputs:
+    EsCluster:
+        Description: "Elasticsearch cluster domain endpoint"
+        Value: !GetAtt MediaAnalysisElasticSearch.DomainEndpoint
+    DomainName:
+        Description: "Elasticsearch cluster domain name"
+        Value: !Ref MediaAnalysisElasticSearch

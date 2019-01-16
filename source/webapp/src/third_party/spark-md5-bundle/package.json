@@ -1,0 +1,16 @@
+{
+  "name": "spark-md5-bundle",
+  "version": "1.0.0",
+  "description": "simply copy spark-md5 js to dist folder",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "copy": "cp -v ./node_modules/spark-md5/spark-md5*.js"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "spark-md5": "^3.0.0"
+  },
+  "devDependencies": {}
+}

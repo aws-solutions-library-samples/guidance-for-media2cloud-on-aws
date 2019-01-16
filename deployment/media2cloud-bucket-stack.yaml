@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-s3-glacier) Media2Cloud - create S3/Glacier bucket, configure S3 events and set life cycle policy.
+
+#
+# Mappings to store fixed value of the solution
+#
+Mappings:
+    Solution:
+        Package:
+            Media2Cloud: "%PACKAGENAME%"
+    Function:
+        Handler:
+            OnGlacierObjectCreated: index.OnGlacierObjectCreated
+            OnMediaFileArrival: index.OnMediaFileArrival
+    S3:
+        Notification:
+            Prefix: ""
+            MediaSuffixes: ".mp4,.mov,.wmv,.mxf,.ts,.mpg,.mpeg"
+            JsonSuffixes: ".json"
+        Lifecycle:
+            TagId: "Move to Glacier after ingest completed"
+            TageName: "IngestCompleted"
+            TagValue: "true"
+            Prefix: ""
+            TransitionInDays: "0"
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: "part of the resource naming"
+    RootStackName:
+        Type: String
+        Description: "part of the resource naming"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    CustomResourceArn:
+        Type: String
+        Description: for post-processing
+    IotTopic:
+        Type: String
+        Description: to publish/receive Iot messages
+    CreateBucket:
+        Type: String
+        Description: "specify 'No' if bucket already exists. Caution: we will modify the CORs, Notification, Lifecycle policys of your existing bucket!"
+        Default: "Yes"
+        AllowedValues:
+          - "Yes"
+          - "No"
+    GlacierBucket:
+        Type: String
+        Description: "assets automatically transition to Glacier storage"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
+    ConfigurationTableName:
+        Type: String
+        Description: dynamodb configuration table name
+    ConfigurationPartitionKey:
+        Type: String
+        Description: dynamodb configuration partition key
+    ConfigurationItemName:
+        Type: String
+        Description: dynamodb configuration item name
+    AssetTableName:
+        Type: String
+        Description: dynamodb asset table name
+    MediainfoTableName:
+        Type: String
+        Description: dynamodb mediainfo table name
+    SNSTopicArn:
+        Type: String
+        Description: topic arn
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "Solution Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: "S3 Configuration"
+                Parameters:
+                    - CreateBucket
+                    - GlacierBucket
+            -
+                Label:
+                    default: "Other resources"
+                Parameters:
+                    - CustomResourceArn
+                    - IotTopic
+                    - ConfigurationTableName
+                    - ConfigurationPartitionKey
+                    - ConfigurationItemName
+                    - AssetTableName
+                    - MediainfoTableName
+                    - SNSTopicArn
+        ParameterLabels:
+            CreateBucket:
+                default: "Create bucket"
+            GlacierBucket:
+                default: "Glacier Bucket Name"
+            CustomResourceArn:
+                default: "Custom Resource Arn"
+            SolutionId:
+                default: "Solution Id"
+            RootStackName:
+                default: "Top Stack Name"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution KeyPrefix"
+            ConfigurationTableName:
+                default: "Configuration Table Name"
+            ConfigurationPartitionKey:
+                default: "Configuration Partition Key"
+            ConfigurationItemName:
+                default: "Configuration Item Name"
+            AssetTableName:
+                default: "Asset Table Name"
+            MediainfoTableName:
+                default: "Mediainfo Table Name"
+            SNSTopicArn:
+                default: "SNS Topic"
+
+Conditions:
+    bShouldCreateBucket: !Equals [!Ref CreateBucket, "Yes"]
+
+Resources:
+    #
+    # assets automatically transition to Glacier after X days
+    #
+    Bucket:
+        Condition: bShouldCreateBucket
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Ref GlacierBucket
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+              DestinationBucketName: !Ref GlacierBucket
+              LogFilePrefix: "access_log/"
+            CorsConfiguration:
+                CorsRules:
+                    -
+                        AllowedMethods: ["GET", "PUT", "POST", "HEAD"]
+                        AllowedOrigins: ["*"]
+                        AllowedHeaders: ["*"]
+                        ExposedHeaders: [
+                            "ETag",
+                            "Content-Length",
+                            "x-amz-meta-uuid",
+                            "x-amz-meta-umid",
+                            "x-amz-meta-md5chksum"
+                        ]
+                        MaxAge: 3000
+
+    #
+    # allow lambda function to call apigateway to start ingest state machine
+    #
+    ExecutionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "This wildcard is present as the lambda function needs to be able to access contents within the bucket!"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: ["sts:AssumeRole"]
+                        Principal:
+                            Service: ["lambda.amazonaws.com"]
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-s3event-execution"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                        ## S3
+                        -
+                            Effect: "Allow"
+                            Action: [
+                                "s3:GetObject",
+                                "s3:PutObject"
+                            ]
+                            Resource: [
+                                !Sub "arn:aws:s3:::${GlacierBucket}/*",
+                            ]
+
+                        ## CloudWatch Logs
+                        -
+                            Effect: "Allow"
+                            Action: [
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents"
+                            ]
+                            Resource: [
+                                !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                            ]
+
+                        ## DynamoDB
+                        -
+                            Effect: "Allow"
+                            Action: [
+                                "dynamodb:Query",
+                                "dynamodb:Attributes",
+                                "dynamodb:LeadingKeys",
+                                "dynamodb:ReturnConsumedCapacity",
+                                "dynamodb:ReturnValues",
+                                "dynamodb:Select"
+                            ]
+                            # s3 event lambda should only have read access to Configuration table
+                            Resource: [
+                                !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ConfigurationTableName}"
+                            ]
+                        -
+                            Effect: "Allow"
+                            Action: [
+                                "dynamodb:Query",
+                                "dynamodb:UpdateItem",
+                                "dynamodb:Attributes",
+                                "dynamodb:LeadingKeys",
+                                "dynamodb:ReturnConsumedCapacity",
+                                "dynamodb:ReturnValues",
+                                "dynamodb:Select"
+                            ]
+                            # s3 event lambda should only need read/write/update access to Asset table, no need to access Mediainfo
+                            Resource: [
+                                !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AssetTableName}"
+                            ]
+
+                        ## API Gateway
+                        -
+                            Effect: "Allow"
+                            Action: ["execute-api:Invoke"]
+                            # This wildcard is present because there is a circular dependency between
+                            # Step Functions resource and API Gateway resource creation
+                            Resource: [!Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*/*"]
+
+                        ## IoT
+                        -
+                            Effect: "Allow"
+                            Action: ["iot:Publish"]
+                            Resource: [!Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"]
+
+    #
+    # (Bucket event) lambda function on s3 trigger (JSON)
+    #
+    OnGlacierObjectCreatedFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub "${SolutionId}-${RootStackName}-OnGlacierObjectCreated"
+            Description: !Sub "(${SolutionId}) OnObjectCreated, call API Gateway to start the ingest workflow"
+            Runtime: nodejs8.10
+            MemorySize: "128"
+            Timeout: "300"
+            Handler: !FindInMap ["Function", "Handler", "OnGlacierObjectCreated"]
+            Role: !GetAtt ExecutionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "Media2Cloud"]}]
+            Environment:
+                Variables:
+                    ENV_CONFIGURATION_TALBE: !Ref ConfigurationTableName
+                    ENV_CONFIGURATION_PARTITION_KEY: !Ref ConfigurationPartitionKey
+                    ENV_CONFIGURATION_ITEM_NAME: !Ref ConfigurationItemName
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+
+    FunctionPermission01:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !Ref OnGlacierObjectCreatedFunction
+            Principal: s3.amazonaws.com
+            SourceAccount: !Ref AWS::AccountId
+            SourceArn: !Sub "arn:aws:s3:::${GlacierBucket}"
+
+    #
+    # install lambda notification on JSON extension
+    #
+    SetNotification01:
+        # make sure Permission is granted before setting notification
+        DependsOn: [FunctionPermission01]
+        Type: Custom::SetNotification01
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+            FunctionName: SetNotification
+            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
+            Id: !Sub "${SolutionId}-diva"
+            Prefix: !FindInMap ["S3", "Notification", "Prefix"]
+            Suffixes: !FindInMap ["S3", "Notification", "JsonSuffixes"]
+            Events: "s3:ObjectCreated:*"
+            LambdaFunctionArn: !GetAtt OnGlacierObjectCreatedFunction.Arn
+
+    #
+    # (Bucket event) lambda function on s3 trigger (Media file)
+    #
+    OnMediaFileArrivalFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub "${SolutionId}-${RootStackName}-OnMediaFileArrival"
+            Description: !Sub "(${SolutionId}) on media file created, generate JSON archive definition file to trigger the ingest workflow"
+            Runtime: nodejs8.10
+            MemorySize: "128"
+            Timeout: "300"
+            Handler: !FindInMap ["Function", "Handler", "OnMediaFileArrival"]
+            Role: !GetAtt ExecutionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "Media2Cloud"]}]
+            Environment:
+                Variables:
+                    ENV_CONFIGURATION_TALBE: !Ref ConfigurationTableName
+                    ENV_CONFIGURATION_PARTITION_KEY: !Ref ConfigurationPartitionKey
+                    ENV_CONFIGURATION_ITEM_NAME: !Ref ConfigurationItemName
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+
+    FunctionPermission02:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !Ref OnMediaFileArrivalFunction
+            Principal: s3.amazonaws.com
+            SourceAccount: !Ref AWS::AccountId
+            SourceArn: !Sub "arn:aws:s3:::${GlacierBucket}"
+
+    #
+    # install lambda notification on Media file extension
+    #
+    SetNotification02:
+        # make sure Permission is granted before setting notification
+        # also depends on SetNotification01 to avoid race condition
+        DependsOn: [FunctionPermission02, SetNotification01]
+        Type: Custom::SetNotification02
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+            FunctionName: SetNotification
+            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
+            Id: !Sub "${SolutionId}-media"
+            Prefix: !FindInMap ["S3", "Notification", "Prefix"]
+            Suffixes: !FindInMap ["S3", "Notification", "MediaSuffixes"]
+            Events: "s3:ObjectCreated:*"
+            LambdaFunctionArn: !GetAtt OnMediaFileArrivalFunction.Arn
+
+    #
+    # set life cycle policy for the bucket
+    #
+    SetLifecyclePolicy:
+        Type: Custom::SetLifecyclePolicy
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+            FunctionName: SetLifecyclePolicy
+            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
+            TagId: !FindInMap ["S3", "Lifecycle", "TagId"]
+            TagName: !FindInMap ["S3", "Lifecycle", "TageName"]
+            TagValue: !FindInMap ["S3", "Lifecycle", "TagValue"]
+            Prefix: !FindInMap ["S3", "Lifecycle", "Prefix"]
+            TransitionInDays: !FindInMap ["S3", "Lifecycle", "TransitionInDays"]
+
+Outputs:
+    BucketName:
+        Value: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
+        Description: Bucket Name (Glacier)
+
+    ExecutionRoleArn:
+        Value: !GetAtt ExecutionRole.Arn
+        Description: Role Arn (S3 Event Execution)
+
+    OnGlacierObjectCreatedArn:
+        Value: !GetAtt OnGlacierObjectCreatedFunction.Arn
+        Description: Lambda Arn (OnGlacierObjectCreated)
+
+    OnMediaFileArrivalArn:
+        Value: !GetAtt OnMediaFileArrivalFunction.Arn
+        Description: Lambda Arn (OnMediaFileArrival)
+
+    LambdaFunctionList:
+        Value: !Join [ ",", [
+            !Ref OnGlacierObjectCreatedFunction,
+            !Ref OnMediaFileArrivalFunction
+        ]]
+        Description: List of Lambda functions (S3 Notification)

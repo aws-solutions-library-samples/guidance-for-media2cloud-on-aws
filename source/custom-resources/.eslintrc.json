@@ -1,0 +1,26 @@
+{
+  "extends": "airbnb-base",
+  "rules": {
+    "strict": "error",
+    "func-names": ["error", "never"],
+    "comma-dangle": ["error", {
+      "arrays": "always-multiline",
+      "objects": "always-multiline",
+      "imports": "always-multiline",
+      "exports": "always-multiline",
+      "functions": "never"
+    }],
+    "no-use-before-define": ["error", {
+      "functions": false,
+      "classes": true,
+      "variables": true
+    }],
+    "prefer-arrow-callback": 0
+  },
+  "env": {
+    "browser": false,
+    "node": true,
+    "jquery": false,
+    "mocha": true
+  }
+}

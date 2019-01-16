@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-api) Media2Cloud - create API Gateway endpoint for frontend web client.
+
+Mappings:
+    Solution:
+        Package:
+            Media2Cloud: "%PACKAGENAME%"
+    Function:
+        Handler:
+            OnRequest: index.OnRequest
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: "part of the resource naming"
+    RootStackName:
+        Type: String
+        Description: "part of the resource naming"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    ApiGatewayEndpointName:
+        Type: String
+        Description: "API Gateway Name"
+    StageName:
+        Type: String
+        Description: "Leave it as is"
+        Default: demo
+    IngestStateMachine:
+        Type: String
+        Description: "created by parent stack"
+    MetadataStateMachine:
+        Type: String
+        Description: "created by parent stack"
+    IotThingPolicy:
+        Type: String
+        Description: "created by parent stack"
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: Solution Configuration
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: Created by other stacks
+                Parameters:
+                    - IngestStateMachine
+                    - MetadataStateMachine
+                    - IotThingPolicy
+            -
+                Label:
+                    default: API Gateway Configuration
+                Parameters:
+                    - ApiGatewayEndpointName
+                    - StageName
+        ParameterLabels:
+            SolutionId:
+                default: "Solution Id"
+            RootStackName:
+                default: "Top Stack Name"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution Key Prefix"
+            IngestStateMachine:
+                default: "Ingest State Machine Name"
+            MetadataStateMachine:
+                default: "Metadata State Machine Name"
+            IotThingPolicy:
+                default: "Iot Thing Policy"
+            ApiGatewayEndpointName:
+                default: "API Gateway Name"
+            StageName:
+                default: "Deployment Stage"
+
+Resources:
+    ExecutionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "This wildcard is present because we are attaching Cognito Identity Id. cert/* and thinggroup/* resources won't work!"
+        Properties:
+            AssumeRolePolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Principal:
+                    Service:
+                      - "lambda.amazonaws.com"
+                  Action:
+                    - "sts:AssumeRole"
+            Path: /
+            Policies:
+              -
+                PolicyName: !Sub ${SolutionId}-${RootStackName}-api
+                PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                      # step functions - allow api to start, stop state machine
+                      -
+                        Effect: "Allow"
+                        Action: [
+                            "states:DescribeStateMachine",
+                            "states:StartExecution"
+                        ]
+                        Resource: [
+                            !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${IngestStateMachine}",
+                            !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${MetadataStateMachine}"
+                        ]
+                      -
+                        Effect: "Allow"
+                        Action: [
+                            "states:DescribeExecution",
+                            "states:StopExecution"
+                        ]
+                        Resource: [
+                            !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${IngestStateMachine}:*",
+                            !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${MetadataStateMachine}:*"
+                        ]
+
+                      # logs
+                      -
+                        Effect: "Allow"
+                        Action: [
+                            "logs:CreateLogGroup",
+                            "logs:CreateLogStream",
+                            "logs:PutLogEvents"
+                        ]
+                        Resource: [
+                            !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                        ]
+                      # Iot - allow api to attach iot policy to current cognito user
+                      -
+                        Effect: "Allow"
+                        Action: ["iot:AttachPolicy"]
+                        # This wildcard is present because we are attaching Cognito Identity Id
+                        # cert/* and thinggroup/* resources won't work!
+                        # resource. See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
+                        Resource: !Join ["", ["*"]]
+
+    #
+    # (Metadata State machine) lambda function to monitor media analysis state machine
+    #
+    OnRequestFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub "${SolutionId}-${RootStackName}-OnRequest"
+            Description: !Sub "(${SolutionId}) Handle POST, GET, OPTION requests"
+            Runtime: nodejs8.10
+            MemorySize: "128"
+            Timeout: "300"
+            Handler: !FindInMap ["Function", "Handler", "OnRequest"]
+            Role: !GetAtt ExecutionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "Media2Cloud"]}]
+            Environment:
+                Variables:
+                    ENV_IOT_THING_POLICY_NAME: !Ref IotThingPolicy
+
+    RestApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: !Sub "(${SolutionId}) API endpoints to start and get state machines"
+            Body:
+                swagger: "2.0"
+                info:
+                    version: "2018-08-03T20:13:00Z"
+                    title: !Sub "${ApiGatewayEndpointName}"
+                basePath: !Sub "/${StageName}"
+                schemes:
+                    - "https"
+                paths:
+                    /{operation}:
+                        get:
+                            produces:
+                                - "application/json"
+                            parameters:
+                                -
+                                    name: "operation"
+                                    in: "path"
+                                    required: true
+                                    type: "string"
+                            response:
+                                "200":
+                                    description: "200 response"
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub [
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
+                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                ]
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: "when_no_match"
+                                httpMethod: "POST"
+                                contentHandling: "CONVERT_TO_TEXT"
+                                type: "aws_proxy"
+                        post:
+                            produces:
+                                - "application/json"
+                            parameters:
+                                -
+                                    name: "operation"
+                                    in: "path"
+                                    required: true
+                                    type: "string"
+                            response:
+                                "200":
+                                    description: "200 response"
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub [
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
+                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                ]
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: "when_no_match"
+                                httpMethod: "POST"
+                                contentHandling: "CONVERT_TO_TEXT"
+                                type: "aws_proxy"
+                        options:
+                            produces:
+                                - "application/json"
+                            parameters:
+                                -
+                                    name: "operation"
+                                    in: "path"
+                                    required: true
+                                    type: "string"
+                            response:
+                                "200":
+                                    description: "200 response"
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                                    headers:
+                                        Access-Control-Allow-Origin:
+                                            type: "string"
+                                        Access-Control-Allow-Methods:
+                                            type: "string"
+                                        Access-Control-Allow-Headers:
+                                            type: "string"
+                            x-amazon-apigateway-integration:
+                                uri: !Sub [
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
+                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                ]
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: "when_no_match"
+                                httpMethod: "POST"
+                                contentHandling: "CONVERT_TO_TEXT"
+                                type: "aws_proxy"
+                securityDefinitions:
+                    sigv4:
+                        type: "apiKey"
+                        name: "Authorization"
+                        in: "header"
+                        x-amazon-apigateway-authtype: "awsSigv4"
+                definitions:
+                    Empty:
+                        type: "object"
+                        title: "Empty Schema"
+
+    Deployment:
+        Type: AWS::ApiGateway::Deployment
+        Properties:
+            Description: !Sub "(${SolutionId}) Created by ${AWS::StackName}"
+            RestApiId: !Ref RestApi
+            StageName: !Ref StageName
+            StageDescription:
+                DataTraceEnabled: false
+
+    FunctionPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt OnRequestFunction.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/*/*"
+
+Outputs:
+    ApiId:
+        Value: !Ref RestApi
+        Description: API Id
+
+    Endpoint:
+        Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
+        Description: API Endpoint
+
+    FunctionName:
+        Value: !Ref OnRequestFunction
+        Description: Function Name (OnRequestFunction)
+
+    FunctionArn:
+        Value: !GetAtt OnRequestFunction.Arn
+        Description: Function Arn (OnRequestFunction)

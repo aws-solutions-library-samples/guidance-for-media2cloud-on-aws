@@ -1,0 +1,27 @@
+Media2Cloud Solution
+
+Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Licensed under the Amazon Software License (the "License"). You may not use this file except
+in compliance with the License. A copy of the License is located at http://aws.amazon.com/asl/
+or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+**********************
+THIRD PARTY COMPONENTS
+**********************
+This software includes third party software subject to the following copyrights:
+
+AWS SDK under the Apache License Version 2.0
+AWS Amplify under the Apache License Version 2.0
+AWS IoT SDK for JavaScript under the Apache License Version 2.0
+jquery under the Massachusetts Institute of Technology (MIT) license
+bootstrap under the Massachusetts Institute of Technology (MIT) license
+popper under the Massachusetts Institute of Technology (MIT) license
+spark-md5 under the Massachusetts Institute of Technology (MIT) license
+mime under the Massachusetts Institute of Technology (MIT) license
+adm-zip under the Massachusetts Institute of Technology (MIT) license
+deepmerge under the Massachusetts Institute of Technology (MIT) license
+crypto-js under the Massachusetts Institute of Technology (MIT) license
+sigV4Client under the Apache License Version 2.0
+

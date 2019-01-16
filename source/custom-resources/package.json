@@ -1,0 +1,33 @@
+{
+  "name": "custom-resources",
+  "version": "1.0.0",
+  "description": "media2cloud cloudformation custom resource",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "pretest": "npm install",
+    "test": "echo \"no test\"",
+    "build:clean": "rm -rf dist && mkdir -p dist",
+    "build:copy": "cp -Rv index.js package*.json lib dist/",
+    "build:install": "cd dist && npm install --production",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "author": "aws-mediaent-solutions",
+  "dependencies": {
+    "adm-zip": "^0.4.11",
+    "mime": "^2.3.1"
+  },
+  "devDependencies": {
+    "eslint": "^4.7.2",
+    "eslint-config-airbnb-base": "^12.0.0",
+    "eslint-plugin-import": "^2.7.0",
+    "mocha": "*",
+    "uglify-es": "^3.3.9",
+    "chai": "*",
+    "sinon": "*",
+    "sinon-chai": "*",
+    "aws-sdk-mock": "*",
+    "npm-run-all": "*"
+  }
+}

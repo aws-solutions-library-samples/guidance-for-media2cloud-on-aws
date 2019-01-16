@@ -1,0 +1,60 @@
+{
+  "extends": "airbnb-base",
+  "rules": {
+    "strict": "error",
+    "func-names": ["error", "never"],
+    "comma-dangle": ["error", {
+      "arrays": "always-multiline",
+      "objects": "always-multiline",
+      "imports": "always-multiline",
+      "exports": "always-multiline",
+      "functions": "never"
+    }],
+    "no-use-before-define": ["error", {
+      "functions": false,
+      "classes": true,
+      "variables": true
+    }],
+    "prefer-arrow-callback": 0
+  },
+  "env": {
+    "browser": true,
+    "node": true,
+    "jquery": true
+  },
+  "globals": {
+    "AWS": true,
+    "AWSCognito": true,
+    "AWSIoTData": true,
+    "CryptoJS": true,
+    "location": true,
+    "AWSomeNamespace": true,
+    "DB": true,
+    "DBConfig": true,
+    "BaseAttributes": true,
+    "ProxyAttributes": true,
+    "GlacierAttributes": true,
+    "VideoAsset": true,
+    "StateIOData": true,
+    "CardCollection": true,
+    "VideoCard": true,
+    "SystemMessageArea": true,
+    "SettingsTabPanel": true,
+    "MyCognito": true,
+    "SignInModal": true,
+    "FileUpload": true,
+    "IotSubscriber": true,
+    "FileUploader": true,
+    "CustomVocabulary": true,
+    "ConfigurationError": true,
+    "sigV4Client": true,
+    "SearchBox": true,
+    "Preview": true,
+    "videojs": true,
+    "Cropper": true,
+    "SO0050": true,
+    "AppUtils": true,
+    "SparkMD5": true,
+    "AmazonCognitoIdentity": true
+  }
+}

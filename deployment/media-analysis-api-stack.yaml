@@ -1,0 +1,429 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: (SO0050-media-analysis-api) Media Analysis Solution - API Gateway resource to interface with Elasticsearch.
+
+Mappings:
+    MediaAnalysis:
+        Package:
+            S3Bucket: "solutions"
+            KeyPrefix: "media-analysis-solution/latest"
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    StateMachineName:
+        Type: String
+        Description: "Media Analysis state machine"
+    DomainEndpoint:
+        Type: String
+        Description: "ElasticSearch cluster domain endpoint"
+    DomainName:
+        Type: String
+        Description: "ElasticSearch cluster domain name"
+    MediaAnalysisBucket:
+        Type: String
+        Description: "Media Analysis Bucket"
+    ApiGatewayEndpointName:
+        Type: String
+        Description: "API Gateway Name"
+
+Resources:
+    MediaAnalysisApiPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt MediaAnalysisApiFunction.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Join ["", ["arn:aws:execute-api:", Ref: "AWS::Region", ":", Ref: "AWS::AccountId", ":", Ref: MediaAnalysisRestApi, "/prod/*/*/*"]]
+
+    MediaAnalysisApiFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "(SO0050) AWS Lambda function to handle API requests"
+            Code:
+                S3Bucket: !Sub ["${x0}-${AWS::Region}", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "S3Bucket"]
+                }]
+                S3Key: !Sub ["${x0}/media-analysis-api.zip", {
+                  x0: !FindInMap ["MediaAnalysis", "Package", "KeyPrefix"]
+                }]
+            Handler: index.handler
+            Runtime: nodejs8.10
+            Role: !GetAtt MediaAnalysisApiRole.Arn
+            Timeout: 60
+            MemorySize: 256
+            Environment:
+                Variables:
+                    CONFIDENCE_SCORE: '0'
+                    DOMAIN_ENDPOINT: !Ref DomainEndpoint
+                    ES_INDEX: media-analysis
+                    S3_BUCKET: !Ref MediaAnalysisBucket
+                    STATE_MACHINE: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${StateMachineName}"
+                    SEARCH_RESULT_LIMIT: '30'
+
+    MediaAnalysisApiRole:
+        Type: AWS::IAM::Role
+        Metadata:
+          cfn_nag:
+            rules_to_suppress:
+              - id: W11
+                reason: "The wildcards are present due to circular dependency of the resources"
+        Properties:
+            AssumeRolePolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Principal:
+                    Service:
+                      - "lambda.amazonaws.com"
+                  Action:
+                    - "sts:AssumeRole"
+            Path: /
+            Policies:
+              -
+                PolicyName: media-analysis-api-policy
+                PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "es:ESHttpGet"
+                          - "es:ESHttpPost"
+                        Resource:
+                          - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${DomainName}/*"
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "s3:GetObject"
+                          - "s3:ListObjects"
+                          - "s3:ListBucket"
+                        Resource:
+                          - !Sub "arn:aws:s3:::${MediaAnalysisBucket}/*"
+                          - !Sub "arn:aws:s3:::${MediaAnalysisBucket}"
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "states:DescribeExecution"
+                          - "states:GetExecutionHistory"
+                        Resource:
+                          - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${StateMachineName}:*"
+                      -
+                        Effect: "Allow"
+                        Action:
+                          - "logs:CreateLogGroup"
+                          - "logs:CreateLogStream"
+                          - "logs:PutLogEvents"
+                        Resource: [
+                          !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+                        ]
+
+    DeployMediaAnalysisAPI:
+      Type: "AWS::ApiGateway::Deployment"
+      Properties:
+        RestApiId: !Ref MediaAnalysisRestApi
+        StageName: prod
+        StageDescription:
+            DataTraceEnabled: false
+
+    MediaAnalysisLambdaExecRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "apigateway.amazonaws.com"
+                        Action:
+                                - "sts:AssumeRole"
+            Path: "/"
+            Policies:
+              -
+                PolicyName: !Join ["-", ["media-analysis-apigw-policy", Ref: "AWS::Region" ]]
+                PolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                        -
+                            Effect: "Allow"
+                            Action:
+                                - "lambda:InvokeFunction"
+                            Resource:
+                                - !GetAtt MediaAnalysisApiFunction.Arn
+
+    MediaAnalysisRestApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: "(SO0050) Media2Cloud"
+            Body:
+                swagger: "2.0"
+                info:
+                  version: "2017-02-18T14:57:27Z"
+                  title: !Sub "${ApiGatewayEndpointName}"
+                basePath: "/prod"
+                schemes:
+                - "https"
+                paths:
+                  /details/{object_id}:
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                      - name: "object_id"
+                        in: "path"
+                        required: true
+                        type: "string"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                      security:
+                      - sigv4: []
+                      x-amazon-apigateway-integration:
+                        uri: !Join ["", ["arn:aws:apigateway:", Ref: "AWS::Region",":lambda:path/2015-03-31/functions/", !GetAtt MediaAnalysisApiFunction.Arn, "/invocations"]]
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\":200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+
+                  /lookup/{object_id+}:
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                      - name: "object_id"
+                        in: "path"
+                        required: true
+                        type: "string"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                      security:
+                      - sigv4: []
+                      x-amazon-apigateway-integration:
+                        uri: !Join ["", ["arn:aws:apigateway:", Ref: "AWS::Region",":lambda:path/2015-03-31/functions/", !GetAtt MediaAnalysisApiFunction.Arn, "/invocations"]]
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+
+                  /status/{object_id}:
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                    get:
+                      produces:
+                      - "application/json"
+                      parameters:
+                      - name: "object_id"
+                        in: "path"
+                        required: true
+                        type: "string"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                      security:
+                      - sigv4: []
+                      x-amazon-apigateway-integration:
+                        uri: !Join ["", ["arn:aws:apigateway:", Ref: "AWS::Region",":lambda:path/2015-03-31/functions/", !GetAtt MediaAnalysisApiFunction.Arn, "/invocations"]]
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+
+                  /search:
+                    get:
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                      security:
+                      - sigv4: []
+                      x-amazon-apigateway-integration:
+                        credentials: !GetAtt MediaAnalysisLambdaExecRole.Arn
+                        uri: !Join ["", ["arn:aws:apigateway:", Ref: "AWS::Region",":lambda:path/2015-03-31/functions/", !GetAtt MediaAnalysisApiFunction.Arn, "/invocations"]]
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        passthroughBehavior: "when_no_match"
+                        httpMethod: "POST"
+                        contentHandling: "CONVERT_TO_TEXT"
+                        type: "aws_proxy"
+                    options:
+                      consumes:
+                      - "application/json"
+                      produces:
+                      - "application/json"
+                      responses:
+                        "200":
+                          description: "200 response"
+                          schema:
+                            $ref: "#/definitions/Empty"
+                          headers:
+                            Access-Control-Allow-Origin:
+                              type: "string"
+                            Access-Control-Allow-Methods:
+                              type: "string"
+                            Access-Control-Allow-Headers:
+                              type: "string"
+                      x-amazon-apigateway-integration:
+                        responses:
+                          default:
+                            statusCode: "200"
+                            responseParameters:
+                              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+                              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+                              method.response.header.Access-Control-Allow-Origin: "'*'"
+                        requestTemplates:
+                          application/json: "{\"statusCode\": 200}"
+                        passthroughBehavior: "when_no_match"
+                        type: "mock"
+                securityDefinitions:
+                  sigv4:
+                    type: "apiKey"
+                    name: "Authorization"
+                    in: "header"
+                    x-amazon-apigateway-authtype: "awsSigv4"
+                definitions:
+                  Empty:
+                    type: "object"
+                    title: "Empty Schema"
+
+Outputs:
+    ApiId:
+        Description: "Id of Media Analysis API"
+        Value: !Ref MediaAnalysisRestApi
+    ApiEndpoint:
+        Description: "Media Analysis API Gateway Endpoint"
+        Value: !Sub "https://${MediaAnalysisRestApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    ApiExecutionArn:
+        Description: "ARN of the Media Analysis API Lambda function"
+        Value: !GetAtt MediaAnalysisApiFunction.Arn
