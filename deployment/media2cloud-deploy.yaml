@@ -43,19 +43,19 @@ Mappings:
 Parameters:
     CreateBucket:
         Type: String
-        Description: "An Amazon S3 bucket with an attached lifecycle policy is created to store uploaded videos."
+        Description: "Specify if you want the solution to create an Amazon S3 bucket (with an attached lifecycle policy) to store uploaded videos."
         Default: "Yes"
         AllowedValues:
           - "Yes"
           - "No"
     GlacierBucket:
         Type: String
-        Description: "The created Amazon S3 bucket name"
+        Description: "The name of the ingest Amazon S3 bucket. (If you select 'No' for the 'Create Ingest Bucket' parameter, enter your existing bucket name and location)"
         AllowedPattern: "[a-z][a-z0-9-_]*"
     # Media Analysis parameters (Elasticsearch)
     ElasticsearchClusterSize:
         Type: String
-        Description: "A drop-down box with three options: small, medium, large cluster"
+        Description: "A drop-down box with three Amazon Elasticsearch cluster sizes: Small, Medium, Large"
         Default: Small
         AllowedValues:
             - Small
@@ -64,7 +64,7 @@ Parameters:
     # SNS / Cognito parameters
     Email:
         Type: String
-        Description: "Email address of the user that will be created in the Amazon Cognito User Pool and subscribe to an Amazon SNS topic. After launch, two emails will be sent to this address with instructions for logging in to the demo website and a confirmation of the SNS subscription."
+        Description: "Email address of the user that will be created in the Amazon Cognito Identity Pool and subscribed to the Amazon SNS topic. Subscribed users will receive ingest, publishing, and error notifications. After launch, two emails will be sent to this address: one with instructions for logging in to the web interface and one confirming the SNS subscription."
         AllowedPattern: '[^\s@]+@[^\s@]+\.[^\s@]+'
     # CloudFront / Website
     PriceClass:
@@ -104,7 +104,7 @@ Metadata:
             Email:
                 default: "Email"
             PriceClass:
-                default: "Price class"
+                default: "Price Class"
 
 Conditions:
     bEmail: !Not [!Equals [!Ref Email, ""]]
