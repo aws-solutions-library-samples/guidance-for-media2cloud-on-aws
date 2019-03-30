@@ -83,7 +83,7 @@ The Media2Cloud Solution consists of a demo website, an ingest, metadata, and me
         |-dbConfig.js                       [ for accessing Amazon DynamoDB Configuration table ]
         |-iotStatus.js                      [ helper class for publishing message to Iot core message broker ]
         |-machineMetadata.js                [ helper class to load vtt and metadata files ]
-        |-mxArchiveAttributes.js            [ mixer class to manage archive attributes, used by GlacierAttributes class ]
+        |-mxIngestAttributes.js             [ mixer class to manage ingest attributes, used by GlacierAttributes class ]
         |-mxCommonUtils.js                  [ mixer class to wrap common operations such upload, download, md5chksum ]
         |-signer.js                         [ sigV4 from https://github.com/AnomalyInnovations/sigV4Client/blob/master/sigV4Client.js ]
         |-stateIOData.js                    [ state machine input/output wrapper class ]

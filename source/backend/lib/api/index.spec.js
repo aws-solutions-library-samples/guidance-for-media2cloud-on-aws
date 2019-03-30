@@ -26,9 +26,7 @@ const {
   onRequest,
 } = require('./index');
 
-const {
-  requestBody,
-} = require('./fixtures/requestBody');
+const requestBody = require('./fixtures/requestBody');
 
 const {
   mxCommonUtils,

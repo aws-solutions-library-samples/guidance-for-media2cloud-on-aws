@@ -52,8 +52,8 @@ describe('ingest-workflow', async function () {
   /* fixtures */
   /* dynamodb configuration */
   const dbConfiguration = require('./fixtures/dbConfigurationTable');
-  /* divaObject */
-  const divaObject = require('./fixtures/divaArchiveJson');
+  /* jsonObject */
+  const jsonObject = require('./fixtures/jsonDefinition');
   /* mock response from MediaInfoCommand class */
   const responseMediaInfoCommand = require('./fixtures/mediainfoResponse');
 
@@ -74,7 +74,7 @@ describe('ingest-workflow', async function () {
   describe('#onGlacierObjectCreated', function () {
     before(function () {
       sinon.stub(DBConfig, 'loadFromDB').returns(new DBConfig(dbConfiguration));
-      sinon.stub(GlacierAttributes, 'loadFromDIVA').returns(divaObject);
+      sinon.stub(GlacierAttributes, 'loadFromJsonFile').returns(jsonObject);
       nock('https://x.execute-api.region.amazonaws.com')
         .post('/demo/ingest-statemachine')
         .reply(200, 'nock nock');
@@ -106,8 +106,8 @@ describe('ingest-workflow', async function () {
         StateMachine: 'ingest-statemachine',
         Timestamp: new Date().toISOString(),
         Data: {
-          UUID: divaObject.UUID,
-          Glacier: divaObject,
+          UUID: jsonObject.UUID,
+          Glacier: jsonObject,
         },
         Config: dbConfiguration,
         DataInTransit: {},
@@ -146,8 +146,8 @@ describe('ingest-workflow', async function () {
         StateMachine: 'ingest-statemachine',
         Timestamp: new Date().toISOString(),
         Data: {
-          UUID: divaObject.UUID,
-          Glacier: divaObject,
+          UUID: jsonObject.UUID,
+          Glacier: jsonObject,
         },
         Config: dbConfiguration,
         DataInTransit: responseMediaInfoCommand,
@@ -192,8 +192,8 @@ describe('ingest-workflow', async function () {
         StateMachine: 'ingest-statemachine',
         Timestamp: new Date().toISOString(),
         Data: {
-          UUID: divaObject.UUID,
-          Glacier: divaObject,
+          UUID: jsonObject.UUID,
+          Glacier: jsonObject,
         },
         Config: dbConfiguration,
         DataInTransit: {
@@ -238,8 +238,8 @@ describe('ingest-workflow', async function () {
         StateMachine: 'ingest-statemachine',
         Timestamp: new Date().toISOString(),
         Data: {
-          UUID: divaObject.UUID,
-          Glacier: divaObject,
+          UUID: jsonObject.UUID,
+          Glacier: jsonObject,
         },
         Config: dbConfiguration,
         DataInTransit: {

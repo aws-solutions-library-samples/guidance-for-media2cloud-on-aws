@@ -27,34 +27,22 @@ const {
 class X extends mxCommonUtils(class {}) {}
 
 /**
- * @mixins mxArchiveAttributes
- * @description archive attributes class to load or create archive definition file
+ * @mixins mxIngestAttributes
+ * @description attributes class to load or create json definition file
  * @param {class} Base
  */
-const mxArchiveAttributes = Base => class extends Base {
+const mxIngestAttributes = Base => class extends Base {
   constructor(params = {}) {
     super(params);
-    const {
-      System,
-      ArchiveDate,
-      Description,
-      Comments,
-      Category,
-      Name,
-      Barcode,
-      Files = [],
-    } = params;
+    this.$ingestDate = (params.IngestDate) ? new Date(params.IngestDate) : undefined;
+    this.$system = params.System || 'not specified';
+    this.$description = params.Description || 'not specified';
+    this.$comments = params.Comments || 'not specified';
+    this.$category = params.Category || 'not specified';
+    this.$name = params.Name;
+    this.$files = params.Files || [];
 
-    this.$archiveDate = (ArchiveDate) ? new Date(ArchiveDate) : undefined;
-    this.$system = System;
-    this.$description = Description;
-    this.$comments = Comments;
-    this.$category = Category;
-    this.$name = Name;
-    this.$barcode = Array.isArray(Barcode) ? Barcode.join(', ') : Barcode;
-    this.$files = Files;
-
-    /* find the first video file from the archive file list */
+    /* find the first video file from the json definition file list */
     this.$videoKey = this.files.map(x => x.name).find((file) => {
       const [
         type,
@@ -85,10 +73,6 @@ const mxArchiveAttributes = Base => class extends Base {
     return this.$name;
   }
 
-  get barcode() {
-    return this.$barcode;
-  }
-
   get files() {
     return this.$files;
   }
@@ -97,12 +81,12 @@ const mxArchiveAttributes = Base => class extends Base {
     return this.$videoKey;
   }
 
-  get archiveDate() {
-    return this.$archiveDate;
+  get ingestDate() {
+    return this.$ingestDate;
   }
 
-  get archiveDateISOFormat() {
-    return (this.archiveDate) ? this.archiveDate.toISOString() : undefined;
+  get ingestDateISOFormat() {
+    return (this.ingestDate) ? this.ingestDate.toISOString() : undefined;
   }
 
   toJSON() {
@@ -112,117 +96,77 @@ const mxArchiveAttributes = Base => class extends Base {
       Comments: this.comments,
       Category: this.category,
       Name: this.name,
-      Barcode: this.barcode,
       Files: this.files,
-      ArchiveDate: this.archiveDateISOFormat,
+      IngestDate: this.ingestDateISOFormat,
     });
   }
 
   /**
    * @static
-   * @function createDIVADocument
-   * @description mock DIVA sidecar document
+   * @function createJsonDocument
+   * @description mock Json sidecar document
    * @param {string} Bucket
    * @param {string} Key
    * @param {string} [md5]
    * @param {string} [uuid]
    */
-  static createDIVADocument(Bucket, Key, md5, uuid) {
+  static createJsonDocument(Bucket, Key, md5, uuid) {
     const name = Key.split('/').filter(x => x).pop();
     const basename = name.substr(0, name.lastIndexOf('.'));
 
     return {
-      archiveDate: new Date().toISOString(),
-      categoryName: basename,
-      comments: 'No comments',
-      legacyArchiveName: 'Not specified',
+      collectionUuid: X.uuid4(),
+      collectionName: basename,
       files: [{
         checksums: [{
           type: 'MD5',
           value: md5 || X.zeroMD5(),
         }],
-        name: Key,
+        location: Key,
         uuid: uuid || X.uuid4(),
       }],
-      objectName: basename,
-      tapeBarcodes: [
-        Math.floor((Math.random() * 10000)).toString(),
-      ],
-      targetInfo: {
-        bucketName: Bucket,
-        endpoint: X.unsignedUrl(Bucket, Key),
-        equalsToDemarcationStorage: false,
-        region: process.env.AWS_REGION,
-        type: 'S3',
-      },
-      legacyArchiveObjectUuid: X.uuid4(),
     };
   }
 
   /**
    * @static
-   * @function loadFromDIVA
-   * @description load and parse DIVA sidecar file
+   * @function loadFromJsonFile
+   * @description load and parse Json sidecar file
    * @param {string} Bucket - bucket
    * @param {string} Key - key to the sidecar file
    */
-  static async loadFromDIVA(Bucket, Key) {
+  static async loadFromJsonFile(Bucket, Key) {
     try {
       const response = await X.download(Bucket, Key, false);
 
-      const {
-        Body,
-        LastModified,
-        ContentLength,
-        ContentType,
-        ETag,
-        Metadata = {},
-      } = response;
+      const json = JSON.parse(response.Body);
 
-      const RawData = JSON.parse(Body);
-
-      const {
-        archiveDate: ArchiveDate,
-        categoryName: Category,
-        comments: Comments,
-        legacyArchiveName, divaName,
-        tapeBarcodes: Barcode,
-        objectName: Name,
-        legacyArchiveObjectUuid, uuid,
-        files,
-      } = RawData;
-
-      const Files = files.reduce((acc, file) =>
+      const Files = json.files.reduce((acc, file) =>
         acc.concat({
-          name: X.sanitizedKey(file.name),
+          name: X.sanitizedKey(file.location || file.name),
           md5: (file.checksums.find(x => x.type.toLowerCase() === 'md5') || {}).value || X.zeroMD5(),
           uuid: file.uuid || X.zeroUUID(),
         }), []);
 
-      /* MD5 of the archive definition file */
-      const {
-        md5,
-      } = Metadata;
-
-      const MD5 = X.toMD5String(md5 || ETag.match(/([0-9a-fA-F]{32})/)[1]);
+      /* MD5 of the Json definition file */
+      const MD5 = X.toMD5String((response.Metadata || {}).md5 || response.ETag.match(/([0-9a-fA-F]{32})/)[1]);
 
       return {
-        System: 'DIVA',
+        System: 'not specified',
         Bucket,
         Key,
-        UUID: legacyArchiveObjectUuid || uuid,
+        UUID: json.collectionUuid || json.uuid || json.legacyArchiveObjectUuid,
         MD5,
-        LastModified,
-        ContentLength,
-        ContentType,
-        ArchiveDate,
-        Category,
-        Comments,
-        Description: legacyArchiveName || divaName,
-        Barcode,
-        Name,
+        LastModified: response.LastModified,
+        ContentLength: response.ContentLength,
+        ContentType: response.ContentType,
+        IngestDate: json.ingestDate || json.archiveDate,
+        Category: json.categoryName,
+        Comments: json.comments,
+        Description: json.collectionDescription || json.legacyArchiveName,
+        Name: json.collectionName || json.objectName,
         Files,
-        RawData,
+        RawJson: json,
       };
     } catch (e) {
       throw e;
@@ -231,5 +175,5 @@ const mxArchiveAttributes = Base => class extends Base {
 };
 
 module.exports = {
-  mxArchiveAttributes,
+  mxIngestAttributes,
 };

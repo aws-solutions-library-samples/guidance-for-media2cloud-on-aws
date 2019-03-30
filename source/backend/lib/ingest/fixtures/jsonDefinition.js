@@ -17,7 +17,7 @@
  */
 
 /**
- * @description DIVA archive definition object, loadFromDIVA
+ * @description Json definition object, loadFromJsonFile
  */
 const {
   mxCommonUtils,
@@ -26,19 +26,18 @@ const {
 class X extends mxCommonUtils(class {}) {}
 
 module.exports = {
-  System: 'DIVA',
+  System: 'not specified',
   Bucket: 'glacier-bucket',
-  Key: 'mock/archive-definition.json',
+  Key: 'mock/json-definition.json',
   UUID: X.zeroUUID(),
   MD5: X.zeroMD5(),
   LastModified: new Date().getTime(),
   ContentLength: 800,
   ContentType: 'application/json',
-  ArchiveDate: new Date().toISOString(),
+  IngestDate: new Date().toISOString(),
   Category: 'mock-category',
   Comments: 'no comments',
   Description: 'not specified',
-  Barcode: '0000',
   Name: 'video',
   Files: [
     {
@@ -47,5 +46,5 @@ module.exports = {
       uuid: X.zeroUUID(),
     },
   ],
-  RawData: {},
+  RawJson: {},
 };

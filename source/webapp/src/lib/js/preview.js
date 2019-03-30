@@ -597,31 +597,28 @@ class Preview {
 
   /**
    * @function domCreateGlacierInfoData
-   * @description create data block for archive metadata
+   * @description create data block for metadata
    * @param {VideoCard} card
    */
   domCreateGlacierInfoData(card) {
     const items = [];
     const uuid = card.asset.uuid;
     const glacier = card.asset.glacier;
-    const system = glacier.system;
     const description = glacier.description;
-    const archiveDate = glacier.archiveDateISOFormat;
+    const lastModified = glacier.lastModifiedISOFormat || '--';
     const comments = glacier.comments;
     const category = glacier.category;
     const name = glacier.name;
-    const barcode = glacier.barcode;
 
-    items.push(Preview.carouselLead('Archive system'));
+    items.push(Preview.carouselLead('Ingest information'));
     items.push('<dl class="row text-left">');
     items.push(`<dt class="col-sm-3">Bucket</dt><dd class="col-sm-9">${glacier.bucket}</dd>`);
-    items.push(`<dt class="col-sm-3">System</dt><dd class="col-sm-9">${system} (${description})</dd>`);
-    items.push(`<dt class="col-sm-3">Category</dt><dd class="col-sm-9">${category}</dd>`);
     items.push(`<dt class="col-sm-3">Name</dt><dd class="col-sm-9">${name}</dd>`);
+    items.push(`<dt class="col-sm-3">Description</dt><dd class="col-sm-9">${description}</dd>`);
+    items.push(`<dt class="col-sm-3">Category</dt><dd class="col-sm-9">${category}</dd>`);
     items.push(`<dt class="col-sm-3">ID</dt><dd class="col-sm-9">${uuid}</dd>`);
     items.push(`<dt class="col-sm-3">Comments</dt><dd class="col-sm-9">${comments}</dd>`);
-    items.push(`<dt class="col-sm-3">Barcode</dt><dd class="col-sm-9">${barcode}</dd>`);
-    items.push(`<dt class="col-sm-3">Date</dt><dd class="col-sm-9">${archiveDate}</dd>`);
+    items.push(`<dt class="col-sm-3">LastModified</dt><dd class="col-sm-9">${lastModified}</dd>`);
     items.push(`<dt class="col-sm-3">Files</dt><dd class="col-sm-9">${glacier.files.length}</dd>`);
     items.push('</dl>');
 
@@ -641,7 +638,7 @@ class Preview {
 
   /**
    * @function domCreateCarouselSlideMediainfo
-   * @description create archive and mediainfo carousel slide
+   * @description create definition and mediainfo carousel slide
    * @param {VideoCard} card
    * @param {string} [active]
    */

@@ -307,7 +307,7 @@ Resources:
             ServiceToken: !Ref CustomResourceArn
             FunctionName: SetNotification
             Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
-            Id: !Sub "${SolutionId}-diva"
+            Id: !Sub "${SolutionId}-lto"
             Prefix: !FindInMap ["S3", "Notification", "Prefix"]
             Suffixes: !FindInMap ["S3", "Notification", "JsonSuffixes"]
             Events: "s3:ObjectCreated:*"

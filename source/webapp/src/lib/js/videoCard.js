@@ -354,7 +354,7 @@ class VideoCard {
           <dl class="row small">
             <dt class="col-sm-3 text-truncate">Name</dt><dd class="col-sm-9 text-truncate" data-field="name">${glacier.name}</dd>
             <dt class="col-sm-3 text-truncate">ID</dt><dd class="col-sm-9 text-truncate" data-field="uuid">${uuid}</dd>
-            <dt class="col-sm-3 text-truncate">ArchiveDate</dt><dd class="col-sm-9 text-truncate" data-field="archiveDate">${glacier.archiveDateISOFormat}</dd>
+            <dt class="col-sm-3 text-truncate">LastModified</dt><dd class="col-sm-9 text-truncate" data-field="ingestDate">${glacier.lastModifiedISOFormat || '--'}</dd>
             <dt class="col-sm-3 text-truncate">File(s)</dt><dd class="col-sm-9 text-truncate" data-field="files">${Object.keys(glacier.files).length}</dd>
           </dl>
           <div class="float-right">

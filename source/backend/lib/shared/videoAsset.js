@@ -30,8 +30,8 @@ const {
 } = require('./machineMetadata');
 
 const {
-  mxArchiveAttributes,
-} = require('./mxArchiveAttributes');
+  mxIngestAttributes,
+} = require('./mxIngestAttributes');
 
 const {
   mxCommonUtils,
@@ -187,7 +187,7 @@ class BaseAttributes extends mxNeat(class {}) {
  * @class GlacierAttributes
  * @description proxy attributes contain additional MediaInfo properthy
  */
-class GlacierAttributes extends mxArchiveAttributes(BaseAttributes) {
+class GlacierAttributes extends mxIngestAttributes(BaseAttributes) {
   constructor(params = {}) {
     super(params);
   }
@@ -422,13 +422,13 @@ class VideoAsset extends mxCommonUtils(class {}) {
   }
 
   /**
-   * @function createFromDIVA
+   * @function createFromJsonFile
    * @param {string} Bucket
    * @param {string} Key
    */
-  static async createFromDIVA(Bucket, Key) {
+  static async createFromJsonFile(Bucket, Key) {
     try {
-      const response = await GlacierAttributes.loadFromDIVA(Bucket, Key);
+      const response = await GlacierAttributes.loadFromJsonFile(Bucket, Key);
 
       const {
         UUID,
@@ -444,11 +444,11 @@ class VideoAsset extends mxCommonUtils(class {}) {
   }
 
   /**
-   * @function createDIVADocument
-   * @description create a DIVA document based on the video file
+   * @function createJsonDocument
+   * @description create a Json document based on the video file
    * @param {object} params - Bucket, Key, Metadata of the video file being uploaded
    */
-  static async createDIVADocument(params) {
+  static async createJsonDocument(params) {
     const {
       Bucket,
       Key,
@@ -463,7 +463,7 @@ class VideoAsset extends mxCommonUtils(class {}) {
     /* convert MD5 back to hex string if is Base64 */
     const md5 = VideoAsset.toMD5String(x);
 
-    return GlacierAttributes.createDIVADocument(Bucket, Key, md5, uuid);
+    return GlacierAttributes.createJsonDocument(Bucket, Key, md5, uuid);
   }
 
   /**

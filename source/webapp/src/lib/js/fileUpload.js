@@ -109,13 +109,13 @@ class FileUpload {
   }
 
   /**
-   * @function loadArchiveJsonFile
-   * @description if uploading file is an archive definition JSON file, load it.
-   * Caution! Uploading a JSON archive definition file 'assumes' that your asssets
+   * @function loadJsonDocument
+   * @description if uploading file is a JSON definition file, load it.
+   * Caution! Uploading a JSON definition file 'assumes' that your asssets
    * defined in the JSON file already exists in the S3 bucket!
    * @param {FileReader} file
    */
-  static async loadArchiveJsonFile(file) {
+  static async loadJsonDocument(file) {
     const promise = new Promise((resolve, reject) => {
       try {
         const reader = new FileReader();
@@ -178,15 +178,11 @@ class FileUpload {
         ];
       }
 
-      const json = await FileUpload.loadArchiveJsonFile(file);
-
-      const {
-        legacyArchiveObjectUuid,
-      } = json;
+      const json = await FileUpload.loadJsonDocument(file);
 
       return [
         name,
-        legacyArchiveObjectUuid,
+        json.collectionUuid || json.legacyArchiveObjectUuid,
       ];
     })();
 
@@ -505,14 +501,14 @@ class FileUpload {
 
       await request.promise();
 
-      /* check to see if we are uploading archive JSON file or video */
+      /* check to see if we are uploading JSON file or video */
       const extension = Key.substr(Key.lastIndexOf('.'));
 
       if (extension.toLowerCase() !== '.json') {
-        /* once the video file is uploaded, we would need to take care of the DIVA file */
-        statusText.html('Processing DIVA sidecar');
+        /* once the video file is uploaded, we would need to take care of the Json file */
+        statusText.html('Processing Json sidecar');
 
-        await this.uploadDIVADocumentFromVideoFile(params);
+        await this.uploadJsonDocumentFromVideoFile(params);
       }
 
       const bitrate = ((file.size * 8) / (1024 * 1024)) / ((new Date() - t1) / 1000);
@@ -527,29 +523,29 @@ class FileUpload {
   }
 
   /**
-   * @function uploadDIVADocumentFromVideoFile
+   * @function uploadJsonDocumentFromVideoFile
    * @description for each video file uploaded, we automatically generate
-   * an archive definition file.
+   * a Json definition file.
    * @param {Object} params
    */
   /* eslint-disable class-methods-use-this */
-  async uploadDIVADocumentFromVideoFile(params) {
+  async uploadJsonDocumentFromVideoFile(params) {
     const {
       AWSomeNamespace: {
         VideoAsset,
       },
     } = window;
 
-    /* now, we can create a mock DIVA sidecar and upload it alongside with the video */
-    const diva = await VideoAsset.createDIVADocument(params);
+    /* now, we can create a mock Json sidecar and upload it alongside with the video */
+    const json = await VideoAsset.createJsonDocument(params);
 
-    /* grab the UUID of the entire archive object */
+    /* grab the UUID of the Json definition file */
     const {
-      legacyArchiveObjectUuid: uuid,
-    } = diva;
+      collectionUuid: uuid,
+    } = json;
 
-    /* run checksum on the DIVA document */
-    const Body = JSON.stringify(diva, null, 2);
+    /* run checksum on the Json document */
+    const Body = JSON.stringify(json, null, 2);
 
     const md5 = SparkMD5.hash(Body);
 

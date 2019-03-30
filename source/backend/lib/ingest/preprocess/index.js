@@ -116,7 +116,7 @@ async function authHttpCmd(url, content) {
 /**
  * @function onMediaFileArrival
  * @description check metadata field. If x-amz-metadata-web-upload is missing,
- * create and upload a JSON archive definition file.
+ * create and upload a JSON definition file.
  * @param {object} event - s3:OBJECTCREATED event
  * @param {object} [context]
  */
@@ -155,12 +155,12 @@ exports.onMediaFileArrival = async (event, context) => {
       return;
     }
 
-    /* create archive definition file */
+    /* create Json definition file */
     /* check if ETag is equal to MD5 of the entire file or not */
     if (ETag.indexOf('-') < 0) {
       Metadata.md5 = Metadata.md5 || Buffer.from(ETag.match(/([0-9a-fA-F]{32})/)[1], 'hex').toString('base64');
     }
-    const document = await VideoAsset.createDIVADocument({
+    const document = await VideoAsset.createJsonDocument({
       Bucket,
       Key,
       Metadata,
@@ -189,7 +189,7 @@ exports.onMediaFileArrival = async (event, context) => {
 
 /**
  * @function onGlacierObjectCreated
- * @description call API Gateway to start the state machine. Expect JSON archive definition file.
+ * @description call API Gateway to start the state machine. Expect JSON definition file.
  * @param {object} event - s3:OBJECTCREATED event
  * @param {object} [context]
  */
@@ -234,7 +234,7 @@ exports.onGlacierObjectCreated = async (event, context) => {
     stateData.config = config;
 
     const Key = VideoAsset.unescapeS3Character(key);
-    const asset = await VideoAsset.createFromDIVA(Bucket, Key);
+    const asset = await VideoAsset.createFromJsonFile(Bucket, Key);
 
     stateData.data = asset;
     await asset.updateDB(config.assetTable, config.assetPartitionKey);
