@@ -1,7 +1,3 @@
-Media Analysis Solution is provided under the Amazon Software License,
-as provided at https://github.com/awslabs/media2cloud
-
-
 Amazon Software License 1.0
 
 This Amazon Software License ("License") governs your use, reproduction, and

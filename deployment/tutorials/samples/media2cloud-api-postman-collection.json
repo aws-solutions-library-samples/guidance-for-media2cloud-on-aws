@@ -1,0 +1,201 @@
+{
+	"info": {
+		"name": "Media2Cloud",
+		"description": "Examples of Media2Cloud RESTful APIs to ingest, analyze, and search contents.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "awsv4",
+		"awsv4": [
+			{
+				"key": "sessionToken",
+				"value": "",
+				"type": "string"
+			},
+			{
+				"key": "secretKey",
+				"value": "<secret-access-key>",
+				"type": "string"
+			},
+			{
+				"key": "accessKey",
+				"value": "<access-key-id>",
+				"type": "string"
+			},
+			{
+				"key": "region",
+				"value": "<aws-region>",
+				"type": "string"
+			},
+			{
+				"key": "service",
+				"value": "execute-api",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Start ingest",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"bucket\": \"<bucket-name>\",\n\t\"key\": \"<object-key>\"\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/assets",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"assets"
+					]
+				},
+				"description": "Starting ingest workflow with bucket and  key input parameters. This assumes that the object is already uploaded to the bucket.\n"
+			},
+			"response": []
+		},
+		{
+			"name": "Get a list of ingested contents",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/assets",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"assets"
+					]
+				},
+				"description": "Example of getting a list of ingested contents in Media2Cloud collection"
+			},
+			"response": []
+		},
+		{
+			"name": "Get information of a specific ingested content",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/assets/<uuid>",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"assets",
+						"<uuid>"
+					]
+				},
+				"description": "Example to get uploaded asset information by providing uuid of the asset"
+			},
+			"response": []
+		},
+		{
+			"name": "Start analysis",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"uuid\": \"<uuid>\"\n}\n\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/analysis",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"analysis"
+					]
+				},
+				"description": "Example of starting analysis after the content has been ingested."
+			},
+			"response": []
+		},
+		{
+			"name": "Get analysis results",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/analysis/<uuid>",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"analysis",
+						"<uuid>"
+					]
+				},
+				"description": "Example of getting the analysis result of an asset with the uuid of the asset."
+			},
+			"response": []
+		},
+		{
+			"name": "Search Elasticsearch engine",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://<Media2CloudEndpoint>/search?query=john",
+					"protocol": "https",
+					"host": [
+						"<Media2CloudEndpoint>"
+					],
+					"path": [
+						"search"
+					],
+					"query": [
+						{
+							"key": "query",
+							"value": "john"
+						}
+					]
+				},
+				"description": "Example of searching contents that matches the search term."
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}

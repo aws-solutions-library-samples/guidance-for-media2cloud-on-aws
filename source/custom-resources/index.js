@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -45,45 +37,73 @@ exports.Run = async (event, context) => {
     } = (event || {}).ResourceProperties || {};
 
     let handler;
-
-    if (FunctionName === 'EmailSubscribe') {
+    switch (FunctionName) {
       /* SNS */
-      handler = require('./lib/sns/index').EmailSubscribe;
-    } else if (FunctionName === 'CopyWebContent') {
-      /* Web CopyWebContent */
-      handler = require('./lib/web/index').CopyWebContent;
-    } else if (FunctionName === 'UpdateManifest') {
-      /* Web UpdateManifest */
-      handler = require('./lib/web/index').UpdateManifest;
-    } else if (FunctionName === 'SetNotification') {
-      /* S3 Notification */
-      handler = require('./lib/s3/index').SetNotification;
-    } else if (FunctionName === 'SetCORS') {
-      /* S3 CORS */
-      handler = require('./lib/s3/index').SetCORS;
-    } else if (FunctionName === 'SetLifecyclePolicy') {
-      /* S3 Lifecycle policy */
-      handler = require('./lib/s3/index').SetLifecyclePolicy;
-    } else if (FunctionName === 'StringManipulation') {
-      /* String */
-      handler = require('./lib/string/index').StringManipulation;
-    } else if (FunctionName === 'MediaConvertEndpoint') {
-      /* MediaConvert */
-      handler = require('./lib/mediaconvert/index').MediaConvertEndpoint;
-    } else if (FunctionName === 'IotEndpoint') {
-      /* Iot */
-      handler = require('./lib/iot/index').IotEndpoint;
-    } else if (FunctionName === 'IotDetachPolices') {
-      /* Iot */
-      handler = require('./lib/iot/index').IotDetachPolices;
-    } else if (FunctionName === 'InitializeDB') {
-      /* DynamoDB */
-      handler = require('./lib/dynamodb/index').InitializeDB;
-    } else if (FunctionName === 'UpdateLambdaEnvironment') {
-      /* Lambda */
-      handler = require('./lib/lambda/index').UpdateLambdaEnvironment;
+      case 'EmailSubscribe':
+        handler = require('./lib/sns/index').EmailSubscribe;
+        break;
+      /* Web */
+      case 'CopyWebContent':
+        handler = require('./lib/web/index').CopyWebContent;
+        break;
+      case 'UpdateManifest':
+        handler = require('./lib/web/index').UpdateManifest;
+        break;
+      /* S3 */
+      case 'CheckBucketAvailability':
+        handler = require('./lib/s3/index').CheckBucketAvailability;
+        break;
+      case 'SetNotification':
+        handler = require('./lib/s3/index').SetNotification;
+        break;
+      case 'SetCORS':
+        handler = require('./lib/s3/index').SetCORS;
+        break;
+      case 'SetLifecyclePolicy':
+        handler = require('./lib/s3/index').SetLifecyclePolicy;
+        break;
+      /* string */
+      case 'StringManipulation':
+        handler = require('./lib/string/index').StringManipulation;
+        break;
+      /* mediaconvert */
+      case 'MediaConvertEndpoint':
+        handler = require('./lib/mediaconvert/index').MediaConvertEndpoint;
+        break;
+      /* iot */
+      case 'IotEndpoint':
+        handler = require('./lib/iot/index').IotEndpoint;
+        break;
+      case 'IotDetachPolices':
+        handler = require('./lib/iot/index').IotDetachPolices;
+        break;
+      /* cognito */
+      case 'RegisterUser':
+        handler = require('./lib/cognito/index').RegisterUser;
+        break;
+      /* sagemaker */
+      case 'ConfigureWorkteam':
+        handler = require('./lib/groundTruth/index').ConfigureWorkteam;
+        break;
+      /* rekognition */
+      case 'CreateFaceCollection':
+        handler = require('./lib/rekognition').CreateFaceCollection;
+        break;
+      case 'CreateCustomVocabulary':
+        handler = require('./lib/transcribe').CreateCustomVocabulary;
+        break;
+      case 'CreateSolutionUuid':
+        handler = require('./lib/solution').CreateSolutionUuid;
+        break;
+      case 'SendConfig':
+        handler = require('./lib/solution').SendConfig;
+        break;
+      case 'CreateIndex':
+        handler = require('./lib/elasticsearch').CreateIndex;
+        break;
+      default:
+        break;
     }
-    /* other services go here */
 
     if (!handler) {
       throw Error(`${FunctionName} not implemented`);

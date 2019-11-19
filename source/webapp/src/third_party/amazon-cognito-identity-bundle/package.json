@@ -1,6 +1,6 @@
 {
   "name": "amazon-cognito-identity-bundle",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "simply copy amazon-cognito-identity-bundle dist for browser",
   "main": "index.js",
   "scripts": {

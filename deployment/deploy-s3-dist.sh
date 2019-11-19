@@ -1,26 +1,29 @@
 #!/bin/bash
 
 ###
- #  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        #
- #                                                                                                 #
- #  Licensed under the Amazon Software License (the "License"). You may not use this               #
- #  file except in compliance with the License. A copy of the License is located at                #
- #                                                                                                 #
- #      http://aws.amazon.com/asl/                                                                 #
- #                                                                                                 #
- #  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        #
- #  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       #
- #  for the specific language governing permissions and limitations under the License.             #
- #
- ##
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License Version 2.0 (the 'License').
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
+#
+#         http://www.apache.org/licenses/
+#
+# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+#
+##
 
 ###
- # @author MediaEnt Solutions
- ##
-
+# @author aws-mediaent-solutions
+##
 
 # include shared configuration file
 source ./common.sh
+
+TEMPLATE_DIST_DIR="global-s3-assets"
+BUID_DIST_DIR="regional-s3-assets"
 
 #
 # @function usage
@@ -34,7 +37,7 @@ It should be run from the repo's deployment directory
 
 ------------------------------------------------------------------------------
 cd deployment
-bash ./deploy-s3-dist.sh --bucket DEPLOY_BUCKET_BASENAME [--version VERSION] [--region REGION]
+bash ./deploy-s3-dist.sh --bucket DEPLOY_BUCKET_BASENAME [--version VERSION] [--solution SOLUTION] [--region REGION]
 
 where
   --bucket BUCKET_BASENAME    should be the base name for the S3 bucket location where
@@ -44,9 +47,11 @@ where
                               The template will expect the solution code to be located in the
                               solutions-[region_name] bucket
 
-  --version VERSION           if not specified, use 'version' field from package.json
+  --solution SOLUTION         [optional] if not specified, default to 'media2cloud'
 
-  --region REGION             a single region to deploy. If not specified, it deploys to all
+  --version VERSION           [optional] if not specified, use 'version' field from package.json
+
+  --region REGION             [optional] a single region to deploy. If not specified, it deploys to all
                               supported regions. (This assumes all regional buckets already exist.)
 "
   return 0
@@ -62,6 +67,11 @@ while [[ $# -gt 0 ]]; do
       -b|--bucket)
       BUCKET="$2"
       shift # past argument
+      shift # past value
+      ;;
+      -s|--solution)
+      SOLUTION="$2"
+      shift # past key
       shift # past value
       ;;
       -v|--version)
@@ -86,32 +96,51 @@ done
   exit 1
 
 [ -z "$VERSION" ] && \
-  VERSION=$(grep_package_version "../source/backend/package.json")
+  VERSION=$(grep_solution_version "../source/layers/core-lib/lib/index.js")
 
 [ -z "$VERSION" ] && \
   echo "error: VERSION variable is not defined" && \
   usage && \
   exit 1
 
-SOLUTION=$(grep_package_name "../source/backend/package.json")
+[ -z "$SOLUTION" ] && \
+  SOLUTION=$(grep_solution_name "../source/layers/core-lib/lib/index.js")
+
 [ -z "$SOLUTION" ] && \
   echo "error: SOLUTION variable is not defined" && \
   usage && \
   exit 1
 
-pushd "dist"
+#
+# @function copy_to_bucket
+# @description copy solution to regional bucket
+#
+function copy_to_bucket() {
+  local source=$1
+  local bucket=$2
+  local region=$3
+
+  aws s3api get-bucket-location --bucket ${bucket} > /dev/null 2>&1
+  local status=$?
+  [ $status -ne 0 ] && \
+    echo "bucket '${bucket}' not exists. skipping..." && \
+    return 0
+
+  echo "uploading package to '${bucket}'..."
+  aws s3 cp $source s3://${bucket}/${SOLUTION}/${VERSION}/ --recursive --acl public-read --region ${region}
+}
+
 if [ x"$SINGLE_REGION" != "x" ]; then
-  # deploy to single region
+  # deploy to a single region
   echo "'${SOLUTION} ($VERSION)' package will be deployed to '${BUCKET}-${SINGLE_REGION}' bucket in ${SINGLE_REGION} region"
-  echo "uploading package to ${bucket}..."
-  aws s3 cp . s3://${BUCKET}-${SINGLE_REGION}/${SOLUTION}/${VERSION}/ --recursive --acl public-read --region ${SINGLE_REGION}
+  copy_to_bucket ${BUID_DIST_DIR} "${BUCKET}-${SINGLE_REGION}" "${SINGLE_REGION}"
 else
-  # deploy to all regions
-  echo "'${SOLUTION} ($VERSION)' package will be deployed to '${BUCKET}-[region]' buckets included us-east-1 ${REGIONS[*]} regions"
+  echo "'${SOLUTION} ($VERSION)' package will be deployed to '${BUCKET}-[region]' buckets: ${REGIONS[*]} regions"
+  # special case, deploy to main bucket (without region suffix)
+  copy_to_bucket ${BUID_DIST_DIR} "${BUCKET}" "us-east-1"
+
+  # now, deploy to regional based buckets
   for region in ${REGIONS[@]}; do
-    bucket=${BUCKET}-${region}
-    echo "uploading package to ${bucket}..."
-    aws s3 cp . s3://${bucket}/${SOLUTION}/${VERSION}/ --recursive --acl public-read --region ${region}
+    copy_to_bucket ${BUID_DIST_DIR} "${BUCKET}-${region}" "${region}"
   done
 fi
-popd

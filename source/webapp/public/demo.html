@@ -6,11 +6,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <!-- bootstrap CSS -->
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css" integrity="sha384-GJzZqFGwb1QTTN6wy59ffF1BuGJpLSa9DkKMp0DgiMDm4iYMj70gZWKYbI706tWS" crossorigin="anonymous">
     <!-- fontawesome -->
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/solid.css" integrity="sha384-+0VIRx+yz1WBcCTXBkVQYIBVNEFH1eP6Zknm16roZCyeNg2maWEpk/l/KsyFKs7G" crossorigin="anonymous">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/regular.css" integrity="sha384-aubIA90W7NxJ+Ly4QHAqo1JBSwQ0jejV75iHhj59KRwVjLVHjuhS3LkDAoa/ltO4" crossorigin="anonymous">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/fontawesome.css" integrity="sha384-jLuaxTTBR42U2qJ/pm4JRouHkEDHkVqH0T1nyQXn1mZ7Snycpf6Rl25VBNthU4z0" crossorigin="anonymous">
+    <!-- cropper -->
+    <link rel="stylesheet" href="./third_party/cropper.min.css" integrity="sha384-%SRI_CROPPER_CSS%">
+    <!-- videojs -->
+    <link rel="stylesheet" href="./third_party/video-js.min.css" integrity="sha384-%SRI_VIDEOJS_CSS%">
+    <link rel="stylesheet" href="./third_party/videojs.markers.min.css" integrity="sha384-%SRI_VIDEOJS_MARKERS_CSS%">
     <!-- app -->
     <link rel="stylesheet" href="./css/app.css" integrity="sha384-%SRI_APP_CSS%">
   </head>
@@ -32,6 +37,14 @@
     </nav>
     <!-- /navigation bar -->
 
+    <!-- loading icon -->
+    <div
+      id="spinning-icon"
+      class="spinner-grow text-secondary loading collapse"
+      role="status">
+      <span class="sr-only">Loading...</span>
+    </div>
+
     <!-- SignIn modal dialog -->
     <div class="modal fade" id="modalSignin" tabindex="-1" role="dialog">
     </div>
@@ -40,12 +53,44 @@
     <div class="modal fade" id="modalNewPassword" tabindex="-1" role="dialog">
     </div>
 
+    <!-- ForgotPassword modal dialog -->
+    <div class="modal fade" id="modalForgotPassword" tabindex="-1" role="dialog">
+    </div>
+
     <!-- Preview modal dialog -->
-    <div class="modal fade" id="previewModalId" tabindex="-1" role="dialog" data-uuid="${uuid}">
+    <div class="modal fade" id="video-preview-modal-id" tabindex="-1" role="dialog" data-uuid="${uuid}">
+    </div>
+
+    <!-- Image Editor modal dialog -->
+    <div class="modal fade" id="image-editor-modal-id" tabindex="-1" role="dialog">
+    </div>
+
+    <!-- Label Editor modal dialog -->
+    <div class="modal fade" id="label-editor-modal-id" tabindex="-1" role="dialog">
+    </div>
+
+    <!-- Image Preview modal dialog -->
+    <div class="modal fade" id="image-preview-modal-id" tabindex="-1" role="dialog" data-uuid="${uuid}">
+    </div>
+
+    <!-- Image Editor modal for ImagePreview dialog -->
+    <div class="modal fade" id="image-editor-modal-id-2" tabindex="-1" role="dialog">
     </div>
 
     <!-- FileUpload modal dialog -->
-    <div class="modal fade" id="fileUploadModalId" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard=false>
+    <div class="modal fade" id="file-upload-modal-id" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard=false>
+    </div>
+
+    <!-- Media uploader -->
+    <div class="modal fade" id="media-upload-modal-id" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard=false>
+    </div>
+
+    <!-- Json uploader -->
+    <div class="modal fade" id="json-upload-modal-id" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard=false>
+    </div>
+
+    <!-- Workteam wizard modal dialog -->
+    <div class="modal fade" id="workteam-modal-id" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard=false>
     </div>
 
     <div class="container mt-4">
@@ -352,17 +397,21 @@
         <!-- demo tab -->
         <div class="tab-pane fade" id="demo" role="tabpanel" aria-labelledby="demoTab">
           <div class="container text-left">
-            <div class="mt-4 row justify-content-end">
-              <!-- search field -->
-              <form class="form mr-2" id="searchFormId">
-                <input class="form-control" type="search" placeholder="Search...">
-              </form>
-              <!-- /search field -->
+            <!-- search field -->
+            <div class="mt-4 row justify-content-end" id="search-container">
             </div>
 
             <!-- VideoCollection (cards) -->
             <div class="row" id="videoCollectionId">
             </div>
+
+            <!-- load more -->
+            <div class="mt-4 mb-4 row">
+              <div class="col text-center">
+                <button class="btn btn-default" id="idLoadMoreData">Load more...</button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -379,9 +428,14 @@
     <!-- /main container -->
 
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js" integrity="sha384-smHYKdLADwkXOn1EmN1qk/HfnUcbVRZyYmZ4qpPea6sjB/pTJ0euyQp0Mk8ck+5T" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.6/umd/popper.min.js" integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.2.1/js/bootstrap.min.js" integrity="sha384-B0UglyR+jN6CkvvICOB2joaf5I4l3gm9GU6Hc1og6Ls7i6U/mkkaduKaBhlAXv9k" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.min.js" integrity="sha256-u6BamZiW5tCemje2nrteKC2KoLIKX9lKPSpvCkOhamw=" crossorigin="anonymous"></script>
 
+    <script src="./third_party/mime.min.js" integrity="sha384-%SRI_MIME_JS%"></script> <!-- mime library -->
+    <script src="./third_party/cropper.min.js" integrity="sha384-%SRI_CROPPER_JS%"></script> <!-- cropperjs 1.4.3 -->
+    <script src="./third_party/video.min.js" integrity="sha384-%SRI_VIDEOJS%"></script> <!-- videojs 7.6.5 -->
+    <script src="./third_party/videojs-markers.min.js" integrity="sha384-%SRI_VIDEOJS_MARKERS%"></script> <!-- videojs-markers 0.7.0 -->
     <script src="./third_party/spark-md5.min.js" integrity="sha384-%SRI_SPARK_MD5_JS%"></script> <!-- spark MD5 v3.0.0 -->
     <script src="./third_party/amazon-cognito-identity.min.js" integrity="sha384-%SRI_COGNITO_IDENTITY_JS%"></script>
     <script src="./third_party/aws-iot-sdk-bundle.min.js" integrity="sha384-%SRI_IOT_SDK_JS%"></script>
@@ -389,22 +443,44 @@
     <!-- Development --><!--
     <script src="./solution-manifest.js"></script>
     <script src="./dev/common-bundle.js"></script>
+    <script src="./dev/mixins/mxZero.js"></script>
+    <script src="./dev/mixins/mxReadable.js"></script>
+    <script src="./dev/shared/baseWizard.js"></script>
+    <script src="./dev/shared/customJsonParser.js"></script>
+    <script src="./dev/shared/defaultJsonParser.js"></script>
+    <script src="./dev/shared/serviceAvailability.js"></script>
+    <script src="./dev/signer.js"></script>
     <script src="./dev/appUtils.js"></script>
+    <script src="./dev/apiHelper.js"></script>
+    <script src="./dev/storage.js"></script>
     <script src="./dev/myCognito.js"></script>
+    <script src="./dev/resetPasswordModal.js"></script>
     <script src="./dev/signInModal.js"></script>
     <script src="./dev/iotSubscriber.js"></script>
+    <script src="./dev/baseCard.js"></script>
+    <script src="./dev/basePreview.js"></script>
+    <script src="./dev/imageCard.js"></script>
     <script src="./dev/videoCard.js"></script>
+    <script src="./dev/jsonParser.js"></script>
+    <script src="./dev/mediaUploadWizard.js"></script>
+    <script src="./dev/jsonUploadWizard.js"></script>
     <script src="./dev/fileUpload.js"></script>
-    <script src="./dev/preview.js"></script>
+    <script src="./dev/imageEditor.js"></script>
+    <script src="./dev/labelEditor.js"></script>
+    <script src="./dev/videoPreview.js"></script>
+    <script src="./dev/imagePreview.js"></script>
+    <script src="./dev/cardFactory.js"></script>
     <script src="./dev/cardCollection.js"></script>
     <script src="./dev/searchBox.js"></script>
     <script src="./dev/systemMessageArea.js"></script>
+    <script src="./dev/workteam.js"></script>
     <script src="./dev/settingsTabPanel.js"></script>
+    <script src="./dev/googleMap.js"></script>
     <script src="./dev/app.js"></script>
 -->
 
-    <!--SOLUTION_MANIFEST_PLACEHOLDER-->
     <!-- Production --><!---->
+    <script src="./solution-manifest.js" integrity="sha384-SOLUTION_MANIFEST_SHA384_PLACEHOLDER"></script>
     <script src="./app.min.js" integrity="sha384-%SRI_APP_JS%"></script>
   </body>
 </html>

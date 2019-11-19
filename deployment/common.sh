@@ -1,22 +1,23 @@
 #!/bin/bash
 
 ###
- #  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        #
- #                                                                                                 #
- #  Licensed under the Amazon Software License (the "License"). You may not use this               #
- #  file except in compliance with the License. A copy of the License is located at                #
- #                                                                                                 #
- #      http://aws.amazon.com/asl/                                                                 #
- #                                                                                                 #
- #  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        #
- #  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       #
- #  for the specific language governing permissions and limitations under the License.             #
- #
- ##
+# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License Version 2.0 (the 'License').
+# You may not use this file except in compliance with the License.
+# A copy of the License is located at
+#
+#         http://www.apache.org/licenses/
+#
+# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
+# specific language governing permissions and limitations under the License.
+#
+##
 
 ###
- # @author MediaEnt Solutions
- ##
+# @author aws-mediaent-solutions
+##
 
 ######################################################################
 #
@@ -66,14 +67,50 @@ function grep_zip_name() {
 }
 
 #
+# @function grep_solution_name
+# @description grep solution name from solution.js
+#
+function grep_solution_name() {
+  local str=$(grep "Name:" "$1")
+  [[ "$str" =~ \s*Name:.+\'(.+)\', ]]
+  echo ${BASH_REMATCH[1]}
+}
+
+#
+# @function grep_solution_version
+# @description grep solution version from solution.js
+#
+function grep_solution_version() {
+  local str=$(grep "Version:" "$1")
+  [[ "$str" =~ \s*Version:.+\'(.+)\', ]]
+  echo "v${BASH_REMATCH[1]}"
+}
+
+#
 # REGIONS := these are the regions that supports Media2Cloud solution.
 #
 REGIONS=( \
   us-east-1 \
   us-east-2 \
+  us-west-1 \
   us-west-2 \
+  ca-central-1 \
   eu-west-1 \
+  eu-west-2 \
+  eu-west-3 \
+  eu-north-1 \
+  eu-central-1 \
+  me-south-1 \
+  ap-east-1 \
+  ap-south-1 \
+  ap-northeast-1 \
+  ap-northeast-2 \
+  ap-northeast-3 \
+  ap-southeast-1 \
   ap-southeast-2 \
+  sa-east-1 \
+  cn-north-1 \
+  cn-northwest-1 \
 )
 
 #

@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -33,6 +25,7 @@ class SignInModal {
       signoutBtn = '#signoutBtn',
       modalSignin = '#modalSignin',
       modelNewPassword = '#modalNewPassword',
+      modalForgotPassword = '#modalForgotPassword',
     } = params;
 
     this.$cognitoInstance = cognitoInstance;
@@ -42,6 +35,7 @@ class SignInModal {
     this.$signoutBtn = $(signoutBtn);
     this.$signinModal = $(modalSignin);
     this.$newPasswordModal = $(modelNewPassword);
+    this.$forgotPasswordModal = new ResetPasswordModal(this, modalForgotPassword);
 
     this.domInit();
 
@@ -79,6 +73,10 @@ class SignInModal {
 
   get newPasswordModal() {
     return this.$newPasswordModal;
+  }
+
+  get forgotPasswordModal() {
+    return this.$forgotPasswordModal;
   }
 
   get signinForm() {
@@ -127,7 +125,16 @@ class SignInModal {
               <label for="${passwordField}">Password</label>
               <input type="password" class="form-control" id="${passwordField}" placeholder="Password">
             </div>
-            <button type="submit" class="btn btn-secondary">Sign in</button>
+
+            <div class="row">
+              <div class="col mt-auto mb-auto">
+                <button type="submit" class="btn btn-secondary">Sign in</button>
+              </div>
+              <div class="col mt-auto mb-auto">
+                <a class="ml-auto float-right small" href="#" data-action="reset-password">Forgot password?</a>
+              </div>
+            </div>
+
             <div class="form-group">
               <span id="${alertField}" class="collapse text-danger">Alert message...</span>
             </div>
@@ -192,12 +199,12 @@ class SignInModal {
     const alertMessage = $(`#${alertId}`, form);
 
     /* password form submit event */
-    form.submit(async (event) => {
+    form.off('submit').submit(async (event) => {
       try {
         event.preventDefault();
         if (password01.val() !== password02.val()) {
           alertMessage.html('<small>passwords do not match. Please re-enter.</small>').collapse('show');
-        } else if (!password01.val().match(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/)) {
+        } else if (!password01.val().match(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/)) {
           alertMessage.html('<small>password does not meet criteria. Please re-enter.</small>').collapse('show');
         } else {
           let response;
@@ -210,12 +217,12 @@ class SignInModal {
         }
       } catch (e) {
         e.message = `#passwordForm.submit: ${e.message}`;
-        console.error(e);
+        console.error(encodeURIComponent(e.message));
       }
     });
 
     /* reset password fields onHide */
-    this.newPasswordModal.on('hide.bs.modal', () => {
+    this.newPasswordModal.off('hide.bs.modal').on('hide.bs.modal', () => {
       password01.val('');
       password02.val('');
       alertMessage.html('').collapse('hide');
@@ -244,8 +251,7 @@ class SignInModal {
         this.onSignInHandler(this);
       }
     } catch (e) {
-      e.message = `SignInModal.signIn: ${e.message}`;
-      console.error(e.message);
+      console.error(encodeURIComponent(e.message));
     }
   }
 
@@ -281,9 +287,17 @@ class SignInModal {
       e.message = `SignInModal.loadUser: ${e.message}`;
       /* Don't really care other errors other than ConfigurationError */
       if (e instanceof ConfigurationError) {
-        console.error(e.message);
+        console.error(encodeURIComponent(e.message));
       }
     }
+  }
+
+  /**
+   * @function showModal
+   * @description show signin model
+   */
+  showModal() {
+    this.signinModal.modal('show');
   }
 
   /**
@@ -306,30 +320,28 @@ class SignInModal {
 
         this.signOut();
       } catch (e) {
-        e.message = `${this.signoutBtn.attr('id')}.click: ${e.message}`;
-        console.error(e.message);
+        console.error(encodeURIComponent(e.message));
       }
       return this;
     });
 
     /* modal dialog is about to show, reset the ui */
-    this.signinModal.on('show.bs.modal', () => {
+    this.signinModal.off('show.bs.modal').on('show.bs.modal', () => {
       try {
         this.alertMessage.html('').collapse('hide');
       } catch (e) {
-        e.message = `${this.signinModal.attr('id')}.show.bs.modal: ${e.message}`;
-        console.error(e.message);
+        console.error(encodeURIComponent(e.message));
       }
     });
 
     /* reset password field onHide */
-    this.signinModal.on('hide.bs.modal', () => {
+    this.signinModal.off('hide.bs.modal').on('hide.bs.modal', () => {
       this.inputPassword.val('');
       this.alertMessage.html('').collapse('hide');
     });
 
     /* sign in form submit event */
-    this.signinForm.submit(async (event) => {
+    this.signinForm.off('submit').submit(async (event) => {
       try {
         event.preventDefault();
 
@@ -351,10 +363,26 @@ class SignInModal {
 
         this.signinModal.modal('hide');
       } catch (e) {
-        e.message = `${this.signinForm.attr('id')}.submit: ${e.message}`;
+        e.message = `${this.signinForm.attr('id')}.submit: ${encodeURIComponent(e.message)}`;
         this.alertMessage.html(`<small>${e.message}</small>`).collapse('show');
         console.error(e.message);
       }
+    });
+
+    /* forgot password flow */
+    const resetPassword = this.signinForm.find('[data-action="reset-password"]').first();
+
+    resetPassword.click(async (event) => {
+      try {
+        event.preventDefault();
+
+        /* close the signin modal and bring up forgot password modal */
+        this.signinModal.modal('hide');
+        this.forgotPasswordModal.show();
+      } catch (e) {
+        console.error(encodeURIComponent(e.message));
+      }
+      return this;
     });
   }
 }

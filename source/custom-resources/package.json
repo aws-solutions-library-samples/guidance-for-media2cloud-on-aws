@@ -1,33 +1,28 @@
 {
-  "name": "custom-resources",
-  "version": "1.1.0",
+  "name": "m2c-custom-resources",
+  "version": "2.0.0",
   "description": "media2cloud cloudformation custom resource",
   "main": "index.js",
   "private": true,
   "scripts": {
     "pretest": "npm install",
-    "test": "echo \"no test\"",
+    "test": "mocha *.spec.js",
     "build:clean": "rm -rf dist && mkdir -p dist",
-    "build:copy": "cp -Rv index.js package*.json lib dist/",
+    "build:copy": "cp -rv index*.js package.json lib dist/",
     "build:install": "cd dist && npm install --production",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
   "author": "aws-mediaent-solutions",
   "dependencies": {
+    "@elastic/elasticsearch": "^6.8.2",
     "adm-zip": "^0.4.11",
+    "aws-elasticsearch-connector": "^8.0.0",
+    "aws-sdk": "^2.469.0",
+    "deepmerge": "^2.1.1",
     "mime": "^2.3.1"
   },
   "devDependencies": {
-    "eslint": "^4.7.2",
-    "eslint-config-airbnb-base": "^12.0.0",
-    "eslint-plugin-import": "^2.7.0",
-    "mocha": "*",
-    "uglify-es": "^3.3.9",
-    "chai": "*",
-    "sinon": "*",
-    "sinon-chai": "*",
-    "aws-sdk-mock": "*",
-    "npm-run-all": "*"
+    "m2c-core-lib": "file:../layers/core-lib"
   }
 }

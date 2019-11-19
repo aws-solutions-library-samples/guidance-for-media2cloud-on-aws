@@ -1,12 +1,12 @@
 {
   "name": "aws-iot-sdk-browser-bundle",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "build aws-iot-sdk for browser",
   "main": "index.js",
   "scripts": {
     "test": "echo \"bundle exists\" && exit 0",
-    "browserify": "export AWS_SERVICES=cognitoidentity,cognitoidentityserviceprovider,iot,iotdata,s3,dynamodb; ./node_modules/.bin/browserify index.js -r aws-iot-device-sdk -r aws-sdk -o aws-iot-sdk-bundle.js",
-    "uglify": "./node_modules/.bin/uglifyjs aws-iot-sdk-bundle.js -o aws-iot-sdk-bundle.min.js; ls -d $PWD/*",
+    "browserify": "export AWS_SERVICES=cognitoidentity,cognitoidentityserviceprovider,iot,iotdata,s3; browserify index.js -r aws-iot-device-sdk -r aws-sdk -o aws-iot-sdk-bundle.js",
+    "uglify": "uglifyjs aws-iot-sdk-bundle.js -o aws-iot-sdk-bundle.min.js; ls -d $PWD/*",
     "copy": "cp -v ./aws-iot-sdk-bundle*.js"
   },
   "author": "",
@@ -16,8 +16,5 @@
     "aws-sdk": "^2.3.0"
   },
   "devDependencies": {
-    "browserify": "^16.2.3",
-    "npm-run-all": "*",
-    "uglify-es": "^3.3.9"
   }
 }

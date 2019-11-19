@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (SO0050-s3-glacier) Media2Cloud - create S3/Glacier bucket, configure S3 events and set life cycle policy.
+Description: (SO0050-bucket) Media2Cloud - create and configure ingest, proxy, and web buckets
 
 #
 # Mappings to store fixed value of the solution
@@ -8,22 +8,28 @@ Description: (SO0050-s3-glacier) Media2Cloud - create S3/Glacier bucket, configu
 Mappings:
     Solution:
         Package:
-            Media2Cloud: "%PACKAGENAME%"
+            S3Event: "%PKG_S3EVENT%"
     Function:
         Handler:
-            OnGlacierObjectCreated: index.OnGlacierObjectCreated
-            OnMediaFileArrival: index.OnMediaFileArrival
+            OnObjectCreated: index.onS3Event
     S3:
         Notification:
             Prefix: ""
-            MediaSuffixes: ".mp4,.mov,.wmv,.mxf,.ts,.mpg,.mpeg"
-            JsonSuffixes: ".json"
+            Suffixes: ".json,.mp4,.mov,.wmv,.mxf,.ts,.mpg,.mpeg"
         Lifecycle:
-            TagId: "Move to Glacier after ingest completed"
             TageName: "IngestCompleted"
             TagValue: "true"
-            Prefix: ""
-            TransitionInDays: "0"
+            StorageClass: "GLACIER"
+        Website:
+            MainPage: "demo.html"
+    #
+    # UserDefined allows you to customize the solution to specify your own buckets to use for ingest and proxy
+    # * Change Ingest to your own ingest bucket name
+    # * Change Proxy to your own proxy bucket name
+    UserDefined:
+        Bucket:
+            Ingest: ""
+            Proxy: ""
 
 Parameters:
     SolutionId:
@@ -32,6 +38,16 @@ Parameters:
     RootStackName:
         Type: String
         Description: "part of the resource naming"
+    SolutionUuid:
+        Type: String
+        Description: unique solution uuid
+    AnonymousUsage:
+        Type: String
+        Description: send ananymous usage data
+        Default: "No"
+        AllowedValues:
+          - "No"
+          - "Yes"
     S3Bucket:
         Type: String
         Description: solution bucket
@@ -42,40 +58,32 @@ Parameters:
     CustomResourceArn:
         Type: String
         Description: for post-processing
-    IotTopic:
+    BucketPrefix:
         Type: String
-        Description: to publish/receive Iot messages
-    CreateBucket:
-        Type: String
-        Description: "specify 'No' if bucket already exists. Caution: we will modify the CORs, Notification, Lifecycle policys of your existing bucket!"
-        Default: "Yes"
-        AllowedValues:
-          - "Yes"
-          - "No"
-    GlacierBucket:
-        Type: String
-        Description: "assets automatically transition to Glacier storage"
+        Description: "bucket prefix"
         AllowedPattern: "[a-z][a-z0-9-_]*"
-    ConfigurationTableName:
-        Type: String
-        Description: dynamodb configuration table name
-    ConfigurationPartitionKey:
-        Type: String
-        Description: dynamodb configuration partition key
-    ConfigurationItemName:
-        Type: String
-        Description: dynamodb configuration item name
-    AssetTableName:
-        Type: String
-        Description: dynamodb asset table name
-    MediainfoTableName:
-        Type: String
-        Description: dynamodb mediainfo table name
     SNSTopicArn:
         Type: String
         Description: topic arn
+    IotHost:
+        Type: String
+        Description: Iot host
+    IotTopic:
+        Type: String
+        Description: Iot topic
+    AwsSdkLayer:
+        Type: String
+        Description: AWS SDK layer
+    CoreLibLayer:
+        Type: String
+        Description: Core Library layer
 
 Metadata:
+  cfn-lint:
+    config:
+        ignore_checks:
+            # ignore CustomResourceArn not used
+            - W2001
     AWS::CloudFormation::Interface:
         ParameterGroups:
             -
@@ -84,67 +92,82 @@ Metadata:
                 Parameters:
                     - SolutionId
                     - RootStackName
+                    - SolutionUuid
+                    - AnonymousUsage
                     - S3Bucket
                     - KeyPrefix
             -
                 Label:
                     default: "S3 Configuration"
                 Parameters:
-                    - CreateBucket
-                    - GlacierBucket
+                    - BucketPrefix
             -
                 Label:
                     default: "Other resources"
                 Parameters:
                     - CustomResourceArn
                     - IotTopic
-                    - ConfigurationTableName
-                    - ConfigurationPartitionKey
-                    - ConfigurationItemName
-                    - AssetTableName
-                    - MediainfoTableName
                     - SNSTopicArn
+                    - IotHost
+                    - IotTopic
+                    - AwsSdkLayer
+                    - CoreLibLayer
         ParameterLabels:
-            CreateBucket:
-                default: "Create bucket"
-            GlacierBucket:
-                default: "Glacier Bucket Name"
+            BucketPrefix:
+                default: "Bucket Prefix"
             CustomResourceArn:
                 default: "Custom Resource Arn"
             SolutionId:
                 default: "Solution Id"
             RootStackName:
                 default: "Top Stack Name"
+            SolutionUuid:
+                default: "UUID"
+            AnonymousUsage:
+                default: "Anonymous usage"
             S3Bucket:
                 default: "Solution Bucket"
             KeyPrefix:
                 default: "Solution KeyPrefix"
-            ConfigurationTableName:
-                default: "Configuration Table Name"
-            ConfigurationPartitionKey:
-                default: "Configuration Partition Key"
-            ConfigurationItemName:
-                default: "Configuration Item Name"
-            AssetTableName:
-                default: "Asset Table Name"
-            MediainfoTableName:
-                default: "Mediainfo Table Name"
             SNSTopicArn:
                 default: "SNS Topic"
+            IotHost:
+                default: "IoT Host"
+            IotTopic:
+                default: "IoT Topic"
+            AwsSdkLayer:
+                default: "AWS SDK Layer"
+            CoreLibLayer:
+                default: "Core Library Layer"
 
 Conditions:
-    bShouldCreateBucket: !Equals [!Ref CreateBucket, "Yes"]
+    CreateIngestBucket: !Equals [
+        !FindInMap [
+            "UserDefined",
+            "Bucket",
+            "Ingest"
+        ],
+        ""
+    ]
+    CreateProxyBucket: !Equals [
+        !FindInMap [
+            "UserDefined",
+            "Bucket",
+            "Proxy"
+        ],
+        ""
+    ]
 
 Resources:
     #
     # assets automatically transition to Glacier after X days
     #
-    Bucket:
-        Condition: bShouldCreateBucket
+    IngestBucket:
+        Condition: CreateIngestBucket
         Type: AWS::S3::Bucket
         DeletionPolicy: Retain
         Properties:
-            BucketName: !Ref GlacierBucket
+            BucketName: !Sub "${BucketPrefix}-ingest"
             BucketEncryption:
                 ServerSideEncryptionConfiguration:
                     -
@@ -152,22 +175,256 @@ Resources:
                           SSEAlgorithm: AES256
             AccessControl: LogDeliveryWrite
             LoggingConfiguration:
-              DestinationBucketName: !Ref GlacierBucket
+              DestinationBucketName: !Sub "${BucketPrefix}-ingest"
               LogFilePrefix: "access_log/"
             CorsConfiguration:
                 CorsRules:
                     -
-                        AllowedMethods: ["GET", "PUT", "POST", "HEAD"]
-                        AllowedOrigins: ["*"]
-                        AllowedHeaders: ["*"]
-                        ExposedHeaders: [
-                            "ETag",
-                            "Content-Length",
-                            "x-amz-meta-uuid",
-                            "x-amz-meta-umid",
-                            "x-amz-meta-md5chksum"
-                        ]
+                        AllowedMethods:
+                            - "GET"
+                            - "PUT"
+                            - "POST"
+                            - "HEAD"
+                        AllowedOrigins:
+                            - "*"
+                        AllowedHeaders:
+                            - "*"
+                        ExposedHeaders:
+                            - "ETag"
+                            - "Content-Length"
+                            - "x-amz-meta-uuid"
+                            - "x-amz-meta-md5"
                         MaxAge: 3000
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: "Keep access log for 30 days"
+                        Status: Enabled
+                        Prefix: access_log/
+                        ExpirationInDays: 30
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: "Move to glacier after ingest completes"
+                        Status: Enabled
+                        TagFilters:
+                            -
+                                Key: !FindInMap [
+                                    "S3",
+                                    "Lifecycle",
+                                    "TageName"
+                                ]
+                                Value: !FindInMap [
+                                    "S3",
+                                    "Lifecycle",
+                                    "TagValue"
+                                ]
+                        Transitions:
+                            -
+                                StorageClass: !FindInMap [
+                                    "S3",
+                                    "Lifecycle",
+                                    "StorageClass"
+                                ]
+                                TransitionInDays: 0
+                        NoncurrentVersionTransitions:
+                            -
+                                StorageClass: !FindInMap [
+                                    "S3",
+                                    "Lifecycle",
+                                    "StorageClass"
+                                ]
+                                TransitionInDays: 0
+                    -
+                        Id: "Keep previous version for 7 days"
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    IngestBucketPolicy:
+        Condition: CreateIngestBucket
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref IngestBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
+
+    #
+    # proxy bucket to store proxies and media analysis results
+    #
+    ProxyBucket:
+        Condition: CreateProxyBucket
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Sub "${BucketPrefix}-proxy"
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+              DestinationBucketName: !Sub "${BucketPrefix}-proxy"
+              LogFilePrefix: "access_log/"
+            CorsConfiguration:
+                CorsRules:
+                    -
+                        AllowedMethods:
+                            - "GET"
+                            - "PUT"
+                            - "POST"
+                            - "HEAD"
+                        AllowedOrigins:
+                            - "*"
+                        AllowedHeaders:
+                            - "*"
+                        ExposedHeaders:
+                            - "ETag"
+                            - "Content-Length"
+                            - "x-amz-meta-uuid"
+                            - "x-amz-meta-md5"
+                        MaxAge: 3000
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: "Keep access log for 30 days"
+                        Status: Enabled
+                        Prefix: access_log/
+                        ExpirationInDays: 30
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: "Use Intelligent tier"
+                        Status: Enabled
+                        Transitions:
+                            -
+                                StorageClass: INTELLIGENT_TIERING
+                                TransitionInDays: 0
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 7
+                    -
+                        Id: "Keep previous version for 7 days"
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    ProxyBucketPolicy:
+        Condition: CreateProxyBucket
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref ProxyBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
+
+    #
+    # Website bucket to host media2cloud web app
+    #
+    WebBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Properties:
+            BucketName: !Sub "${BucketPrefix}-web"
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+                DestinationBucketName: !Sub "${BucketPrefix}-web"
+                LogFilePrefix: "access_log/"
+            WebsiteConfiguration:
+                IndexDocument: !FindInMap
+                    - "S3"
+                    - "Website"
+                    - "MainPage"
+                ErrorDocument: !FindInMap
+                    - "S3"
+                    - "Website"
+                    - "MainPage"
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: "Keep access log for 30 days"
+                        Status: Enabled
+                        Prefix: access_log/
+                        ExpirationInDays: 30
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: "Keep cloudfront logs for 30 days"
+                        Status: Enabled
+                        Prefix: cf_logs/
+                        ExpirationInDays: 30
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: "Use Intelligent tier"
+                        Status: Enabled
+                        Transitions:
+                            -
+                                StorageClass: INTELLIGENT_TIERING
+                                TransitionInDays: 0
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 7
+                    -
+                        Id: "Keep previous version for 7 days"
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    WebBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref WebBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${WebBucket}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
 
     #
     # allow lambda function to call apigateway to start ingest state machine
@@ -186,9 +443,11 @@ Resources:
                 Statement:
                     -
                         Effect: "Allow"
-                        Action: ["sts:AssumeRole"]
+                        Action:
+                            - "sts:AssumeRole"
                         Principal:
-                            Service: ["lambda.amazonaws.com"]
+                            Service:
+                                - "lambda.amazonaws.com"
             Path: /
             Policies:
                 -
@@ -199,205 +458,177 @@ Resources:
                         ## S3
                         -
                             Effect: "Allow"
-                            Action: [
-                                "s3:GetObject",
-                                "s3:PutObject"
-                            ]
-                            Resource: [
-                                !Sub "arn:aws:s3:::${GlacierBucket}/*",
+                            Action:
+                                - "s3:GetObject"
+                                - "s3:PutObject"
+                            Resource: !Sub [
+                                "arn:aws:s3:::${x0}/*", {
+                                    x0: !If [
+                                        CreateIngestBucket,
+                                        !FindInMap [
+                                            "UserDefined",
+                                            "Bucket",
+                                            "Ingest"
+                                        ],
+                                        !Sub "${BucketPrefix}-ingest"
+                                    ]
+                                }
                             ]
 
                         ## CloudWatch Logs
                         -
                             Effect: "Allow"
-                            Action: [
-                                "logs:CreateLogGroup",
-                                "logs:CreateLogStream",
-                                "logs:PutLogEvents"
-                            ]
-                            Resource: [
-                                !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
-                            ]
-
-                        ## DynamoDB
-                        -
-                            Effect: "Allow"
-                            Action: [
-                                "dynamodb:Query",
-                                "dynamodb:Attributes",
-                                "dynamodb:LeadingKeys",
-                                "dynamodb:ReturnConsumedCapacity",
-                                "dynamodb:ReturnValues",
-                                "dynamodb:Select"
-                            ]
-                            # s3 event lambda should only have read access to Configuration table
-                            Resource: [
-                                !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ConfigurationTableName}"
-                            ]
-                        -
-                            Effect: "Allow"
-                            Action: [
-                                "dynamodb:Query",
-                                "dynamodb:UpdateItem",
-                                "dynamodb:Attributes",
-                                "dynamodb:LeadingKeys",
-                                "dynamodb:ReturnConsumedCapacity",
-                                "dynamodb:ReturnValues",
-                                "dynamodb:Select"
-                            ]
-                            # s3 event lambda should only need read/write/update access to Asset table, no need to access Mediainfo
-                            Resource: [
-                                !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AssetTableName}"
-                            ]
+                            Action:
+                                - "logs:CreateLogGroup"
+                                - "logs:CreateLogStream"
+                                - "logs:PutLogEvents"
+                            Resource:
+                                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
 
                         ## API Gateway
                         -
                             Effect: "Allow"
-                            Action: ["execute-api:Invoke"]
+                            Action:
+                                - "execute-api:Invoke"
                             # This wildcard is present because there is a circular dependency between
                             # Step Functions resource and API Gateway resource creation
-                            Resource: [!Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*/*"]
+                            Resource:
+                                - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/*/*"
 
                         ## IoT
                         -
                             Effect: "Allow"
-                            Action: ["iot:Publish"]
-                            Resource: [!Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"]
+                            Action:
+                                - "iot:Publish"
+                            Resource:
+                                - !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+                        ## Step Function
+                        -
+                            Effect: "Allow"
+                            Action:
+                                - "states:DescribeStateMachine"
+                                - "states:StartExecution"                            
+                            Resource:
+                                - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-*"
 
     #
-    # (Bucket event) lambda function on s3 trigger (JSON)
+    # (Bucket event) lambda function on s3 trigger
     #
-    OnGlacierObjectCreatedFunction:
+    OnObjectCreatedFunction:
         Type: AWS::Lambda::Function
         Properties:
-            FunctionName: !Sub "${SolutionId}-${RootStackName}-OnGlacierObjectCreated"
-            Description: !Sub "(${SolutionId}) OnObjectCreated, call API Gateway to start the ingest workflow"
-            Runtime: nodejs8.10
-            MemorySize: "128"
-            Timeout: "300"
-            Handler: !FindInMap ["Function", "Handler", "OnGlacierObjectCreated"]
+            FunctionName: !Sub "${SolutionId}-${RootStackName}-s3event"
+            Description: !Sub "(${SolutionId}) OnObjectCreated starts an ingest workflow"
+            Runtime: nodejs10.x
+            MemorySize: 128
+            Timeout: 300
+            Handler: !FindInMap
+                - "Function"
+                - "Handler"
+                - "OnObjectCreated"
             Role: !GetAtt ExecutionRole.Arn
             Code:
                 S3Bucket: !Ref S3Bucket
-                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "Media2Cloud"]}]
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Solution",
+                            "Package",
+                            "S3Event"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
             Environment:
                 Variables:
-                    ENV_CONFIGURATION_TALBE: !Ref ConfigurationTableName
-                    ENV_CONFIGURATION_PARTITION_KEY: !Ref ConfigurationPartitionKey
-                    ENV_CONFIGURATION_ITEM_NAME: !Ref ConfigurationItemName
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
                     ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
 
     FunctionPermission01:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !Ref OnGlacierObjectCreatedFunction
+            FunctionName: !Ref OnObjectCreatedFunction
             Principal: s3.amazonaws.com
             SourceAccount: !Ref AWS::AccountId
-            SourceArn: !Sub "arn:aws:s3:::${GlacierBucket}"
+            SourceArn: !Sub [
+                "arn:aws:s3:::${x0}", {
+                    x0: !If [
+                        CreateIngestBucket,
+                        !FindInMap [
+                            "UserDefined",
+                            "Bucket",
+                            "Ingest"
+                        ],
+                        !Sub "${BucketPrefix}-ingest"
+                    ]
+                }
+            ]
 
     #
     # install lambda notification on JSON extension
     #
-    SetNotification01:
-        # make sure Permission is granted before setting notification
-        DependsOn: [FunctionPermission01]
-        Type: Custom::SetNotification01
-        Properties:
-            ServiceToken: !Ref CustomResourceArn
-            FunctionName: SetNotification
-            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
-            Id: !Sub "${SolutionId}-lto"
-            Prefix: !FindInMap ["S3", "Notification", "Prefix"]
-            Suffixes: !FindInMap ["S3", "Notification", "JsonSuffixes"]
-            Events: "s3:ObjectCreated:*"
-            LambdaFunctionArn: !GetAtt OnGlacierObjectCreatedFunction.Arn
-
-    #
-    # (Bucket event) lambda function on s3 trigger (Media file)
-    #
-    OnMediaFileArrivalFunction:
-        Type: AWS::Lambda::Function
-        Properties:
-            FunctionName: !Sub "${SolutionId}-${RootStackName}-OnMediaFileArrival"
-            Description: !Sub "(${SolutionId}) on media file created, generate JSON archive definition file to trigger the ingest workflow"
-            Runtime: nodejs8.10
-            MemorySize: "128"
-            Timeout: "300"
-            Handler: !FindInMap ["Function", "Handler", "OnMediaFileArrival"]
-            Role: !GetAtt ExecutionRole.Arn
-            Code:
-                S3Bucket: !Ref S3Bucket
-                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "Media2Cloud"]}]
-            Environment:
-                Variables:
-                    ENV_CONFIGURATION_TALBE: !Ref ConfigurationTableName
-                    ENV_CONFIGURATION_PARTITION_KEY: !Ref ConfigurationPartitionKey
-                    ENV_CONFIGURATION_ITEM_NAME: !Ref ConfigurationItemName
-                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
-
-    FunctionPermission02:
-        Type: AWS::Lambda::Permission
-        Properties:
-            Action: lambda:InvokeFunction
-            FunctionName: !Ref OnMediaFileArrivalFunction
-            Principal: s3.amazonaws.com
-            SourceAccount: !Ref AWS::AccountId
-            SourceArn: !Sub "arn:aws:s3:::${GlacierBucket}"
-
-    #
-    # install lambda notification on Media file extension
-    #
-    SetNotification02:
-        # make sure Permission is granted before setting notification
-        # also depends on SetNotification01 to avoid race condition
-        DependsOn: [FunctionPermission02, SetNotification01]
-        Type: Custom::SetNotification02
-        Properties:
-            ServiceToken: !Ref CustomResourceArn
-            FunctionName: SetNotification
-            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
-            Id: !Sub "${SolutionId}-media"
-            Prefix: !FindInMap ["S3", "Notification", "Prefix"]
-            Suffixes: !FindInMap ["S3", "Notification", "MediaSuffixes"]
-            Events: "s3:ObjectCreated:*"
-            LambdaFunctionArn: !GetAtt OnMediaFileArrivalFunction.Arn
-
-    #
-    # set life cycle policy for the bucket
-    #
-    SetLifecyclePolicy:
-        Type: Custom::SetLifecyclePolicy
-        Properties:
-            ServiceToken: !Ref CustomResourceArn
-            FunctionName: SetLifecyclePolicy
-            Bucket: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
-            TagId: !FindInMap ["S3", "Lifecycle", "TagId"]
-            TagName: !FindInMap ["S3", "Lifecycle", "TageName"]
-            TagValue: !FindInMap ["S3", "Lifecycle", "TagValue"]
-            Prefix: !FindInMap ["S3", "Lifecycle", "Prefix"]
-            TransitionInDays: !FindInMap ["S3", "Lifecycle", "TransitionInDays"]
+    #SetNotification01:
+    #    # make sure Permission is granted before setting notification
+    #    DependsOn: [FunctionPermission01]
+    #    Type: Custom::SetNotification01
+    #    Properties:
+    #        ServiceToken: !Ref CustomResourceArn
+    #        FunctionName: SetNotification
+    #        Bucket: !Ref Bucket
+    #        Id: !Sub "${SolutionId}-lto"
+    #        Prefix: !FindInMap ["S3", "Notification", "Prefix"]
+    #        Suffixes: !FindInMap ["S3", "Notification", "Suffixes"]
+    #        Events: "s3:ObjectCreated:*"
+    #        LambdaFunctionArn: !GetAtt OnObjectCreatedFunction.Arn
 
 Outputs:
-    BucketName:
-        Value: !If [bShouldCreateBucket, !Ref Bucket, !Ref GlacierBucket]
-        Description: Bucket Name (Glacier)
+    IngestBucket:
+        Value: !If [
+            CreateIngestBucket,
+            !Ref IngestBucket,
+            !FindInMap [
+                "UserDefined",
+                "Bucket",
+                "Ingest"
+            ]
+        ]
+        Description: Bucket Name (Ingest)
+
+    ProxyBucket:
+        Value: !If [
+            CreateProxyBucket,
+            !Ref ProxyBucket,
+            !FindInMap [
+                "UserDefined",
+                "Bucket",
+                "Proxy"
+            ]
+        ]
+        Description: Bucket Name (Proxy)
+
+    WebBucket:
+        Value: !Ref WebBucket
+        Description: Bucket Name (Web)
 
     ExecutionRoleArn:
         Value: !GetAtt ExecutionRole.Arn
         Description: Role Arn (S3 Event Execution)
 
-    OnGlacierObjectCreatedArn:
-        Value: !GetAtt OnGlacierObjectCreatedFunction.Arn
-        Description: Lambda Arn (OnGlacierObjectCreated)
-
-    OnMediaFileArrivalArn:
-        Value: !GetAtt OnMediaFileArrivalFunction.Arn
-        Description: Lambda Arn (OnMediaFileArrival)
+    OnObjectCreatedArn:
+        Value: !GetAtt OnObjectCreatedFunction.Arn
+        Description: Lambda Arn (OnObjectCreated)
 
     LambdaFunctionList:
         Value: !Join [ ",", [
-            !Ref OnGlacierObjectCreatedFunction,
-            !Ref OnMediaFileArrivalFunction
+            !Ref OnObjectCreatedFunction
         ]]
         Description: List of Lambda functions (S3 Notification)

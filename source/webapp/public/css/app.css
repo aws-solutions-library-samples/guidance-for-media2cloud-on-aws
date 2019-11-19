@@ -1,28 +1,37 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
  * @author MediaEnt Solutions
  */
 
+@media (min-width: 1440px) {
+  .modal-xl {
+    max-width: 1360px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .modal-xl {
+    max-width: 1152px;
+  }
+}
+
 video { object-fit: "contain"; }
 
-/* ::cue { color: "#aaaaaa"; font: "small-caps lighter"; } */
 ::cue {
-  font-size: 70%;
-  font-weight: 300;
-  font-variant: small-caps;
+  font-size: 0.9em;
+}
+
+/* ::cue { color: "#aaaaaa"; font: "300 14px/1.2 sans-serif"; } */
+/*
+video::cue {
+  font-size: 1.2em;
+  font-weight: 400;
+  font-family: sans-serif;
   color: rgba(255, 255, 255, 0.9);
   background-color:rgba(0,0,0,0.6);
 }
@@ -39,22 +48,35 @@ video { object-fit: "contain"; }
 .five { color: rgba(255, 255, 255, 0.5); }
 .unsure { color: rgba(255, 255, 255, 0.4); }
 
-::cue(.celebs) { color: rgba(255, 255, 255, 0.6); }
-::cue(.entities) { color: rgba(255, 255, 255, 0.6); }
-::cue(.face_matches) { color: rgba(250, 250, 250, 0.6); }
-::cue(.faces) { color: rgba(250, 250, 250, 0.6); }
-::cue(.labels) { color: rgba(250, 250, 250, 0.6); }
-::cue(.persons) { color: rgba(255, 255, 255, 0.6); }
-::cue(.phrases) { color: rgba(250, 250, 250, 0.6); }
-::cue(.transcript) { color: rgba(255, 255, 255, 0.8); }
-::cue(.confidence) { font-size: 60%; color: rgba(230, 230, 230, 0.8); }
+video::cue(.celeb) { font-size: 0.8em; color: rgba(255, 255, 255, 0.6); }
+::cue(.face) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.faceMatch) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.label) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.moderation) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.person) { font-size: 1em; color: rgba(255, 255, 255, 0.6); }
+::cue(.transcript) { font-size: 1em; color: rgba(255, 255, 255, 0.8); }
+::cue(.entity) { font-size: 1em; color: rgba(255, 255, 255, 0.6); }
+::cue(.kephrase) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.sentiment) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+::cue(.topic) { font-size: 1em; color: rgba(250, 250, 250, 0.6); }
+video::cue(.confidence) { font-size: 0.8em; color: rgba(230, 230, 230, 0.8); }
+*/
 
 .image-upload > input { display: none; }
 /* The switch - the box around the slider */
-.switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+  margin-top: auto;
+  margin-bottom: auto;
+}
 
 /* Hide default HTML checkbox */
-.switch input { display:none; }
+.switch input {
+  display:none;
+}
 
 /* The slider */
 .slider {
@@ -86,6 +108,11 @@ input:checked + .slider:before {
   -ms-transform: translateX(26px);
   transform: translateX(26px);
 }
+
+input:disabled + .slider {
+  background-color: #a0a0a0;
+}
+
 /* Rounded sliders */
 .slider.round { border-radius: 34px; }
 .slider.round:before { border-radius: 50%; } 
@@ -272,4 +299,171 @@ a.overlay-action:hover {
   height: 10%;
   width: 10%;
   opacity: 1;
+}
+
+/* The switch - the box around the slider */
+.xs-switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 18px;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+/* Hide default HTML checkbox */
+.xs-switch input {
+  display:none;
+}
+
+/* The slider */
+.xs-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.xs-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 3px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .xs-slider {
+  background-color: #2196F3;
+}
+
+input:focus + .xs-slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .xs-slider:before {
+  -webkit-transform: translateX(12px);
+  -ms-transform: translateX(12px);
+  transform: translateX(12px);
+}
+
+/* Rounded sliders */
+.xs-slider.round {
+  border-radius: 18px;
+}
+
+.xs-slider.round:before {
+  border-radius: 50%;
+}
+
+/* Absolute Center Spinner */
+.loading {
+  position: fixed;
+  z-index: 999;
+  height: 4em;
+  width: 4em;
+  overflow: visible;
+  margin: auto;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+/* workaround for modal in modal scroll issue */
+.modal {
+  overflow-y: auto !important;
+}
+
+.indicator {
+  position: absolute;
+  z-index: 10;
+  height: 1em;
+  width: 1em;
+  overflow: visible;
+  top: 0;
+  right: 0;
+  margin-left: auto;
+  margin-top: 0.5em;
+  margin-right: 0.5em;
+}
+
+.carousel-indicators-numbers li {
+  text-indent: 0;
+  margin: 0 2px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 100%;
+  line-height: 30px;
+  color: #fff;
+  background-color: #999;
+  transition: all 0.25s ease;
+}
+
+.carousel-indicators-numbers li.active,
+.carousel-indicators-numbers li:hover {
+  margin: 0 2px;
+  width: 30px;
+  height: 30px;
+  background-color: #337ab7;
+}
+
+
+a.member-anchor, a.member-anchor:visited {
+  color: #fff !important;
+}
+
+a.member-anchor:hover {
+  color: #007bff !important;
+}
+
+.image-canvas-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  width: 100%;
+  opacity: 1;
+  background-color: transparent;
+}
+
+.btn-group-xs > .btn, .btn-xs {
+  padding: .25rem .4rem;
+  font-size: .875rem;
+  line-height: .5;
+  border-radius: .2rem;
+}
+
+.carousel-content {
+  max-height: 90%;
+}
+
+.editable:hover {
+  animation: shake 0.8s;
+  animation-iteration-count: infinite;
+}
+
+@keyframes shake {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  10% { transform: translate(-1px, -2px) rotate(-1deg); }
+  20% { transform: translate(-3px, 0px) rotate(1deg); }
+  30% { transform: translate(3px, 2px) rotate(0deg); }
+  40% { transform: translate(1px, -1px) rotate(1deg); }
+  50% { transform: translate(-1px, 2px) rotate(-1deg); }
+  60% { transform: translate(-3px, 1px) rotate(0deg); }
+  70% { transform: translate(3px, 1px) rotate(-1deg); }
+  80% { transform: translate(-1px, -1px) rotate(1deg); }
+  90% { transform: translate(1px, 2px) rotate(0deg); }
+  100% { transform: translate(1px, -2px) rotate(-1deg); }
 }

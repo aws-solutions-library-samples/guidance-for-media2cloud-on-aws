@@ -6,29 +6,69 @@
 
 # Run unit tests
 echo "Running unit tests"
-echo "------------------------------------------------------------------------------"
-echo "Installing Dependencies And Testing Analysis"
-echo "------------------------------------------------------------------------------"
-pushd ../source/backend
-npm install
-npm test
-popd
 
 echo "------------------------------------------------------------------------------"
-echo "Installing Dependencies And Testing API"
+echo "Installing Testing Dependencies"
 echo "------------------------------------------------------------------------------"
-pushd ../source/custom-resources
-npm install
-npm test
+pushd ../source
+npm install -g \
+  aws-sdk \
+  aws-sdk-mock \
+  browserify \
+  chai \
+  eslint \
+  eslint-config-airbnb-base \
+  eslint-plugin-import \
+  mocha \
+  nock \
+  npm-run-all \
+  sinon \
+  sinon-chai \
+  uglify-es
 popd
 
-echo "------------------------------------------------------------------------------"
-echo "Installing Dependencies And Testing Helper"
-echo "------------------------------------------------------------------------------"
-pushd ../source/webapp
-npm install
-#npm test
-popd
+
+#
+# Testing lambda packages
+#
+PACKAGES=(\
+  "api" \
+  "ingest" \
+  "analysis-monitor" \
+  "image-analysis" \
+  "audio-analysis" \
+  "video-analysis" \
+  "document-analysis" \
+  "gt-labeling" \
+)
+
+for package in "${PACKAGES[@]}"; do
+  echo "------------------------------------------------------------------------------"
+  echo "Testing Package ${package}"
+  echo "------------------------------------------------------------------------------"
+  pushd ../source/${package}
+  npm install
+  npm test
+  popd
+done
+
+#
+# Testing lambda layers
+#
+LAYERS=(\
+  "mediainfo" \
+)
+
+for layer in "${LAYERS[@]}"; do
+  echo "------------------------------------------------------------------------------"
+  echo "Testing Layer ${layer}"
+  echo "------------------------------------------------------------------------------"
+  pushd ../source/layers/${layer}
+  npm install
+  npm test
+  popd
+done
+
 
 echo "------------------------------------------------------------------------------"
 echo "Installing Dependencies And Testing Complete"

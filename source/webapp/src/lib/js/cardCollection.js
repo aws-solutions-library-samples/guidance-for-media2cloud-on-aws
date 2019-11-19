@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -18,6 +10,9 @@
 
 /* eslint-disable no-console */
 /* eslint-disable no-unused-vars */
+/* eslint-disable no-await-in-loop */
+/* eslint-disable class-methods-use-this */
+/* eslint-disable no-alert */
 
 /**
  * @class CardCollection
@@ -25,22 +20,23 @@
  */
 class CardCollection {
   constructor(params = {}) {
-    const {
-      collectionId = '#videoCollectionId',
-    } = params;
-
-    this.$element = $(collectionId);
+    this.$element = $(params.collectionId || CardCollection.Id.CollectionId);
     this.$cards = [];
-    this.$dbConfig = undefined;
-    this.$dbInstance = undefined;
-    this.$preview = new Preview(this);
+    this.$nextToken = undefined;
+    this.$videoPreview = new VideoPreview(this);
+    this.$imagePreview = new ImagePreview(this);
   }
 
-  /* eslint-disable class-methods-use-this */
   get [Symbol.toStringTag]() {
     return 'CardCollection';
   }
-  /* eslint-enable class-methods-use-this */
+
+  static get Id() {
+    return {
+      CollectionId: '#videoCollectionId',
+      LoadMoreData: '#idLoadMoreData',
+    };
+  }
 
   get element() {
     return this.$element;
@@ -54,28 +50,22 @@ class CardCollection {
     this.$cards.splice(-1, 0, ...val);
   }
 
-  get db() {
-    return this.$dbInstance;
+  get nextToken() {
+    return this.$nextToken;
   }
 
-  set db(val) {
-    this.$dbInstance = val;
+  set nextToken(val) {
+    this.$nextToken = val;
   }
 
-  get dbConfig() {
-    return this.$dbConfig;
+  get videoPreview() {
+    return this.$videoPreview;
   }
 
-  set dbConfig(val) {
-    this.$dbConfig = val;
+  get imagePreview() {
+    return this.$imagePreview;
   }
 
-  get preview() {
-    return this.$preview;
-  }
-
-  /* eslint-disable class-methods-use-this */
-  /* eslint-disable no-alert */
   /**
    * @function handleEvent
    * @description manage UI events
@@ -83,106 +73,100 @@ class CardCollection {
    * @param {string} action
    */
   async handleEvent(card, action) {
-    const basename = card.asset.glacier.name;
-
     try {
+      AppUtils.loading('spinning-icon');
+
+      /* play request */
+      if (action === 'play') {
+        await this.videoPreview.show(card);
+        return;
+      }
+
+      if (action === 'preview') {
+        await this.imagePreview.show(card);
+        return;
+      }
+
+      const runningProcess = card.isBusy();
+      if (runningProcess) {
+        alert(`'${card.basename}' is still being processed by ${runningProcess}`);
+        return;
+      }
+
       /* generate metadata */
       if (action === 'metadata') {
-        if (card.metadataInProgress()) {
-          alert(`${action}: '${basename}' already in process`);
-        } else {
-          await this.startMetadataStateMachine(card);
-          alert(`${action}: '${basename}' request submitted`);
+        const yesno = window.confirm(`Start to analyze '${card.basename}' now?`);
+        if (yesno) {
+          await this.onStartAnalysisWorkflow(card);
+          return;
         }
-        return;
       }
 
       /* restore request */
       if (action === 'restore') {
-        if (card.restoreInProgress()) {
-          alert(`${action}: '${basename}' already in process`);
-        } else {
-          await this.startIngestStateMachine(card);
-        }
-        return;
-      }
-
-      /* play request */
-      if (action === 'play') {
-        await this.preview.show(card);
+        await this.onStartIngestWorkflow(card);
         return;
       }
 
       /* purging record */
       if (action === 'remove') {
-        if (card.restoreInProgress() || card.restoreInProgress()) {
-          alert(`cannot remove '${basename}' as it is still in process`);
-        } else {
-          /* eslint-disable no-restricted-globals */
-          const yesno = confirm(`Removing '${basename}' will also delete the database record. Continue?`);
-
-          if (yesno) {
-            await this.onDelete(card);
-          }
+        const yesno = window.confirm(`Removing '${card.basename}' will also delete the database record. Continue?`);
+        if (yesno) {
+          await this.onDelete(card);
+          return;
         }
       }
     } catch (e) {
-      alert(`ERR: ${action} '${basename}' failed. ${e.message}`);
+      alert(`ERR: ${action} failed. ${e.message}`);
+    } finally {
+      AppUtils.loading('spinning-icon', false);
     }
   }
-  /* eslint-enable no-alert */
-  /* eslint-enable class-methods-use-this */
 
-  /**
-   * @function startIngestStateMachine
-   * @description start ingest state machine
-   * @param {VideoCard} card
-   */
-  async startIngestStateMachine(card) {
-    const body = {
-      Config: this.dbConfig.toJSON(),
-      Data: card.asset.toJSON(),
-    };
-
-    const path = `/${this.dbConfig.ingestStateMachine}`;
-
-    const response = await this.startExecution(path, body);
-
-    return response;
-  }
-
-  /**
-   * @function startMetadataStateMachine
-   * @description start metadata state machine
-   * @param {VideoCard} card
-   */
-  async startMetadataStateMachine(card) {
-    const body = {
-      Config: this.dbConfig.toJSON(),
-      Data: card.asset.toJSON(),
-    };
-
-    const path = `/${this.dbConfig.metadataStateMachine}`;
-
-    const response = await this.startExecution(path, body);
-
-    return response;
-  }
-
-  /**
-   * @function startExecution
-   * @description auth http request to start state machine execution
-   * @param {string} path
-   * @param {string} body
-   */
-  async startExecution(path, body) {
-    const endpoint = `${this.dbConfig.apiGatewayEndpoint}${path}`;
-
+  async scanCollection() {
     const query = {
-      requester: AWS.config.credentials.identityId,
+      pageSize: Storage.getOption('pageSize', 10),
     };
 
-    return AppUtils.authHttpRequest('POST', endpoint, query, body);
+    if (this.nextToken) {
+      query.token = this.nextToken;
+    }
+
+    const {
+      Items,
+      NextToken,
+    } = await ApiHelper.scanRecords(query);
+
+    this.nextToken = NextToken;
+
+    return Items;
+  }
+
+  createCard(data, idx = this.cards.length) {
+    let card = this.cards.find(x => x.uuid === data.uuid);
+    if (!card) {
+      card = CardFactory.createCard(data, this);
+      this.cards.splice(-1, 0, card);
+    }
+    return card;
+  }
+
+  async insertCard(item, idx = this.cards.length) {
+    const uuid = (typeof item === 'string') ? item : item.uuid;
+    if (!uuid) {
+      throw new Error(`invalid item, ${JSON.stringify(item, null, 2)}`);
+    }
+
+    const data = await ApiHelper.getRecord(uuid);
+    if (!Object.keys(data).length) {
+      return undefined;
+    }
+
+    const card = CardFactory.createCard(data, this);
+    await card.domInit();
+
+    this.domInsertAt(Math.max(0, idx), card);
+    return card;
   }
 
   /**
@@ -191,50 +175,17 @@ class CardCollection {
    */
   async connect() {
     try {
-      /* solution-manifest.js is auto-generated by CloudFormation template */
-      /* Global variable is the solution ID */
-      const {
-        DynamoDB: {
-          Configuration: {
-            Table,
-            PartitionKey,
-            ItemKey,
-          },
-        },
-      } = SO0050;
-
-      const {
-        AWSomeNamespace: {
-          DB,
-          DBConfig,
-        },
-      } = window;
-
-      const config = await DBConfig.loadFromDB(Table, PartitionKey, ItemKey);
-
-      const db = new DB({
-        Table: config.assetTable,
-        PartitionKey: config.assetPartitionKey,
-      });
-
-      const collection = await db.scan();
-
-      const promises = collection.map(async (x) => {
-        const promise = await VideoCard.createFromData(x, this);
-        return promise;
-      });
-
-      const cards = await Promise.all(promises);
-
-      cards.forEach((card) => {
-        this.domInsertAt(0, card);
-      });
-
-      this.dbConfig = config;
-      this.db = db;
+      AppUtils.loading('spinning-icon');
+      const items = await this.scanCollection();
+      while (items.length) {
+        await this.insertCard(items.shift());
+      }
+      this.registerEvents();
     } catch (e) {
-      console.error(e);
+      console.error(encodeURIComponent(e.message));
       throw e;
+    } finally {
+      AppUtils.loading('spinning-icon', false);
     }
   }
 
@@ -255,6 +206,21 @@ class CardCollection {
     this.cards.splice(0);
   }
 
+  registerEvents() {
+    /* load more data button */
+    $(CardCollection.Id.LoadMoreData).off('click').on('click', async (event) => {
+      event.preventDefault();
+      if (this.nextToken) {
+        AppUtils.loading('spinning-icon');
+        const items = await this.scanCollection().catch(e => undefined);
+        while (items.length) {
+          await this.insertCard(items.shift()).catch(e => undefined);
+        }
+        AppUtils.loading('spinning-icon', false);
+      }
+      $(CardCollection.Id.LoadMoreData).prop('disabled', !this.nextToken);
+    });
+  }
 
   /**
    * @function findByUUID
@@ -262,8 +228,41 @@ class CardCollection {
    * @param {string} uuid
    */
   findByUUID(uuid) {
-    return this.cards.find(x =>
-      x.asset.uuid === uuid);
+    return uuid && this.cards.find(x =>
+      x.uuid === uuid);
+  }
+
+  async onIngestStateMessage(msg) {
+    if (!msg.uuid) {
+      return this;
+    }
+
+    const card = this.findByUUID(msg.uuid) || await this.insertCard(msg, 0);
+
+    await card.onIngestMessage(msg);
+    return this;
+  }
+
+  async onGroundTruthStateMessage(msg) {
+    await Promise.all([
+      this.imagePreview.onGroundTruthMessage(msg),
+      this.videoPreview.onGroundTruthMessage(msg),
+    ]);
+
+    const card = this.findByUUID(msg.uuid);
+    if (card) {
+      await card.onGroundTruthMessage(msg);
+    }
+    return this;
+  }
+
+  async onAnalysisStateMessage(msg) {
+    if (!msg.uuid) {
+      return this;
+    }
+    const card = this.findByUUID(msg.uuid);
+    await card.onAnalysisMessage(msg);
+    return this;
   }
 
   /**
@@ -271,40 +270,27 @@ class CardCollection {
    * @description manage status reported from IotSubscriber
    * @param {object} status - status from IotSubscriber
    */
-  async messageHook(status) {
+  async messageHook(msg) {
     try {
-      const {
-        State,
-        Status,
-        Data: {
-          UUID: uuid,
-        },
-      } = status;
-
-      if (!uuid) {
-        if (State === 's3' && Status === 'OBJECTCREATED') {
-          return this;
-        }
-
-        throw new Error(`uuid not found: ${JSON.stringify(status)}`);
+      switch (msg.stateMachine) {
+        case SO0050.StateMachines.GroundTruth:
+          await this.onGroundTruthStateMessage(msg);
+          break;
+        case SO0050.StateMachines.Ingest:
+          await this.onIngestStateMessage(msg);
+          break;
+        case SO0050.StateMachines.Analysis:
+          await this.onAnalysisStateMessage(msg);
+          break;
+        default:
+          break;
       }
-
-      let asset = this.findByUUID(uuid);
-
-      if (!asset) {
-        const data = await this.db.fetch(uuid);
-
-        asset = await VideoCard.createFromData(data, this);
-
-        this.domInsertAt(0, asset);
-      }
-
-      await asset.onMessage(status);
     } catch (e) {
-      console.error(e);
+      console.error(encodeURIComponent(e.message));
     }
     return this;
   }
+
 
   /**
    * @function domInsertAt
@@ -313,17 +299,14 @@ class CardCollection {
    * @param {VideoCard} card
    */
   domInsertAt(index, card) {
-    /* skip if card already exists */
-    if (this.cards.findIndex(x => x.asset.uuid === card.asset.uuid) >= 0) {
-      return this;
+    if (this.cards.findIndex(x => x.uuid === card.uuid) < 0) {
+      this.cards.splice(-1, 0, card);
     }
 
-    this.cards.splice(-1, 0, card);
-
-    const sibling = this.element.children().eq(index);
-
-    card.domInsertAfter(sibling);
-
+    if (!this.element.find(`#card-${card.uuid}`).length) {
+      const sibling = this.element.children().eq(index);
+      card.domInsertAfter(sibling);
+    }
     return this;
   }
 
@@ -334,59 +317,89 @@ class CardCollection {
    */
   async onDelete(card) {
     const index = this.cards.findIndex(x =>
-      x.asset.uuid === card.asset.uuid);
+      x.uuid === card.uuid);
 
     if (index === undefined) {
       return;
     }
 
     await card.purge();
-
     this.cards.splice(index, 1);
   }
 
   /**
    * @function onSearch
    * @description search Elasticsearch engine
-   * @param {string} searchParam
+   * @param {Object} results
    */
-  async onSearch(searchParam) {
+  async onSearch(results, beginSearch = false) {
     try {
-      if (!searchParam) {
-        // show all
+      if (!results) {
         this.cards.forEach(x => x.domShow());
       } else {
-        // hide all, do a search, and filter content
-        this.cards.forEach(x =>
-          x.domHide());
-
-        const endpoint = `${this.dbConfig.analyticsApiEndpoint}/search`;
-
-        const query = {
-          searchterm: searchParam.toLowerCase().replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, ''),
-          page: 1,
-        };
-
-        const {
-          Items,
-        } = await AppUtils.authHttpRequest('GET', endpoint, query);
-
-        console.log(`searching ${query.searchterm} returns ${Items.length} items...`);
-
-        const uuids = Items.map(x =>
-          x.media_id);
-
-        uuids.forEach((uuid) => {
+        if (beginSearch) {
+          this.cards.forEach(x =>
+            x.domHide());
+        }
+        const promises = [];
+        results.uuids.forEach((uuid) => {
           const matched = this.cards.find(card =>
-            card.asset.uuid === uuid);
+            card.uuid === uuid);
 
           if (matched) {
             matched.domShow();
+          } else {
+            promises.push(this.insertCard(uuid).catch(() => undefined));
           }
         });
+        await Promise.all(promises);
       }
     } catch (e) {
-      console.error(e);
+      console.error(encodeURIComponent(e.message));
     }
+  }
+
+  async onStartIngestWorkflow(card) {
+    return ApiHelper.startIngestWorkflow({
+      bucket: SO0050.Ingest.Bucket,
+      uuid: card.uuid,
+      key: card.key,
+    });
+  }
+
+  async onStartAnalysisWorkflow(card) {
+    return ApiHelper.startAnalysisWorkflow({
+      uuid: card.uuid,
+      input: {
+        aiOptions: this.getAimlOptions(),
+      },
+    });
+  }
+
+  getAimlOptions() {
+    return {
+      /* rekog */
+      celeb: Storage.getOption('celeb', SO0050.AIML.celeb),
+      face: Storage.getOption('face', SO0050.AIML.face),
+      faceMatch: Storage.getOption('faceMatch', SO0050.AIML.faceMatch),
+      label: Storage.getOption('label', SO0050.AIML.label),
+      moderation: Storage.getOption('moderation', SO0050.AIML.moderation),
+      person: Storage.getOption('person', SO0050.AIML.person),
+      text: Storage.getOption('text', SO0050.AIML.text),
+      /* comprehend */
+      transcript: Storage.getOption('transcript', SO0050.AIML.transcript),
+      entity: Storage.getOption('entity', SO0050.AIML.entity),
+      keyphrase: Storage.getOption('keyphrase', SO0050.AIML.keyphrase),
+      sentiment: Storage.getOption('sentiment', SO0050.AIML.sentiment),
+      topic: Storage.getOption('topic', SO0050.AIML.topic),
+      /* document */
+      document: Storage.getOption('document', SO0050.AIML.document),
+      /* advanced settings */
+      languageCode: Storage.getOption('languageCode', SO0050.AIML.languageCode),
+      customVocabulary: Storage.getOption('customVocabulary', SO0050.AIML.customVocabulary),
+      faceCollectionId: Storage.getOption('faceCollectionId', SO0050.AIML.faceCollectionId),
+      minConfidence: Storage.getOption('minConfidence', SO0050.AIML.minConfidence),
+      // vocabularies: Storage.getOption('vocabularies', SO0050.AIML.vocabularies),
+    };
   }
 }

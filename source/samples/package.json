@@ -1,0 +1,21 @@
+{
+  "name": "sample-code",
+  "version": "1.0.0",
+  "description": "media2loud sample codes",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+  },
+  "scripts": {
+    "pretest": "npm install",
+    "test": "ENV_QUIET=1 mocha --timeout 120000 ./*.spec.js",
+    "build:clean": "rm -rf dist && mkdir -p dist",
+    "build:copy": "cp -rv index.js package.json lib dist/",
+    "build:install": "cd dist && npm install --production",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "author": "aws-mediaent-solutions",
+  "license": "MIT-0",
+  "devDependencies": {}
+}

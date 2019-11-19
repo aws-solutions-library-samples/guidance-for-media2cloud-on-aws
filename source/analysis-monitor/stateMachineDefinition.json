@@ -1,0 +1,158 @@
+{
+    "StartAt": "Sanity check",
+    "States": {
+        "Sanity check": {
+            "Type": "Pass",
+            "Result": "start-analysis",
+            "ResultPath": "$.operation",
+            "Next": "Start analysis"
+        },
+        "Start analysis": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Next": "Wait for analysis",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Analysis error"
+                }
+            ]
+        },
+        "Wait for analysis": {
+            "Type": "Wait",
+            "Seconds": ${WaitIntervalInSec},
+            "Next": "Check analysis status"
+        },
+        "Check analysis status": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "check-analysis-status",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.next"
+            },
+            "Next": "Analysis completed?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.1
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Analysis error"
+                }
+            ]
+        },
+        "Analysis completed?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Collect analysis results"
+                }
+            ],
+            "Default": "Wait for analysis"
+        },
+        "Collect analysis results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "collect-analysis-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.next"
+            },
+            "Next": "Index analysis results",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Analysis error"
+                }
+            ]
+        },
+        "Analysis error": {
+            "Type": "Fail"
+        },
+        "Index analysis results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "index-analysis-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.next"
+            },
+            "Next": "Completed",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Index error"
+                }
+            ]
+        },
+        "Index error": {
+            "Type": "Fail"
+        },
+        "Completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.next"
+            },
+            "End": true
+        }
+    }
+}

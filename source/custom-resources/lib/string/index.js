@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -20,6 +12,7 @@
 /* eslint-disable global-require */
 /* eslint-disable no-unused-vars */
 /* eslint-disable arrow-body-style */
+const AWS = require('aws-sdk');
 const CRYPTO = require('crypto');
 
 const {
@@ -33,6 +26,10 @@ const {
  */
 exports.StringManipulation = async (event, context) => {
   try {
+    const {
+      ResourceProperties = {},
+    } = event || {};
+
     class X0 extends mxBaseResponse(class {}) {}
     const x0 = new X0(event, context);
 
@@ -41,13 +38,28 @@ exports.StringManipulation = async (event, context) => {
       return x0.responseData;
     }
 
-    const {
-      ResourceProperties = {},
-    } = event || {};
+    /* if is 'Update', find the previous OutputString we generated */
+    if (x0.isRequestType('Update') && ResourceProperties.OutputReference) {
+      const result = await (new AWS.CloudFormation({
+        apiVersion: '2010-05-15',
+      })).describeStacks({
+        StackName: event.StackId.split('/')[1],
+      }).promise().catch(e => undefined);
+
+      if (result && result.Stacks.length) {
+        const out = result.Stacks.shift().Outputs.find(x =>
+          x.OutputKey === ResourceProperties.OutputReference);
+        if ((out || {}).OutputValue) {
+          x0.storeResponseData('OutputString', out.OutputValue);
+          x0.storeResponseData('Status', 'SUCCESS');
+          return x0.responseData;
+        }
+      }
+    }
 
     /* Support 'InputString' and 'Operations' parameters only */
     /* where Operations is specified as a string, comma separator */
-    /* lower, upper, maxlen=20, minlen=3, random, underscore, dash */
+    /* lower, upper, maxlen=20, minlen=3, random, underscore, dash, alphanumeric */
     const {
       InputString,
       Operations = '',
@@ -72,6 +84,10 @@ exports.StringManipulation = async (event, context) => {
     /* process the operations */
     let fragment = InputString || '';
 
+    if (operations.alphanumeric) {
+      fragment = fragment.replace(/[^a-zA-Z0-9]+/g, '');
+    }
+
     if (operations.random) {
       let random = Number.parseInt(operations.random || 8, 10);
       /* operations.random must be at least 4 */
@@ -88,6 +104,11 @@ exports.StringManipulation = async (event, context) => {
     }
 
     if (operations.underscore) {
+      // '__abc 123 ,.<>/!@$#-_ def___'
+      //  .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      //  .replace(/_+/g, '_')
+      //  .replace(/_*$/, '')
+      //  .replace(/^_*/, '')
       fragment = fragment.replace(/[\s-]/g, '_');
     }
 

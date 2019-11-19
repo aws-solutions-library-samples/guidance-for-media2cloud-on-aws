@@ -1,0 +1,22 @@
+{
+  "name": "mediainfo",
+  "version": "2.0.0",
+  "description": "mediainfo lambda layer",
+  "main": "index.js",
+  "private": true,
+  "author": "aws-mediaent-solutions",
+  "license": "ISC",
+  "dependencies": {
+    "xml2js": "^0.4.19"
+  },
+  "scripts": {
+    "pretest": "npm install",
+    "test": "mocha *.spec.js",
+    "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/mediainfo",
+    "build:copy": "cp -rv package.json index*.js macos amazon dist/nodejs/node_modules/mediainfo",
+    "build:install": "cd dist/nodejs/node_modules/mediainfo && npm install --production",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "devDependencies": {}
+}

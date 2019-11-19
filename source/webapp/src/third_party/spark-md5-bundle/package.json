@@ -1,6 +1,6 @@
 {
   "name": "spark-md5-bundle",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "simply copy spark-md5 js to dist folder",
   "main": "index.js",
   "scripts": {

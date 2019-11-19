@@ -1,0 +1,24 @@
+{
+  "name": "m2c-core-lib",
+  "version": "2.0.0",
+  "description": "core library for media2cloud solution",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "@elastic/elasticsearch": "^6.8.2",
+    "aws-elasticsearch-connector": "^8.0.0",
+    "deepmerge": "^2.1.1",
+    "mime": "^2.3.1"
+  },
+  "scripts": {
+    "pretest": "npm install",
+    "test": "echo \"core-lib wraps common classes. skipping unit test...\"",
+    "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/m2c-core-lib",
+    "build:copy": "cp -rv index*.js package.json lib dist/nodejs/node_modules/m2c-core-lib",
+    "build:install": "cd dist/nodejs/node_modules/m2c-core-lib && npm install --production",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "author": "aws-mediaent-solutions",
+  "devDependencies": {}
+}

@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -22,6 +14,31 @@
  * @description on document ready...
  */
 $(document).ready(async () => {
+  /**
+   * initialize mime types
+   */
+  (() => {
+    window.AWSomeNamespace.Mime.define({
+      'image/x-adobe-dng': ['DNG'],
+      'image/x-canon-cr2': ['CR2'],
+      'image/x-canon-crw': ['CRW'],
+      'image/x-epson-erf': ['ERF'],
+      'image/x-fuji-raf': ['RAF'],
+      'image/x-kodak-dcr': ['DCR'],
+      'image/x-kodak-k25': ['K25'],
+      'image/x-kodak-kdc': ['KDC'],
+      'image/x-minolta-mrw': ['MRW'],
+      'image/x-nikon-nef': ['NEF'],
+      'image/x-olympus-orf': ['ORF'],
+      'image/x-panasonic-raw': ['RAW'],
+      'image/x-pentax-pef': ['PEF'],
+      'image/x-sony-arw': ['ARW'],
+      'image/x-sony-sr2': ['SR2'],
+      'image/x-sony-srf': ['SRF'],
+      'image/x-sigma-x3f': ['X3F'],
+    }, true);
+  })();
+
   /**
    * Cognito instance
    */
@@ -42,11 +59,11 @@ $(document).ready(async () => {
    * search box
    */
   const searchBox = new SearchBox({
-    onSearchHandler: (async (event) => {
-      await cardCollection.onSearch(event);
+    onSearchHandler: (async (...args) => {
+      await cardCollection.onSearch(...args);
     }),
   });
-  searchBox.registerEvents();
+  console.log(`${searchBox.toString()} initialized...`);
 
   /**
    * IotSubscriber
@@ -61,6 +78,7 @@ $(document).ready(async () => {
     onSignInHandler: (async () => {
       await subscriber.connect();
       await cardCollection.connect();
+      await GoogleMap.getInstance();
     }),
     onSignOutHandler: (async () => {
       await subscriber.reconnect();
@@ -79,9 +97,24 @@ $(document).ready(async () => {
   /**
    * Settings Tab Panel
    */
-  const settingsTab = new SettingsTabPanel(systemMessage, {
+  const settingsTab = new SettingsTabPanel({
     tabPanelId: '#settings',
+    systemMessageInstance: systemMessage,
+    cognitoInstance: myCognito,
   });
 
   console.log(`${settingsTab.toString()} initialized...`);
+
+  /**
+   * Bring up the sign in modal if the user has not signed in.
+   */
+  if (myCognito.isAnonymousUser) {
+    await AppUtils.pause(1000);
+    signInModal.showModal();
+  }
+
+  /**
+   * Check AIML service availability
+   */
+  await (ServiceAvailability.createInstance(SO0050.Region)).detectServices();
 });

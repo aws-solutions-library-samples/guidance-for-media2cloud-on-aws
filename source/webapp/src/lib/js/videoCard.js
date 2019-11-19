@@ -1,15 +1,7 @@
 /**
- *  Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.                        *
- *                                                                                                 *
- *  Licensed under the Amazon Software License (the "License"). You may not use this               *
- *  file except in compliance with the License. A copy of the License is located at                *
- *                                                                                                 *
- *      http://aws.amazon.com/asl/                                                                 *
- *                                                                                                 *
- *  or in the "license" file accompanying this file. This file is distributed on an "AS IS"        *
- *  BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License       *
- *  for the specific language governing permissions and limitations under the License.             *
- *
+ * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+ * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
 
 /**
@@ -18,43 +10,37 @@
 
 /* eslint-disable no-console */
 /* eslint-disable no-unused-vars */
+/* eslint-disable class-methods-use-this */
+/* eslint-disable no-plusplus */
+/* eslint-disable no-alert */
 
 /**
  * @class VideoCard
  * @description ui implementation of each video card
  */
-class VideoCard {
-  constructor(asset, parent) {
-    if (!parent || !asset) {
-      throw new Error('missing params, parent or asset');
-    }
+class VideoCard extends BaseCard {
+  constructor(data, parent) {
+    super(data, parent);
 
-    this.$asset = asset;
-    this.$parent = parent;
     this.$element = undefined;
     this.$stateMachine = undefined;
+    this.$timerOverlayProgress = undefined;
   }
 
-  /* eslint-disable class-methods-use-this */
+  static get StateMachines() {
+    return SO0050.StateMachines;
+  }
+
   get [Symbol.toStringTag]() {
     return 'VideoCard';
   }
-  /* eslint-enable class-methods-use-this */
 
-  get parent() {
-    return this.$parent;
+  get proxies() {
+    return this.data.proxies;
   }
 
-  set parent(val) {
-    this.$parent = val;
-  }
-
-  get asset() {
-    return this.$asset;
-  }
-
-  set asset(val) {
-    this.$asset = val;
+  get mediainfo() {
+    return this.data.mediainfo;
   }
 
   get element() {
@@ -77,113 +63,28 @@ class VideoCard {
     return !!this.$stateMachine;
   }
 
-  /* eslint-disable class-methods-use-this */
-  /**
-   * @function domRemoveStatusOverlay
-   * @description remove the status overlay ui
-   * @param {number} delay - delay in milliseconds
-   */
-  domRemoveStatusOverlay(delay = undefined) {
-    function delayFn() {
-      const overlay = this.element.find('div.progress-overlay').first();
-      overlay.children().remove();
-    }
-
-    const bindFn = delayFn.bind(this);
-
-    if (!delay) {
-      bindFn();
-    } else {
-      setTimeout(() => { bindFn(); }, delay);
-    }
+  get timerOverlayProgress() {
+    return this.$timerOverlayProgress;
   }
 
-  /**
-   * @function domCreateOverlayProgress
-   * @description create status/progress overlay ui
-   */
-  domCreateOverlayProgress() {
-    const overlay = this.element.find('div.progress-overlay').first();
-
-    const states = (() => {
-      if (this.stateMachine === this.parent.dbConfig.ingestStateMachine) {
-        return ['s3', 'mediainfo', 'transcode', 'ingest'];
-      } else if (this.stateMachine === this.parent.dbConfig.metadataStateMachine) {
-        return ['analytics', 'webvtt', 'mam'];
-      }
-
-      return undefined;
-    })();
-
-    if (!states) {
-      return undefined;
-    }
-
-    const dom = states.reduce((acc, cur, index) => {
-      acc.push(`<span class="badge badge-pill badge-secondary text-thin" data-state="${cur}">${cur}</span>`);
-      acc.push('<span class="text-thin">&gt;</span>');
-      return acc;
-    }, []);
-
-    dom.push(`
-      <div class="progress mt-2" style="height: 2px;">
-        <div class="progress-bar bg-success" data-action="progress" role="progressbar" style="width: 1%" aria-valuenow="1" aria-valuemin="0" aria-valuemax="100"></div>
-      </div>
-      <p class="text-left mt-1 mb-2 small" data-action="status">initializing...</p>
-    `);
-
-    const element = $(dom.join('\n'));
-
-    if (overlay) {
-      element.appendTo(overlay);
-    }
-    return element;
+  set timerOverlayProgress(val) {
+    this.$timerOverlayProgress = val;
   }
 
-  /**
-   * @function domUpdateOverlayProgress
-   * @description update status/progress overlay ui
-   * @param {string} State
-   * @param {string} Status
-   * @param {number} Progress
-   * @param {string} [ErrorMessage]
-   */
-  domUpdateOverlayProgress(State, Status, Progress, ErrorMessage) {
-    const overlay = this.element.find('div.progress-overlay').first();
-    const badge = overlay.find(`[data-state="${State}"]`).first();
-    const statusText = overlay.find('[data-action="status"]').first();
-    const progressbar = overlay.find('[data-action="progress"]').first();
-
-    if (badge) {
-      if (Status === 'FAILED') {
-        badge.removeClass('badge-light badge-secondary badge-success').addClass('badge-danger');
-        statusText.html(ErrorMessage);
-        return;
-      }
-
-      if (Progress === 100) {
-        badge.removeClass('badge-light badge-secondary badge-danger').addClass('badge-success');
-      } else {
-        badge.removeClass('badge-light badge-secondary badge-danger').addClass('badge-light');
-      }
-
-      statusText.html(`${Progress}%...`);
-      progressbar.css('width', `${Progress}%`).attr('aria-valuenow', Progress);
-    }
+  domInitialized() {
+    return !!(this.element);
   }
 
   /**
    * @function domUpdateThumbnail
    * @description update thumbnail image
    */
-  async domUpdateThumbnail() {
-    const basename = this.asset.glacier.name;
-
+  domUpdateThumbnail() {
+    if (!this.domInitialized()) {
+      return;
+    }
     const img = this.element.find('img.card-img-top').first();
-
-    const imageUrl = this.asset.signedImageUrl();
-
-    img.attr('src', imageUrl).attr('alt', `Play ${basename}`);
+    img.attr('src', this.getThumbnail()).attr('alt', `Play ${this.basename}`);
   }
 
   /**
@@ -246,45 +147,208 @@ class VideoCard {
    * @function domUpdateOverlayActions
    * @description update on-hover action button
    */
-  async domUpdateOverlayActions() {
-    const {
-      AWSomeNamespace: {
-        VideoAsset,
-      },
-    } = window;
+  domUpdateOverlayActions() {
+    setTimeout(async () => {
+      if (!this.domInitialized()) {
+        return;
+      }
+      const video = this.proxies.filter(x =>
+        x.type === 'video').shift();
 
-    const proxy = this.asset.proxy;
+      if (!(video || {}).key) {
+        throw new Error('fail to find proxy video key');
+      }
 
-    const proxyPromise = VideoAsset.fileExists(proxy.bucket, proxy.key);
+      const actions = [];
+      const exists = await VideoCard.fileExists(SO0050.Proxy.Bucket, video.key);
+      actions.push(exists ? 'play' : 'restore');
 
-    let dom = this.element.find('div[data-type="actions"]').first();
-
-    const parent = dom.parent();
-
-    dom.remove();
-
-    const metadata = this.asset.machineMetadata.canLoadVttTracks();
-
-    const proxyExists = await proxyPromise;
-
-    const actions = [];
-
-    if (!proxyExists) {
-      actions.push('restore');
-    } else {
-      actions.push('play');
-      if (!metadata) {
+      if (!this.hasAnalyzed()) {
         actions.push('metadata');
       }
+
+      let dom = this.element.find('div[data-type="actions"]').first();
+      const parent = dom.parent();
+
+      dom.remove();
+      dom = this.domCreateOverlayActions(actions);
+
+      $(dom).appendTo(parent);
+      await this.domRegisterEvents();
+    }, 10);
+  }
+
+  domCreateStates(states) {
+    const badges = Object.keys(states).reduce((acc, cur) => {
+      acc.push(`<span class="badge badge-pill badge-secondary text-thin" data-state="${states[cur].join(',')}">${cur}</span>`);
+      acc.push('<span class="text-thin">&gt;</span>');
+      return acc;
+    }, []);
+    badges.pop();
+    return badges.join('\n');
+  }
+
+  domCreateStateProgressBar() {
+    return `
+    <div class="progress mt-2" style="height: 2px;">
+      <div class="progress-bar bg-success" data-action="progress" role="progressbar" style="width: 1%" aria-valuenow="1" aria-valuemin="0" aria-valuemax="100">
+      </div>
+    </div>
+    <p class="text-left mt-1 mb-2 small" data-action="status">initializing...</p>`;
+  }
+
+  domCreateIngestOverlayStatus() {
+    const states = this.domCreateStates({
+      validate: [
+        VideoCard.States.CreateRecord,
+        VideoCard.States.CheckRestoreStatus,
+      ],
+      fixity: [
+        VideoCard.States.ComputeChecksum,
+        VideoCard.States.ValidateChecksum,
+      ],
+      mediainfo: [
+        VideoCard.States.RunMediainfo,
+      ],
+      transcode: [
+        VideoCard.States.StartTranscode,
+        VideoCard.States.CheckTranscodeStatus,
+      ],
+      indexer: [
+        VideoCard.States.UpdateRecord,
+        VideoCard.States.IndexIngestResults,
+        VideoCard.States.JobCompleted,
+      ],
+    });
+
+    const progressbar = this.domCreateStateProgressBar();
+
+    return `
+    <div class="progress-overlay collapse" data-state-machine=${VideoCard.StateMachines.Ingest}>
+      <!-- HERE GOES INGEST STATE MACHINE STATUS -->
+      ${states}
+      ${progressbar}
+    </div>`;
+  }
+
+  domCreateAnalysisOverlayStatus() {
+    const states = this.domCreateStates({
+      started: [
+        VideoCard.States.StartAnalysis,
+      ],
+      analyzing: [
+        VideoCard.States.CheckAnalysisStatus,
+        VideoCard.States.CollectAnalysisResults,
+      ],
+      indexer: [
+        VideoCard.States.IndexAnalysisResults,
+        VideoCard.States.JobCompleted,
+      ],
+    });
+
+    const progressbar = this.domCreateStateProgressBar();
+
+    return `
+    <div class="progress-overlay collapse" data-state-machine=${VideoCard.StateMachines.Analysis}>
+      <!-- HERE GOES ANALYSIS STATE MACHINE STATUS -->
+      ${states}
+      ${progressbar}
+    </div>`;
+  }
+
+  domCreateLabelingOverlayStatus() {
+    const states = this.domCreateStates({
+      dataset: [
+        VideoCard.States.CreateDataset,
+      ],
+      labeling: [
+        VideoCard.States.CreateLabelingJob,
+        VideoCard.States.CheckLabelingStatus,
+      ],
+      index: [
+        VideoCard.States.IndexResults,
+      ],
+      completed: [
+        VideoCard.States.JobCompleted,
+      ],
+    });
+
+    const progressbar = this.domCreateStateProgressBar();
+
+    return `
+    <div class="progress-overlay collapse" data-state-machine=${VideoCard.StateMachines.GroundTruth}>
+      <!-- HERE GOES INGEST STATE MACHINE STATUS -->
+      ${states}
+      ${progressbar}
+    </div>`;
+  }
+
+  domShowOverlayStatus(stateMachine) {
+    this.element.find('[data-state-machine]').each((k, v) => {
+      if ($(v).data('state-machine') === stateMachine) {
+        $(v).removeClass('collapse');
+      } else {
+        $(v).addClass('collapse');
+      }
+    });
+  }
+
+  domHideOverlayStatus(stateMachine, delay = 0) {
+    setTimeout(() => {
+      if (!this.domInitialized()) {
+        return;
+      }
+      const overlay = this.element.find(`[data-state-machine="${stateMachine}"]`).first();
+      overlay.addClass('collapse');
+      overlay.find('[data-state]').each((idx, state) =>
+        $(state).removeClass('badge-light badge-secondary badge-success'));
+    }, delay);
+  }
+
+  domUpdateOverlayStatus(msg) {
+    if (!this.domInitialized()) {
+      return;
     }
 
-    dom = this.domCreateOverlayActions(actions);
+    this.domShowOverlayStatus(msg.stateMachine);
 
-    $(dom).appendTo(parent);
+    const overlay = this.element.find(`[data-state-machine="${msg.stateMachine}"]`).first();
+    const states = overlay.find('[data-state]');
 
-    await this.domRegisterEvents();
+    if (msg.status === VideoCard.Statuses.Error) {
+      const badge = overlay.find('.badge-secondary').first();
+      const text = overlay.find('[data-action="status"]').first();
+      badge.removeClass('badge-light badge-secondary badge-success')
+        .addClass('badge-danger');
+      text.html(VideoCard.shorten(msg.errorMessage || 'Unknown error', 60));
+      console.log(encodeURIComponent(msg.errorMessage));
+      return;
+    }
+
+    for (let i = 0; i < states.length; i++) {
+      const badge = $(states[i]);
+      const state = badge.data('state').split(',').filter(x => x);
+      badge.removeClass('badge-light badge-secondary badge-success');
+      if (state.indexOf(msg.operation) >= 0) {
+        if (msg.status === VideoCard.Statuses.Completed) {
+          badge.addClass('badge-success');
+        } else if (msg.status === VideoCard.Statuses.Error) {
+          badge.addClass('badge-danger');
+        } else {
+          badge.addClass('badge-light');
+        }
+        /* break to avoid processing upcoming states */
+        break;
+      }
+      /* make sure all previous states are in 'green' */
+      badge.addClass('badge-success');
+    }
+
+    const progressbar = overlay.find('[data-action="progress"]').first();
+    const text = overlay.find('[data-action="status"]').first();
+    text.html(`${msg.progress}%...`);
+    progressbar.css('width', `${msg.progress}%`).attr('aria-valuenow', msg.progress);
   }
-  /* eslint-enable class-methods-use-this */
 
   /**
    * @function domInit
@@ -292,70 +356,55 @@ class VideoCard {
    * @param {boolean} badge - not used
    */
   async domInit(badge = false) {
-    const {
-      AWSomeNamespace: {
-        VideoAsset,
-      },
-    } = window;
+    if (this.domInitialized()) {
+      return;
+    }
+    const video = (this.proxies || []).filter(x =>
+      x.type === 'video').shift();
 
-    const uuid = this.asset.uuid;
-    const glacier = this.asset.glacier;
-    const proxy = this.asset.proxy;
-    const basename = glacier.name;
-
-    const promiseProxy = VideoAsset.fileExists(proxy.bucket, proxy.key);
-    const promiseGlacier = VideoAsset.headObject(glacier.bucket, glacier.videoKey);
-    const cardId = `card-${this.asset.uuid}`;
-    const newAsset = (badge) ? '<span class="badge badge-success">New</span>' : '';
-    const imageUrl = this.asset.signedImageUrl() || './images/image.png';
-    const metadata = this.asset.machineMetadata.canLoadVttTracks();
-    const proxyExists = await promiseProxy;
-
-    /* make sure to ignore exception from headObject */
-    const {
-      StorageClass = 'STANDARD',
-      Restore = {},
-      ErrorMessage,
-    } = await promiseGlacier.catch((e) => {
-      const r = {
-        StorageClass: 'STANDARD',
-        ErrorMessage: e.message,
-      };
-      return r;
-    });
+    const original = await VideoCard.fileExists(SO0050.Ingest.Bucket, this.key);
+    const proxy = (video || {}).key && await VideoCard.fileExists(SO0050.Proxy.Bucket, video.key);
+    const imageUrl = this.getThumbnail();
 
     const actions = [];
-
-    if (ErrorMessage) {
+    if (!original) {
       actions.push('not-found');
-    } else if (!proxyExists) {
+    } else if (!proxy) {
       actions.push('restore');
     } else {
       actions.push('play');
-      if (!metadata) {
+      if (!this.hasAnalyzed()) {
         actions.push('metadata');
       }
     }
 
     const dom = `
     <div class="col-sm-4 mt-4">
-      <div class="card" id="${cardId}">
+      <div class="card" id="card-${this.uuid}">
+        <!-- loading icon -->
+        <div
+          id="indicator-${this.uuid}"
+          class="spinner-grow text-light indicator collapse"
+          style="animation: spinner-grow 1.2s linear infinite;"
+          role="status">
+          <span class="sr-only">Loading...</span>
+        </div>
+
         <div class="overlay-container">
           <img class="card-img-top" src="${imageUrl}" alt="thumbnail">
           <div class="state-status-overlay mb-2 small pl-2 pr-2">
-            <div class="progress-overlay">
-              <!-- HERE GOES STATE MACHINE STATUS -->
-            </div>
+            ${this.domCreateIngestOverlayStatus()}
+            ${this.domCreateAnalysisOverlayStatus()}
+            ${this.domCreateLabelingOverlayStatus()}
           </div>
           ${this.domCreateOverlayActions(actions)}
         </div>
         <div class="card-body small">
-          <h6 class="card-title text-truncate lead">${basename}</h6>
+          <h6 class="card-title text-truncate lead">${this.basename}</h6>
           <dl class="row small">
-            <dt class="col-sm-3 text-truncate">Name</dt><dd class="col-sm-9 text-truncate" data-field="name">${glacier.name}</dd>
-            <dt class="col-sm-3 text-truncate">ID</dt><dd class="col-sm-9 text-truncate" data-field="uuid">${uuid}</dd>
-            <dt class="col-sm-3 text-truncate">LastModified</dt><dd class="col-sm-9 text-truncate" data-field="ingestDate">${glacier.lastModifiedISOFormat || '--'}</dd>
-            <dt class="col-sm-3 text-truncate">File(s)</dt><dd class="col-sm-9 text-truncate" data-field="files">${Object.keys(glacier.files).length}</dd>
+            <dt class="col-sm-3 text-truncate">Name</dt><dd class="col-sm-9 text-truncate" data-field="name">${this.basename}</dd>
+            <dt class="col-sm-3 text-truncate">ID</dt><dd class="col-sm-9 text-truncate" data-field="uuid">${this.uuid}</dd>
+            <dt class="col-sm-3 text-truncate">LastModified</dt><dd class="col-sm-9 text-truncate" data-field="ingestDate">${this.lastModifiedISOFormat || '--'}</dd>
           </dl>
           <div class="float-right">
             <a href="#" class="overlay-action">
@@ -387,7 +436,7 @@ class VideoCard {
   async domRegisterEvents() {
     const img = this.element.find('img.card-img-top').first();
 
-    img.on('error', () =>
+    img.off('error').on('error', () =>
       img.attr('src', './images/image-not-found.png'));
 
     const overlay = this.element.find('[data-action]');
@@ -415,7 +464,7 @@ class VideoCard {
    * @description show video card
    */
   domShow() {
-    const cardId = `#card-${this.asset.uuid}`;
+    const cardId = `#card-${this.uuid}`;
 
     $(cardId).parent().removeClass('collapse');
 
@@ -427,7 +476,7 @@ class VideoCard {
    * @description hide video card
    */
   domHide() {
-    const cardId = `#card-${this.asset.uuid}`;
+    const cardId = `#card-${this.uuid}`;
 
     $(cardId).parent().addClass('collapse');
 
@@ -435,102 +484,89 @@ class VideoCard {
   }
 
   /**
-   * @function metadataInProgress
-   * @description boolean to see if metadata state machine is still in progress
+   * @function isBusy
+   * @description check to see if content is still being processed.
    */
-  metadataInProgress() {
-    const overlay = this.element.find('div.progress-overlay').first().children();
-    return overlay.length > 0;
-  }
-
-  /**
-   * @function restoreInProgress
-   * @description boolean to see if restore state machine is still in progress, not used
-   */
-  restoreInProgress() {
-    const overlay = this.element.find('div.progress-overlay').first().children();
-    return overlay.length > 0;
-  }
-
-  /**
-   * @static
-   * @function createFromData
-   * @param {object} params - data loaded from DynamoDB
-   * @param {CardCollection} parent
-   */
-  static async createFromData(params, parent) {
-    try {
-      const {
-        AWSomeNamespace: {
-          VideoAsset,
-        },
-      } = window;
-
-      if (!parent) {
-        throw new Error('missing parent');
+  isBusy() {
+    let processing;
+    this.element.find('[data-state-machine]').each((k, v) => {
+      if (!$(v).hasClass('collapse')) {
+        processing = $(v).data('state-machine');
       }
-
-      const asset = new VideoAsset(params);
-
-      const card = new VideoCard(asset, parent);
-
-      await card.domInit();
-
-      return card;
-    } catch (e) {
-      console.error(e);
-      throw e;
-    }
+    });
+    return processing;
   }
 
-  /**
-   * @static
-   * @function onMessage
-   * @description manage messages from Iot message broker, update overlay/hover ui states
-   * @param {object} status - from IotSubscriber
-   */
-  async onMessage(status) {
-    const {
-      State,
-      Status,
-      Progress,
-      StateMachine,
-      ErrorMessage,
-    } = status;
-
-    if (ErrorMessage) {
-      console.log(`${this.asset.glacier.name}: Error=${ErrorMessage}`);
+  async onGroundTruthMessage(msg) {
+    if (msg.status === VideoCard.Statuses.Error) {
+      console.log(`${this.basename}: Error=${encodeURIComponent(msg.errorMessage)}`);
     } else {
-      console.log(`${this.asset.glacier.name}: State=${State}, Progress=${Progress}, Status=${Status}`);
+      console.log(`${this.basename}: operation=${msg.operation}, status=${msg.status}, progress=${msg.progress}`);
     }
 
-    const completed = (Status === 'COMPLETED' && (State === 'ingest' || State === 'mam'));
+    this.stateMachine = msg.stateMachine;
 
-    /* refresh VideoAsset attributes */
-    if (completed) {
-      const Table = this.parent.dbConfig.assetTable;
-      const PartitionKey = this.parent.dbConfig.assetPartitionKey;
+    this.domUpdateOverlayStatus(msg);
 
-      await this.asset.reload(Table, PartitionKey);
+    if (msg.operation === VideoCard.States.JobCompleted) {
+      this.domHideOverlayStatus(msg.stateMachine, 2000);
     }
 
-    const current = (completed) ? undefined : StateMachine;
-    const old = this.stateMachine;
-    this.stateMachine = current;
+    const indicator = $(`#indicator-${msg.uuid}`);
+    if (msg.operation === VideoCard.States.JobCompleted
+      || msg.status === VideoCard.Statuses.Error) {
+      indicator.addClass('collapse');
+    } else {
+      indicator.removeClass('collapse');
+    }
+  }
 
-    /* update UI accordingly */
-    if (old !== current) {
-      this.domRemoveStatusOverlay(completed ? 4000 : 0);
-
-      if (completed) {
-        await this.domUpdateThumbnail();
-        await this.domUpdateOverlayActions();
-      } else {
-        this.domCreateOverlayProgress();
-      }
+  async onIngestMessage(msg) {
+    if (msg.status === VideoCard.Statuses.Error) {
+      console.log(`${this.basename}: Error=${encodeURIComponent(msg.errorMessage)}`);
+    } else {
+      console.log(`${this.basename}: operation=${msg.operation}, status=${msg.status}, progress=${msg.progress}`);
     }
 
-    this.domUpdateOverlayProgress(State, Status, Progress, ErrorMessage);
+    this.stateMachine = msg.stateMachine;
+    if (msg.operation === VideoCard.States.CreateRecord) {
+      await this.reloadAsset();
+      await this.domInit();
+      this.parent.domInsertAt(0, this);
+    } else if (msg.operation === VideoCard.States.JobCompleted) {
+      await this.reloadAsset();
+      this.domUpdateThumbnail();
+      this.domUpdateOverlayActions();
+      this.domHideOverlayStatus(msg.stateMachine, 4000);
+    }
+    this.domUpdateOverlayStatus(msg);
+  }
+
+  async onAnalysisMessage(msg) {
+    if (msg.status === VideoCard.Statuses.Error) {
+      console.log(`${this.basename}: Error=${encodeURIComponent(msg.errorMessage)}`);
+    } else {
+      console.log(`${this.basename}: operation=${msg.operation}, status=${msg.status}, progress=${msg.progress}`);
+    }
+
+    this.stateMachine = msg.stateMachine;
+
+    this.domUpdateOverlayStatus(msg);
+
+    if (msg.operation === VideoCard.States.JobCompleted) {
+      this.domHideOverlayStatus(msg.stateMachine, 2000);
+      /* reload aiml results from DB */
+      await this.loadAimlResults(true);
+      this.domUpdateOverlayActions();
+    }
+  }
+
+  /**
+   * @function reloadAsset
+   * @description fetch from database to refresh the asset attributes
+   */
+  async reloadAsset() {
+    this.data = await ApiHelper.getRecord(this.uuid);
   }
 
   /**
@@ -550,37 +586,9 @@ class VideoCard {
    * that are already generated.
    */
   async purge() {
-    const {
-      AWSomeNamespace: {
-        VideoAsset,
-      },
-    } = window;
-
-    const promises = [];
-    const analytics = this.asset.proxy;
-
-    if (analytics.key) {
-      const key = `${analytics.key.slice(0, analytics.key.lastIndexOf('/'))}/analytics/results.json`;
-      promises.push(VideoAsset.deleteObject(analytics.bucket, key));
-    }
-
-    /* purge database entries */
-    const cfg = this.parent.dbConfig;
-    const databases = [{
-      /* Asset table */
-      Table: cfg.assetTable,
-      PartitionKey: cfg.assetPartitionKey,
-    }, {
-      /* Mediainfo table */
-      Table: cfg.mediainfoTable,
-      PartitionKey: cfg.mediainfoPartitionKey,
-    }];
-
-    promises.push(this.asset.purgeDB(databases));
-
+    await ApiHelper.purgeRecord(this.uuid);
     this.element.remove();
-
-    await Promise.all(promises);
+    console.log(`removed ${this.uuid}...`);
   }
 
   /**
@@ -596,16 +604,51 @@ class VideoCard {
     return basename;
   }
 
-  /**
-   * @function fetchMediainfo
-   * @description get mediainfo from dynamodb
-   */
-  async fetchMediainfo() {
-    const Table = this.parent.dbConfig.mediainfoTable;
-    const PartitionKey = this.parent.dbConfig.mediainfoPartitionKey;
+  getThumbnail() {
+    const images = (this.proxies || []).filter(x =>
+      x.type === 'image');
 
-    const mediainfo = await this.asset.fetchMediainfo(Table, PartitionKey);
+    if (!images.length) {
+      return './images/image.png';
+    }
 
-    return mediainfo;
+    /* get a random frame capture from the list */
+    const random = Math.floor((Math.random() * (images.length - 1)) + 1);
+    return VideoCard.signedUrl(SO0050.Proxy.Bucket, images[random - 1].key);
+  }
+
+  getVideo() {
+    const video = (this.proxies || []).filter(x =>
+      x.type === 'video').shift();
+
+    if (!(video || {}).key) {
+      throw new Error('fail to find proxy video');
+    }
+    return VideoCard.signedUrl(SO0050.Proxy.Bucket, video.key);
+  }
+
+  getVideoKey() {
+    const video = (this.proxies || []).filter(x =>
+      x.type === 'video').shift();
+
+    if (!(video || {}).key) {
+      throw new Error('fail to find proxy video');
+    }
+    return video.key;
+  }
+
+  getVideoAnalysis() {
+    const video = (this.aimlResults || []).filter(x => x.type === 'video').shift();
+    return (video || {}).rekognition || {};
+  }
+
+  getComprehendAnalysis() {
+    const audio = (this.aimlResults || []).filter(x => x.type === 'audio').shift();
+    return (audio || {}).comprehend || {};
+  }
+
+  getTranscribeAnalysis() {
+    const audio = (this.aimlResults || []).filter(x => x.type === 'audio').shift();
+    return (audio || {}).transcribe || {};
   }
 }

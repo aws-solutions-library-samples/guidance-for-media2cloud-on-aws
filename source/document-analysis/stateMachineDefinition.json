@@ -1,0 +1,278 @@
+{
+    "StartAt": "Sanity check",
+    "States": {
+        "Sanity check": {
+            "Type": "Pass",
+            "Next": "Start textract analysis"
+        },
+        "Start textract analysis": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Document-text params",
+                    "States": {
+                        "Document-text params": {
+                            "Type": "Pass",
+                            "Result": "start-document-text",
+                            "ResultPath": "$.operation",
+                            "Next": "Document-text enabled?"
+                        },
+                        "Document-text enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.aiOptions.document",
+                                    "BooleanEquals": false,
+                                    "Next": "Document-text skipped"
+                                }
+                            ],
+                            "Default": "Start document-text"
+                        },
+                        "Document-text skipped": {
+                            "Type": "Succeed"
+                        },
+                        "Start document-text": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Next": "Wait for document-text",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-text error"
+                                }
+                            ]
+                        },
+                        "Wait for document-text": {
+                            "Type": "Wait",
+                            "Seconds": ${WaitIntervalInSec},
+                            "Next": "Check document-text status"
+                        },
+                        "Check document-text status": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "operation": "check-document-text-status",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Document-text completed?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-text error"
+                                }
+                            ]
+                        },
+                        "Document-text completed?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "COMPLETED",
+                                    "Next": "Collect document-text results"
+                                }
+                            ],
+                            "Default": "Wait for document-text"
+                        },
+                        "Collect document-text results": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "operation": "collect-document-text-results",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Document-text succeed",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-text error"
+                                }
+                            ]
+                        },
+                        "Document-text error": {
+                            "Type": "Fail"
+                        },
+                        "Document-text succeed": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Document-analysis params",
+                    "States": {
+                        "Document-analysis params": {
+                            "Type": "Pass",
+                            "Result": "start-document-analysis",
+                            "ResultPath": "$.operation",
+                            "Next": "Document-analysis enabled?"
+                        },
+                        "Document-analysis enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.aiOptions.document",
+                                    "BooleanEquals": false,
+                                    "Next": "Document-analysis skipped"
+                                }
+                            ],
+                            "Default": "Start document-analysis"
+                        },
+                        "Document-analysis skipped": {
+                            "Type": "Succeed"
+                        },
+                        "Start document-analysis": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Next": "Wait for document-analysis",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-analysis error"
+                                }
+                            ]
+                        },
+                        "Wait for document-analysis": {
+                            "Type": "Wait",
+                            "Seconds": ${WaitIntervalInSec},
+                            "Next": "Check document-analysis status"
+                        },
+                        "Check document-analysis status": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "operation": "check-document-analysis-status",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Document-analysis completed?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-analysis error"
+                                }
+                            ]
+                        },
+                        "Document-analysis completed?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "COMPLETED",
+                                    "Next": "Collect document-analysis results"
+                                }
+                            ],
+                            "Default": "Wait for document-analysis"
+                        },
+                        "Collect document-analysis results": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "operation": "collect-document-analysis-results",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Document-analysis succeed",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Document-analysis error"
+                                }
+                            ]
+                        },
+                        "Document-analysis error": {
+                            "Type": "Fail"
+                        },
+                        "Document-analysis succeed": {
+                            "Type": "Succeed"
+                        }
+                    }
+                }
+            ],
+            "Next": "Completed"
+        },
+        "Completed": {
+            "Type": "Succeed"
+        }
+    }
+}

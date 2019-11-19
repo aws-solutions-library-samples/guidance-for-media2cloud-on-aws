@@ -1,0 +1,39 @@
+{
+  "CustomName": "proxy",
+  "Name": "File Group",
+  "Outputs": [
+    {
+      "ContainerSettings": {
+        "Container": "RAW"
+      },
+      "VideoDescription": {
+        "Width": 480,
+        "ScalingBehavior": "DEFAULT",
+        "Height": 270,
+        "TimecodeInsertion": "DISABLED",
+        "AntiAlias": "ENABLED",
+        "Sharpness": 50,
+        "CodecSettings": {
+          "Codec": "FRAME_CAPTURE",
+          "FrameCaptureSettings": {
+            "FramerateNumerator": 1,
+            "FramerateDenominator": 1,
+            "MaxCaptures": 10,
+            "Quality": 80
+          }
+        },
+        "AfdSignaling": "NONE",
+        "DropFrameTimecode": "ENABLED",
+        "RespondToAfd": "NONE",
+        "ColorMetadata": "INSERT"
+      },
+      "Extension": "jpg"
+    }
+  ],
+  "OutputGroupSettings": {
+    "Type": "FILE_GROUP_SETTINGS",
+    "FileGroupSettings": {
+      "Destination": "##PLACEHOLDER"
+    }
+  }
+}

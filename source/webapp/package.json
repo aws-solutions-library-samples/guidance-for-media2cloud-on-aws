@@ -1,6 +1,6 @@
 {
-  "name": "webapp",
-  "version": "1.1.0",
+  "name": "m2c-webapp",
+  "version": "2.0.0",
   "description": "media2cloud webapp",
   "main": "index.js",
   "private": true,
@@ -14,17 +14,5 @@
   },
   "author": "aws-mediaent-solutions",
   "dependencies": {},
-  "devDependencies": {
-    "aws-sdk-mock": "*",
-    "browserify": "^16.2.3",
-    "chai": "*",
-    "eslint": "^4.7.2",
-    "eslint-config-airbnb-base": "^12.0.0",
-    "eslint-plugin-import": "^2.7.0",
-    "mocha": "*",
-    "npm-run-all": "*",
-    "sinon": "*",
-    "sinon-chai": "*",
-    "uglify-es": "^3.3.9"
-  }
+  "devDependencies": {}
 }

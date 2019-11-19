@@ -1,0 +1,454 @@
+{
+    "Comment": "state machine to run mediainfo, create proxy, and update record",
+    "StartAt": "Sanity check",
+    "States": {
+        "Sanity check": {
+            "Type": "Pass",
+            "Result": "create-record",
+            "ResultPath": "$.operation",
+            "Next": "Create record"
+        },
+        "Create record": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Next": "Start checksum substate",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Record error"
+                }
+            ]
+        },
+        "Record error": {
+            "Type": "Fail"
+        },
+        "Start checksum substate": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Check restore status",
+                    "States": {
+                        "Check restore status": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "check-restore-status",
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Restore completed?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 4,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "Error"
+                                    ],
+                                    "Next": "Restore error"
+                                }
+                            ]
+                        },
+                        "Restore completed?": {
+                            "Type": "Choice",
+                            "Choices": [{
+                                "Variable": "$.status",
+                                "StringEquals": "COMPLETED",
+                                "Next": "Compute checksum"
+                            }],
+                            "Default": "Wait for restore"
+                        },
+                        "Wait for restore": {
+                            "Type": "Wait",
+                            "Seconds": 900,
+                            "Next": "Check restore status"
+                        },
+                        "Restore error": {
+                            "Type": "Fail"
+                        },
+                        "Compute checksum": {
+                            "Type": "Task",
+                            "Resource": "${x1}",
+                            "Parameters": {
+                                "operation": "compute-checksum",
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "input.$": "$.next"
+                            },
+                            "Next": "More data?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 4,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "Error"
+                                    ],
+                                    "Next": "Checksum error"
+                                }
+                            ]
+                        },
+                        "More data?": {
+                            "Type": "Choice",
+                            "Choices": [{
+                                "Variable": "$.status",
+                                "StringEquals": "COMPLETED",
+                                "Next": "Validate checksum"
+                            }],
+                            "Default": "Compute checksum"
+                        },
+                        "Validate checksum": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "validate-checksum",
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "input.$": "$.next"
+                            },
+                            "Next": "Checksum completed",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 4,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "Error"
+                                    ],
+                                    "Next": "Checksum error"
+                                }
+                            ]
+                        },
+                        "Checksum error": {
+                            "Type": "Fail"
+                        },
+                        "Checksum completed": {
+                            "Type": "Succeed"
+                        }
+                    }
+                }
+            ],
+            "Next": "Start proxy substate"
+        },
+        "Start proxy substate": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Is image?",
+                    "States": {
+                        "Is image?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable":  "$[0].next.src.type",
+                                    "StringEquals": "image",
+                                    "Next": "Run imageinfo"
+                                }
+                            ],
+                            "OutputPath": "$[0]",
+                            "Default": "Not an image"
+                        },
+                        "Not an image": {
+                            "Type": "Succeed"
+                        },
+                        "Run imageinfo": {
+                            "Type": "Task",
+                            "Resource": "${x1}",
+                            "Parameters": {
+                                "operation": "run-imageinfo",
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "input.$": "$.next"
+                            },
+                            "Next": "Image completed",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Image error"
+                                }
+                            ]
+                        },
+                        "Image error": {
+                            "Type": "Fail"
+                        },
+                        "Image completed": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Is video or audio?",
+                    "States": {
+                        "Is video or audio?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Or": [
+                                        {
+                                            "Variable":  "$[0].next.src.type",
+                                            "StringEquals": "video"
+                                        },
+                                        {
+                                            "Variable":  "$[0].next.src.type",
+                                            "StringEquals": "audio"
+                                        }
+                                    ],
+                                    "Next": "Run mediainfo"
+                                }
+                            ],
+                            "OutputPath": "$[0]",
+                            "Default": "Not video nor audio"
+                        },
+                        "Not video nor audio": {
+                            "Type": "Succeed"
+                        },
+                        "Run mediainfo": {
+                            "Type": "Task",
+                            "Resource": "${x1}",
+                            "Parameters": {
+                                "operation": "run-mediainfo",
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "input.$": "$.next"
+                            },
+                            "Next": "Start transcode",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "Mediainfo error"
+                                }
+                            ]
+                        },
+                        "Mediainfo error": {
+                            "Type": "Fail"
+                        },
+                        "Start transcode": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "start-transcode",
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "input.$": "$.next"
+                            },
+                            "Next": "Check transcode status",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 4,
+                                    "BackoffRate": 1.2
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "TranscodeError"
+                                    ],
+                                    "Next": "Transcode error"
+                                }
+                            ]
+                        },
+                        "Check transcode status": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "check-transcode-status",
+                                "uuid.$": "$.uuid",
+                                "status.$": "$.status",
+                                "progress.$": "$.progress",
+                                "input.$": "$.next"
+                            },
+                            "Next": "Transcode completed?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ],
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "TranscodeError"
+                                    ],
+                                    "Next": "Transcode error"
+                                }
+                            ]
+                        },
+                        "Transcode completed?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "COMPLETED",
+                                    "Next": "Transcode completed"
+                                }
+                            ],
+                            "Default": "Wait for transcoding"
+                        },
+                        "Wait for transcoding": {
+                            "Type": "Wait",
+                            "Seconds": 12,
+                            "Next": "Check transcode status"
+                        },
+                        "Transcode error": {
+                            "Type": "Fail"
+                        },
+                        "Transcode completed": {
+                            "Type": "Succeed"
+                        }
+                    }
+                }
+            ],
+            "Next": "Update record"
+        },
+        "Update record": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "update-record",
+                "uuid.$": "$[0].uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "Error"
+                    ],
+                    "Next": "Update error"
+                }
+            ],
+            "Next": "Index ingest results"
+        },
+        "Update error": {
+            "Type": "Fail"
+        },
+        "Index ingest results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "index-ingest-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.next"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "Error"
+                    ],
+                    "Next": "Index error"
+                }
+            ],
+            "Next": "Completed"
+        },
+        "Index error": {
+            "Type": "Fail"
+        },
+        "Completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.next"
+            },
+            "End": true
+        }
+    }
+}

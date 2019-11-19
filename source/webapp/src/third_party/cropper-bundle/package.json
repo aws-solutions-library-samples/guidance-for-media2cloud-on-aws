@@ -1,0 +1,16 @@
+{
+  "name": "cropper-bundle",
+  "version": "2.0.0",
+  "description": "simply copy cropper js to dist folder",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "copy": "cp -v ./node_modules/cropperjs/dist/cropper.min.*"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "cropperjs": "^1.4.3"
+  },
+  "devDependencies": {}
+}
