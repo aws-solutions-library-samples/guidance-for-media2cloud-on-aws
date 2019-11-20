@@ -1,6 +1,6 @@
 ## Appendix A: adding user to Media2Cloud web portal with Amazon Cognito User Pool service
 
-This tutorial describes how you can create new user and grant permission to access Media2Cloud web portal.
+This tutorial describes how you can create a new user and grant permission to access Media2Cloud web portal.
 
 ----
 
@@ -13,7 +13,7 @@ Under _AWS Management console_, choose **Amazon Cognito service** and select _Ma
 
 ### Step 2: Select Media2Cloud user pool
 You should see two user pools created by Media2Cloud: one for your labeling workteam and one for Media2Cloud web portal.
-Select the user pool suffixed with **-userpool**. (The name convention is SO0050-**<StackName>**-userpool)
+Select the user pool suffixed with **-userpool**. (The name convention is SO0050-**\<stack-name\>**-userpool)
 
 ![Choose user pool](./images/cognito-choose-user-pool.png)
 
@@ -28,6 +28,7 @@ Under _General settings_, select **Users and groups**. Click on **Create user**.
 
 ### Step 4: Fill in user details
 Fill in the following information:
+
 | Field | Description | Required? |
 |:------|:------------|:----------|
 | Username | your log in name to Media2Cloud web portal | Yes |
@@ -37,11 +38,20 @@ Fill in the following information:
 | Mark phone number as verified? | Leave it blank | No |
 | Email | a valid email address to receive an invitation email from Media2Cloud | Yes |
 | Mark email as verified? | Make sure this is **CHECKED** | Yes |
+
+
 ![Create user](./images/cognito-create-user-details.png)
 
+Click on **Create user**.
 
-Click on **Create user**. In a few minutes, you should receive an invitation email as follows.
+--
+
+### Step 5: Invitation email
+In a few minutes, you should receive an **invitation email** as follows.
+
 ![Invitation email](./images/welcome-email.png)
+
+Open the link with [Mozilla Firefox](https://www.mozilla.org/en-US/firefox/new/) or [Google Chrome](https://www.google.com/chrome/) browser.
 
 ----
 

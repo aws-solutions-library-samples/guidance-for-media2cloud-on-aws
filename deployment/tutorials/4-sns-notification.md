@@ -13,7 +13,7 @@ where
 
 So, to get this to work, we will:
 * reuse the lambda function we created earlier
-* add a trigger to let Amazon SNS service to invoke our lambda function
+* add a trigger to let Amazon SNS service invoke our lambda function
 * modify the code to support SNS notification
 * test it out
 
@@ -50,13 +50,13 @@ Click on _Add_.
 ```
   /**
   * TODO#7: What should the HTTP method be for starting analysis process?
-  * Tips: Review Tutorial #2, Using Media2Cloud RESTful API
+  * Tips: Review Tutorial #2, Using Media2Cloud RESTful API. Do not include '/demo'
   */
   function getAnalysisHttpPath() {
     return '#ANALYSIS_PATH';
   }
 ```
-* You can also look at the function to deconstruct SNS message
+* This function we have already written for you shows how to parse an SNS message
 ```
   function getUuidFromSnsEvent(event) {
     const message = JSON.parse(event.Records[0].Sns.Message);

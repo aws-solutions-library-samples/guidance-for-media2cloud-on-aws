@@ -44,7 +44,7 @@ The solution takes about 20 minutes to complete. When the stack is created, you 
 --
 
 ### Step 6: Log on to Media2Cloud web portal
-Click on the URL link in the Welcome email and sign in with the credential provided in the email. The first time you sign in to the web portal, you will be prompted to change your password.
+Click on the URL link in the **Welcome email** and sign in with the credential provided in the email. Use [Mozilla Firefox](https://www.mozilla.org/en-US/firefox/new/) or [Google Chrome](https://www.google.com/chrome/) to open the Media2Cloud web portal. The first time you open and sign in to the web portal, you will be prompted to change your password.
 
 Now, you can start upload images and videos.
 

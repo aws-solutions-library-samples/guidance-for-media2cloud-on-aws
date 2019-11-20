@@ -2358,7 +2358,7 @@ Resources:
 
                                 <p class="MainContent">
                                 <span class="SubContent">
-                                    S3 Bucket where contents are ingested:<o:p></o:p>
+                                    S3 Bucket where content is ingested:<o:p></o:p>
                                     <br/>
                                     <b>${ingest}</b><o:p></o:p>
                                 </span>

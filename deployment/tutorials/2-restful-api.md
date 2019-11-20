@@ -37,13 +37,18 @@ Media2Cloud RESTful API endpoint requires AWS_IAM authentication; therefore, we 
 aws iam create-user --user media2cloud-api-user
 ```
 
-3. Attach **AmazonAPIGatewayInvokeFullAccess** policy to the user
+3. Attach **AmazonAPIGatewayInvokeFullAccess** and **AmazonS3FullAccess** policies to the user
 
 ```
 aws iam attach-user-policy \
 --policy-arn arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess \
 --user media2cloud-api-user
+
+aws iam attach-user-policy \
+--policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess \
+--user media2cloud-api-user
 ```
+
 
 4. Create access key
 
@@ -64,19 +69,8 @@ aws iam create-access-key --user media2cloud-api-user
 }
 ```
 
-#### Option 2 - Using AWS Management Console to create an IAM user
-1. Go to **IAM service**
-2. Click on **Users**
-3. Click on **Add user**, specify **User name**. Under **Access type**, make sure **Programmatic access** is _CHECKED_. Click Next to continue.
-![Add user details](./images/iam-add-user-details.png)
-4. Under **Set permission**, select **Attach existing policies directly**. Search for APIGatewayInvokeFullAccess and select **AmazonAPIGatewayInvokeFullAccess**. Click Next to continue.
-![User permission](./images/iam-add-user-permission.png)
-5. Under Add Tag page, Click Next to continue
-6. Under Review page, Click **Create user**
-7. You just created an IAM user to user Media2Cloud RESTful APIs. Make sure you download the csv file of your API user. We will need it to configure Postman in the next section.
-![API user credential](./images/iam-add-user-credentials.png)
+**IMPORTANT NOTE:** For simplicity, this tutorial uses **AmazonAPIGatewayInvokeFullAccess** and **AmazonS3FullAccess** policies. For production or staging environment, we highly recommend you to limit the policy to the least privilege access. For example, you can create a policy to allow the api user to only being able to invoke Media2Cloud RESTful API endpoints and access to specific bucket(s) but provide **no permission** to other resources.
 
-**IMPORTANT NOTE:** For simplicity, this tutorial uses **AmazonAPIGatewayInvokeFullAccess** policy. For production or staging environment, we highly recommend you to limit the policy to the least privilege access. For example, you can create a policy to allow the api user to only being able to invoke Media2Cloud RESTful API endpoints and **no permission** to other resources.
 ```
 {
   "Version": "2012-10-17",
@@ -95,15 +89,40 @@ aws iam create-access-key --user media2cloud-api-user
         "arn:aws:execute-api:<region>:<account-id>:<api-id>/<stage>/POST/*",
         "arn:aws:execute-api:<region>:<account-id>:<api-id>/<stage>/DELETE/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<account>:user/media2cloud-api-user"
+      },
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<ingest-bucket-name>/*"
+      ]
     }
   ]
 }
 ```
 
+#### Option 2 - Using AWS Management Console to create an IAM user
+1. Go to **IAM service**
+2. Click on **Users**
+3. Click on **Add user**, specify **User name**. Under **Access type**, make sure **Programmatic access** is _CHECKED_. Click Next to continue.
+![Add user details](./images/iam-add-user-details.png)
+4. Under **Set permission**, select **Attach existing policies directly**. Search for **AmazonAPIGatewayInvokeFullAccess** and **AmazonS3FullAccess** and attach both policies. Click Next to continue.
+![User permission](./images/iam-add-user-permission.png)
+5. Under Add Tag page, Click Next to continue
+6. Under Review page, Click **Create user**
+7. You just created an IAM user to user Media2Cloud RESTful APIs. Make sure you download the csv file of your API user. We will need it to configure Postman in the next section.
+![API user credential](./images/iam-add-user-credentials.png)
+
 --
 
 ### Step 3: Install and configure Postman
-For this tutorial, we will use Postman application to send requests. [Click here](https://www.getpostman.com/apps) to download and install it.
+For this tutorial, we will use Postman application to send requests. If you have not installed it, [download](https://www.getpostman.com/apps) and install it.
 
 
 #### Step 3.1: Import the Media2Cloud Postman collection template
@@ -150,6 +169,8 @@ For simplity, we created a Postman collection template (JSON document) to help y
 
 4. Replace **\<aws-region\>** to the actual AWS region where you create the Media2Cloud stack. AWS Region should is something like **us-east-1**, **us-west-2**, **eu-west-1**, and etc.
 
+5. Find **\<Media2CloudEndpoint\>** and replace all **six** appearances to the actual Media2CloudEndpoint you obtain in [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
+
 5. After you make the change, save the template.
 
 6. Open Postman application, click on **Import** button, and import the template
@@ -172,8 +193,6 @@ To start the ingest, we assume that your video file is already **uploaded** to t
 | Body | JSON document contains **bucket** and **key** |
 
 Click on **Start ingest** request from the Media2Cloud collection menu.
-
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
 
 Click on **Body** to change the JSON body to use the the actual ingest bucket name and object key.
 ```
@@ -219,15 +238,13 @@ where
 --
 
 ### Step 5: Get a list of files ingested in Media2Cloud
-To get a list of files, click on **Get a list of ingested contents** request from the Media2Cloud collection menu.
+To get a list of files, click on **Get a list of ingested content** request from the Media2Cloud collection menu.
 
 | Field | Value |
 |:---  |:------------|
 | Method | GET |
 | URL | https://**\<Media2CloudEndpoint\>**/assets |
 | Body | -- |
-
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
 
 Click on **Send**
 
@@ -272,8 +289,6 @@ To get the detail of a specifc ingested content, click on **Get information of a
 | Method | GET |
 | URL | https://**\<Media2CloudEndpoint\>**/assets/**\<uuid\>** |
 | Body | -- |
-
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
 
 Replace **\<uuid\>** with the actual **uuid** of the file.
 
@@ -339,8 +354,6 @@ To start analysis process, click on **Start analysis** request from the Media2Cl
 | URL | https://**\<Media2CloudEndpoint\>**/analysis |
 | Body | JSON document contains **uuid** |
 
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
-
 Replace **\<uuid\>** with the **uuid** from [Step 4](./2-restful-api.md#step-4-start-to-ingest-content-to-media2cloud)
 
 ```
@@ -383,8 +396,6 @@ To get the analysis results of a file, click on **Get analysis results** from th
 | Method | GET |
 | URL | https://**\<Media2CloudEndpoint\>**/analysis/\<uuid\> |
 | Body | -- |
-
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
 
 Replace **\<uuid\>** with the actual **uuid** of the file
 
@@ -458,10 +469,11 @@ where
 | rekognition.celeb.id | Rekognition job id |
 | rekognition.celeb.startTime | start time of celeb detection |
 | rekognition.celeb.endTime | end time of celeb detection |
-| rekognition.celeb.metadata | key prefix of metadata and vtt tracks |
+| rekognition.celeb.metadata | key prefix of metadata tracks |
+| rekognition.celeb.vtt | key prefix of vtt tracks |
 | rekognition.celeb.trackBasenames | tracks generated by M2C |
-| rekognition.celeb.trackBasenames.metadata | a list of metadata tracks generated by M2C |
 | rekognition.celeb.trackBasenames.metadata | a list of webvtt tracks generated by M2C |
+| rekognition.celeb.trackBasenames.vtt | a list of vtt tracks generated by M2C |
 | comprehend | comprehend detection |
 | comprehend.keyphrase | comprehend key phrase detection |
 | comprehend.keyphrase.output | location of the raw keyphrase detection results |
@@ -471,16 +483,14 @@ where
 
 --
 
-### Step 9: Search contents
-To search contents from Amazon Elasticsearch engine, click on **Search Elasticsearch engine** from the Media2Cloud collection menu.
+### Step 9: Search content
+To search content from Amazon Elasticsearch engine, click on **Search Elasticsearch engine** from the Media2Cloud collection menu.
 
 | Field | Value |
 |:---  |:------------|
 | Method | GET |
 | URL | https://**\<Media2CloudEndpoint\>**/search?query=**\<search-term\>** |
 | Body | -- |
-
-Replace **\<Media2CloudEndpoint\>** with the actual Media2CloudEndpoint you obtain from [Step 1: Locate your Media2Cloud RESTful API endpoint](./2-restful-api.md#step-1-locate-your-media2cloud-restful-api-endpoint)
 
 Replace **\<search-term\>** with the actual search teram; i.e, **john**
 
@@ -503,7 +513,7 @@ where
 |:---  |:------------|
 | uuids | a list of content uuids matches the search term |
 | token | a token indicating the current pagination position of search result list. You can use it to page the next results by add it to the query string. For example, <br>_https://\<Media2CloudEndpoint\>/search?query=\<search-term\>&**token=2**_ |
-| total | total number of contents that matches the search term |
+| total | total number of items that matches the search term |
 
 ----
 

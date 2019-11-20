@@ -13,7 +13,7 @@ aws s3 cp some-video.mp4 s3://<ingest-bucket-name>/demo/ [--proile <your-profile
 where **\<ingest-bucket-name\>** you can find it from AWS CloudFormation console:
   * Go to **AWS CloudFormation console**, select the **Media2Cloud** stack you created
   * Click on **Outputs** tab and search for **IngestBucket**
-2. When the file is landed on S3 bucket, S3 sends a s3:ObjectCreated:* notification where we will configure a lambda function to subscribe to that notification and to process the event.
+2. When the file landed in the S3 bucket, S3 sends a s3:ObjectCreated:* notification where we will configure a lambda function to subscribe to that notification and to process the event.
 3. The lambda function parses the notification event and calls Media2Cloud RESTful APIs to ingest the file.
 4. The ingest API (POST /assets) invokes the ingest process by starting a state machine.
 
@@ -36,7 +36,7 @@ Under Create function page, choose **Author from scratch** and fill in the follo
 
 ![Create lambda function](./images/lambda-create-function.png)
 
-Click _Next_ to continue.
+Click _Create function_ to continue.
 
 --
 
@@ -72,7 +72,7 @@ This should bring you to **Identity and Access Management (IAM)** service. Click
 
 ![IAM execution role summary](./images/iam-role-summary.png)
 
-Under Attach Permissions page, search **AmazonAPIGatewayInvoke**, check the checkbox, and **Attach policy**.
+Under Attach Permissions page, search **AmazonAPIGatewayInvokeFullAccess**, check the checkbox, and **Attach policy**.
 
 ![Attach API policy](./images/iam-attach-api-policy.png)
 
@@ -138,7 +138,7 @@ Search for , you should see
 ```
   /**
     * TODO#5: What is the path for starting ingest process?
-    * Tips: Review Tutorial #2, Using Media2Cloud RESTful API
+    * Tips: Review Tutorial #2, Using Media2Cloud RESTful API. Do not include '/demo'
     */
   function getIngestHttpPath() {
     return '#INGEST_PATH';
