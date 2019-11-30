@@ -26,9 +26,11 @@ https://<api-id>.execute-api.<aws-region>.amazonaws.com/demo
 
 ### Step 2: Create an IAM user (or role) with API Gateway permission
 
-Media2Cloud RESTful API endpoint requires AWS_IAM authentication; therefore, we would need to create an IAM user with _execute:invoke_ permission to call the APIs. We have two options to create an IAM user: one that uses AWS CLI and one that uses AWS Management Console.
+Media2Cloud RESTful API endpoint requires AWS_IAM authentication; therefore, we would need to create an IAM user with _execute:invoke_ permission to call the APIs. We have two ways to create an IAM user: one that uses [AWS CLI](#method-1---using-aws-cli-to-create-an-iam-user) and one that uses [AWS Management Console](#method-2---using-aws-management-console-to-create-an-iam-user).
 
-#### Option 1 - Using AWS CLI to create an IAM user
+__
+
+#### Method 1 - Using AWS CLI to create an IAM user
 1. Make sure to install [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) and configure the profile, see details [here](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html)
 
 2. Create a user
@@ -107,7 +109,9 @@ aws iam create-access-key --user media2cloud-api-user
 }
 ```
 
-#### Option 2 - Using AWS Management Console to create an IAM user
+__
+
+#### Method 2 - Using AWS Management Console to create an IAM user
 1. Go to **IAM service**
 2. Click on **Users**
 3. Click on **Add user**, specify **User name**. Under **Access type**, make sure **Programmatic access** is _CHECKED_. Click Next to continue.
@@ -128,7 +132,7 @@ For this tutorial, we will use Postman application to send requests. If you have
 #### Step 3.1: Import the Media2Cloud Postman collection template
 For simplity, we created a Postman collection template (JSON document) to help you to configure the authentication and Media2Cloud RESTful API endpoints.
 
-1. Download the collection template [here](./samples/media2cloud-api-postman-collection.json)
+1. Download the collection template [here](https://raw.githubusercontent.com/awslabs/media2cloud/master/deployment/tutorials/samples/media2cloud-api-postman-collection.json)
 
 2. Open the collection template with your text editor. You should find **\<access-key-id\>**, **\<secret-access-key\>**, and **\<aws-region\>** under **auth** block as follows:
 

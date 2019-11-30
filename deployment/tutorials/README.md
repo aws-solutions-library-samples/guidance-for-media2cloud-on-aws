@@ -16,7 +16,7 @@ We will start off with creating your own Media2Cloud instance. Then, we will use
 * [Step 2: using Media2Cloud RESTful api](./2-restful-api.md) to drive the ingest and analysis processes
 * [Step 3: using Amazon S3 event](./3-s3-event-trigger.md) to autostart ingest process
 * [Step 4: using Amazon SNS notification](./4-sns-notification.md) to autostart analysis process
-* [Appendix A, using Amazon Cognito User Pool service](./appendix-a-add-cognito-user.md) to add and manage Media2Cloud user(s)
+* [Appendix A: using Amazon Cognito User Pool service](./appendix-a-add-cognito-user.md) to add and manage Media2Cloud user(s)
 
 ----
 
