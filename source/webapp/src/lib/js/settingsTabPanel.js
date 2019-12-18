@@ -173,7 +173,7 @@ class SettingsTabPanel {
       <div
         class="col-sm-6 text-muted"
         style="font-size: 0.8em;">
-        ** Comprehend features are supported for certain languages
+        ** Comprehend features may not be available in certain languages
       </div>
     </div>
     `);

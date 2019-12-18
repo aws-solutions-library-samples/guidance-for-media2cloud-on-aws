@@ -88,22 +88,37 @@ Parameters:
         Type: String
         Description: default language to analyze audio stream
         AllowedValues:
-            - en-US
-            - en-GB
-            - en-AU
-            - en-IN
-            - es-US
-            - es-ES
-            - fr-FR
-            - fr-CA
-            - de-DE
-            - pt-BR
-            - it-IT
-            - ko-KR
-            - hi-IN
+            - ar-AE
             - ar-SA
+            - de-CH
+            - de-DE
+            - en-AB
+            - en-AU
+            - en-GB
+            - en-IE
+            - en-IN
+            - en-US
+            - en-WL
+            - es-ES
+            - es-US
+            - fa-IR
+            - fr-CA
+            - fr-FR
+            - he-IL
+            - hi-IN
+            - id-ID
+            - it-IT
+            - ja-JP
+            - ko-KR
+            - ms-MY
+            - nl-NL
+            - pt-BR
+            - pt-PT
             - ru-RU
-            - zh-CH
+            - ta-IN
+            - te-IN
+            - tr-TR
+            - zh-CN
         Default: en-US
     AIOptions:
         Type: String

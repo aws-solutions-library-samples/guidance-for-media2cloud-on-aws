@@ -286,6 +286,11 @@ class Analysis {
       'de',
       'it',
       'pt',
+      'ar',
+      'hi',
+      'ja',
+      'ko',
+      'zh',
     ].indexOf(languageCode.slice(0, 2)) >= 0;
   }
 

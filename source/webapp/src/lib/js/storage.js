@@ -68,22 +68,37 @@ const SUPPORTED_KEYWORDS = [
 ];
 
 const SUPPORTED_LANGUAGE_CODES = {
-  'en-US': 'English (United States)',
-  'en-GB': 'English (United Kingdom)',
-  'en-AU': 'English (Australia)',
-  'en-IN': 'English (Indian)',
-  'es-US': 'Spanish (United States)',
-  'es-ES': 'Spanish (Spain)',
-  'fr-FR': 'French (France)',
-  'fr-CA': 'French (Canada)',
+  'ar-AE': 'Arabic (U.A.E.)',
+  'ar-SA': 'Arabic (Saudi Arabia)',
+  'de-CH': 'German (Switzerland)',
   'de-DE': 'German (Germany)',
+  'en-AB': 'English (Scottish)',
+  'en-AU': 'English (Australia)',
+  'en-GB': 'English (United Kingdom)',
+  'en-IE': 'English (Ireland)',
+  'en-IN': 'English (Indian)',
+  'en-US': 'English (United States)',
+  'en-WL': 'English (Welsh)',
+  'es-ES': 'Spanish (Spain)',
+  'es-US': 'Spanish (United States)',
+  'fa-IR': 'Farsi (Iran)',
+  'fr-CA': 'French (Canada)',
+  'fr-FR': 'French (France)',
+  'he-IL': 'Hebrew (Israel)',
+  'hi-IN': 'Hindi (India)',
+  'id-ID': 'Indonesian (Indonesia)',
   'it-IT': 'Italian (Italy)',
+  'ja-JP': 'Japanese (Japan)',
+  'ko-KR': 'Korean (Korea)',
+  'ms-MY': 'Malay (Malaysia)',
+  'nl-NL': 'Dutch (Netherlands)',
   'pt-BR': 'Portuguese (Brazil)',
-  'ko-KR': 'Korean (Korea) **',
-  'hi-IN': 'Hindi (India) **',
-  'ar-SA': 'Arabic (Saudi Arabia) **',
-  'ru-RU': 'Russian (Russia) **',
-  'zh-CN': 'Chinese (PRC) **',
+  'pt-PT': 'Portuguese (Portugal)',
+  'ru-RU': 'Russian (Russia)',
+  'ta-IN': 'Tamil (India)',
+  'te-IN': 'Telugu (India)',
+  'tr-TR': 'Turkish (Turkey)',
+  'zh-CN': 'Chinese (PRC)',
 };
 
 const COMPREHEND_SUPPORTED_LANGUAGES = [
@@ -93,6 +108,11 @@ const COMPREHEND_SUPPORTED_LANGUAGES = [
   'de',
   'it',
   'pt',
+  'ar',
+  'hi',
+  'ja',
+  'ko',
+  'zh',
 ];
 
 /**
@@ -105,7 +125,12 @@ class Storage {
    * @description get supported language code map
    */
   static getSupportedLanguageCodes() {
-    return SUPPORTED_LANGUAGE_CODES;
+    return Object.keys(SUPPORTED_LANGUAGE_CODES).reduce((a0, c0) => ({
+      ...a0,
+      [c0]: (COMPREHEND_SUPPORTED_LANGUAGES.indexOf(c0.slice(0, 2)) < 0)
+        ? `${SUPPORTED_LANGUAGE_CODES[c0]} **`
+        : SUPPORTED_LANGUAGE_CODES[c0],
+    }), {});
   }
 
   /**

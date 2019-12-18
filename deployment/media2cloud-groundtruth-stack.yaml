@@ -381,6 +381,12 @@ Resources:
     #
     TeamTopic:
         Type: AWS::SNS::Topic
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W47
+                        reason: "SageMaker.CreateWorkteam doesn't support SNS encryption at rest."
         Properties:
             TopicName: !Sub "${SolutionId}-${RootStackName}-team"
             DisplayName: !FindInMap [
