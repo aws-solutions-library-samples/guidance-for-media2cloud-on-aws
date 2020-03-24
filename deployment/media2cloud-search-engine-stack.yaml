@@ -134,6 +134,9 @@ Resources:
                     -
                         id: W28
                         reason: "Elasticsearch domain name needs to remain the same to maintain the indexed documents."
+                    -
+                        id: W54
+                        reason: "EncryptionAtRestOptions not supported for t2 instance, https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/aes-supported-instance-types.html"
             cfn-lint:
                 config:
                     ignore_checks:
