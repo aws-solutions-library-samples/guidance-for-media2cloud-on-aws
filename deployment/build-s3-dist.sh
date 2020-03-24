@@ -82,6 +82,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 ## configure global variables
+NODEJS_VERSION=$(node --version)
 DEPLOY_DIR="$PWD"
 SOURCE_DIR="$DEPLOY_DIR/../source"
 TEMPLATE_DIST_DIR="$DEPLOY_DIR/global-s3-assets"
@@ -609,10 +610,14 @@ function build_aws_iot_sdk_bundle() {
   mkdir -p "$tmpdir"
   cp -v index.js package.json "$tmpdir"
   pushd "$tmpdir"
+  echo "nodejs ${NODEJS_VERSION:1}" > .tool-versions
   npm install
   npm run browserify
+  [ $? -ne 0 ] && exit 1
   npm run uglify
+  [ $? -ne 0 ] && exit 1
   npm run copy -- "$bundle_dir/dist"
+  [ $? -ne 0 ] && exit 1
   popd
 
   popd
@@ -699,10 +704,14 @@ function build_mime_bundle() {
   mkdir -p "$tmpdir"
   cp -v index.js package.json "$tmpdir"
   pushd "$tmpdir"
+  echo "nodejs ${NODEJS_VERSION:1}" > .tool-versions
   npm install
   npm run browserify
+  [ $? -ne 0 ] && exit 1
   npm run uglify
+  [ $? -ne 0 ] && exit 1
   npm run copy -- "$bundle_dir/dist"
+  [ $? -ne 0 ] && exit 1
   popd
 
   popd
