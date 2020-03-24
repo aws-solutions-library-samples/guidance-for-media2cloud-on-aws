@@ -325,12 +325,6 @@ Resources:
     #
     TeamUserPool:
         Type: AWS::Cognito::UserPool
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: F78
-                        reason: "Disable MFA check"
         Properties:
             AdminCreateUserConfig:
                 AllowAdminCreateUserOnly: true
@@ -347,7 +341,7 @@ Resources:
                 - email
             AutoVerifiedAttributes:
                 - email
-            MfaConfiguration: 'OFF'
+            MfaConfiguration: OPTIONAL
             Policies:
                 PasswordPolicy:
                     MinimumLength: 8

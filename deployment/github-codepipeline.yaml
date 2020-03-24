@@ -1,0 +1,621 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Sample code to create AWS CodePipeline and connect to GitHub repo
+
+Parameters:
+    SolutionName:
+        Description: specify the name of the solution
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9-]+"
+        Default: media2cloud
+
+    BuildVersion:
+        Description: specify build version
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9-]+"
+        Default: v2
+
+    BuildType:
+        Description: specify pipeline type
+        Type: String
+        Default: dev
+        AllowedValues:
+            - prod
+            - dev
+            - stage
+
+    GitHubOwner:
+        Description: specify owner of the repo
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9-]+"
+
+    GitHubRepo:
+        Description: specify the name of the repo
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9-]+"
+
+    GitHubBranch:
+        Description: specify the branch to run AWS CodePipeline
+        Type: String
+        Default: master
+        AllowedValues:
+            - master
+
+    GitHubOAuthToken:
+        Type: String
+        Description: provide GitHub personal access tokens (40 hex characters). See https://github.com/settings/tokens for details.
+        NoEcho: true
+        AllowedPattern: "[a-zA-Z0-9]{40}"
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: SOLUTION CONFIGURATION
+                Parameters:
+                    - SolutionName
+                    - BuildVersion
+                    - BuildType
+            -
+                Label:
+                    default: GITHUB CONFIGURATION
+                Parameters:
+                    - GitHubOwner
+                    - GitHubRepo
+                    - GitHubBranch
+                    - GitHubOAuthToken
+        ParameterLabels:
+            SolutionName:
+                default: "Name"
+            BuildVersion:
+                default: "Build Version"
+            BuildType:
+                default: "Environment Type"
+            GitHubOwner:
+                default: "Repository Owner"
+            GitHubRepo:
+                default: "Repository"
+            GitHubBranch:
+                default: "Branch"
+            GitHubOAuthToken:
+                default: "Personal Access Tokens"
+
+Mappings:
+    CodeBuild:
+        Image:
+            #Name: aws/codebuild/standard:3.0
+            Name: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+            Type: LINUX_CONTAINER
+
+Resources:
+    ################################################################################
+    #
+    # Amazon S3 Bucket(s) to store artifact and outputs
+    #
+    ################################################################################
+    BucketArtifact:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W35
+                        reason: Suppress access logs warning
+        Properties:
+            BucketName: !Sub [
+                "${x0}-${x1}-artifact", {
+                    x0: !Ref "AWS::StackName",
+                    x1: !Select [
+                        4,
+                        !Split [
+                            "-",
+                            !Select [
+                                2,
+                                !Split [
+                                    "/",
+                                    !Ref "AWS::StackId"
+                                ]
+                            ]
+                        ]
+                    ]
+                }
+            ]
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: aws:kms
+
+    BucketArtifactPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref BucketArtifact
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${BucketArtifact}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
+
+    BucketOutput:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W35
+                        reason: Suppress access logs warning
+        Properties:
+            BucketName: !Sub [
+                "${x0}-${x1}-output", {
+                    x0: !Ref "AWS::StackName",
+                    x1: !Select [
+                        4,
+                        !Split [
+                            "-",
+                            !Select [
+                                2,
+                                !Split [
+                                    "/",
+                                    !Ref "AWS::StackId"
+                                ]
+                            ]
+                        ]
+                    ]
+                }
+            ]
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: aws:kms
+
+    BucketOutputPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref BucketOutput
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "*"
+                        Resource: !Sub "arn:aws:s3:::${BucketOutput}/*"
+                        Condition:
+                            Bool:
+                                "aws:SecureTransport": false
+
+    ################################################################################
+    #
+    # AWS Secret Manager resource to store GitHub personal access tokens
+    #
+    ################################################################################
+    SecretManager:
+        Type: AWS::SecretsManager::Secret
+        Properties:
+            Description: !Sub "(${AWS::StackName}) store GitHub personal access tokens"
+            Name: !Sub "${GitHubRepo}-github-token"
+            SecretString: !Sub '{"token": "${GitHubOAuthToken}"}'
+            KmsKeyId: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/secretsmanager"
+            Tags:
+                -
+                    Key: SolutionName
+                    Value: !Ref SolutionName
+
+    ################################################################################
+    #
+    # AWS CodePipeline resources
+    #
+    ################################################################################
+    CodePipelineRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: /
+            AssumeRolePolicyDocument:
+                Statement:
+                    -
+                        Action: sts:AssumeRole
+                        Effect: Allow
+                        Principal:
+                            Service: codepipeline.amazonaws.com
+            Policies:
+                -
+                    PolicyName: !Sub ${SolutionName}-${BuildType}-${BuildVersion}
+                    PolicyDocument:
+                        Statement:
+                            ## CloudWatch logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetBucketVersioning"
+                                Resource: !Sub "arn:aws:s3:::${BucketArtifact}"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:GetObjectVersion"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${BucketArtifact}/*"
+                            ## CodeBuild
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "codebuild:BatchGetBuilds"
+                                    - "codebuild:StartBuild"
+                                Resource:
+                                    - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${GitHubRepo}-${BuildType}-build-stage"
+                                    - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${GitHubRepo}-${BuildType}-scan-stage"
+                                    - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${GitHubRepo}-${BuildType}-deploy-stage"
+
+    CodePipelineWebhook:
+        Type: AWS::CodePipeline::Webhook
+        Properties:
+            Authentication: GITHUB_HMAC
+            AuthenticationConfiguration:
+                SecretToken: !Sub "{{resolve:secretsmanager:${GitHubRepo}-github-token:SecretString:token}}"
+            Filters:
+                -
+                    JsonPath: $.ref
+                    MatchEquals: "refs/heads/{Branch}"
+            TargetPipeline: !Ref CodePipeline
+            TargetAction: GitHub
+            Name: GitHubWebhook
+            TargetPipelineVersion: !GetAtt CodePipeline.Version
+            RegisterWithThirdParty: true
+
+    CodePipeline:
+        Type: AWS::CodePipeline::Pipeline
+        Properties:
+            Name: !Sub ${GitHubRepo}-${BuildType}
+            RoleArn: !GetAtt CodePipelineRole.Arn
+            ArtifactStore:
+                Type: S3
+                Location: !Ref BucketArtifact
+            Stages:
+                -
+                    Name: Source
+                    Actions:
+                        -
+                            Name: GitHub
+                            ActionTypeId:
+                                Category: Source
+                                Owner: ThirdParty
+                                Version: 1
+                                Provider: GitHub
+                            OutputArtifacts:
+                                - Name: SourceApp
+                            Configuration:
+                                Owner: !Ref GitHubOwner
+                                Repo: !Ref GitHubRepo
+                                Branch: !Ref GitHubBranch
+                                OAuthToken: !Sub "{{resolve:secretsmanager:${GitHubRepo}-github-token:SecretString:token}}"
+                                PollForSourceChanges: false
+                            RunOrder: 1
+                -
+                    Name: Build
+                    Actions:
+                        -
+                            Name: BuildCode
+                            InputArtifacts:
+                                - Name: SourceApp
+                            ActionTypeId:
+                                Category: Build
+                                Owner: AWS
+                                Version: 1
+                                Provider: CodeBuild
+                            OutputArtifacts:
+                                - Name: BuildApp
+                            Configuration:
+                                ProjectName: !Ref StageBuild
+                -
+                    Name: CfnNagScan
+                    Actions:
+                        -
+                            Name: CfnNagScan
+                            InputArtifacts:
+                                - Name: BuildApp
+                            ActionTypeId:
+                                Category: Build
+                                Owner: AWS
+                                Version: 1
+                                Provider: CodeBuild
+                            Configuration:
+                                ProjectName: !Ref StageCfnNagScan
+                -
+                    Name: DeployAssets
+                    Actions:
+                        -
+                            Name: DeployPackage
+                            InputArtifacts:
+                                - Name: BuildApp
+                            ActionTypeId:
+                                Category: Build
+                                Owner: AWS
+                                Version: 1
+                                Provider: CodeBuild
+                            Configuration:
+                                ProjectName: !Ref StageDeploy
+
+    ################################################################################
+    #
+    # AWS CodeBuild resources
+    #
+    ################################################################################
+    CodeBuildRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Path: /
+            AssumeRolePolicyDocument:
+                Statement:
+                    -
+                        Action: sts:AssumeRole
+                        Effect: Allow
+                        Principal:
+                            Service: codebuild.amazonaws.com
+            Policies:
+                -
+                    PolicyName: !Sub ${SolutionName}-${BuildType}-${BuildVersion}-build
+                    PolicyDocument:
+                        Statement:
+                            ## CloudWatch logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:GetObjectVersion"
+                                    - "s3:PutObject"
+                                Resource:
+                                    - !Sub "arn:aws:s3:::${BucketArtifact}/*"
+                                    - !Sub "arn:aws:s3:::${BucketOutput}/*"
+
+    StageBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${GitHubRepo}-${BuildType}-build-stage
+            Description: !Sub Build ${BuildType} for ${GitHubRepo}
+            ServiceRole: !Sub ${CodeBuildRole.Arn}
+            Source:
+                Type: CODEPIPELINE
+                BuildSpec: !Sub |
+                    version: 0.2
+                    phases:
+                        install:
+                            runtime-versions:
+                                nodejs: 10
+                            commands:
+                                - echo "== Node Version = `node --version` =="
+                        pre_build:
+                            commands:
+                                - echo "== Installing dependencies and executing unit tests - `pwd` =="
+                                - cd deployment && chmod +x ./run-unit-tests.sh && ./run-unit-tests.sh
+                                - echo "Installing dependencies and executing unit tests completed `date`"
+                        build:
+                            commands:
+                                - echo "== Starting build `date` in `pwd` =="
+                                - chmod +x ./build-s3-dist.sh && ./build-s3-dist.sh --bucket $DIST_OUTPUT_BUCKET --solution $SOLUTION_NAME --version $VERSION --single-region
+                                - echo "Build completed `date`"
+                                - echo "== Starting open-source-dist `date` in `pwd` =="
+                                - chmod +x ./build-open-source-dist.sh && ./build-open-source-dist.sh --solution $SOLUTION_NAME
+                                - echo "Open Source Dist completed `date`"
+                        post_build:
+                            commands:
+                                - echo "== Nothing to do in Post build =="
+                    artifacts:
+                        files:
+                            - deployment/**/*
+                            - source/**/*
+                            - LICENSE.txt
+                            - THIRD_PARTY_LICENSES.txt
+                            - NOTICE.txt
+                            - README.md
+                            - CODE_OF_CONDUCT.md
+                            - CONTRIBUTING.md
+                            - CHANGELOG.md
+                            - .github/PULL_REQUEST_TEMPLATE.md
+            Environment:
+                ComputeType: BUILD_GENERAL1_MEDIUM
+                Image: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Name"
+                ]
+                Type: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Type"
+                ]
+                EnvironmentVariables:
+                    -
+                        Name: SOLUTION_NAME
+                        Value: !Ref SolutionName
+                    -
+                        Name: VERSION
+                        Value: !Ref BuildVersion
+                    -
+                        Name: PIPELINE_TYPE
+                        Value: !Ref BuildType
+                    -
+                        Name: BUILD_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: DIST_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: TEMPLATE_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: GITHUB_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+            Artifacts:
+                Name: !Sub ${GitHubRepo}-${BuildType}
+                Type: CODEPIPELINE
+            EncryptionKey: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3"
+
+    StageCfnNagScan:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${GitHubRepo}-${BuildType}-scan-stage
+            Description: !Sub Independent CfnNag scan project for post build artifacts.
+            ServiceRole: !Sub ${CodeBuildRole.Arn}
+            Source:
+                Type: CODEPIPELINE
+                BuildSpec: !Sub |
+                    version: 0.2
+                    phases:
+                        install:
+                            runtime-versions:
+                                ruby: 2.6
+                            commands:
+                                - echo "Installing cfn_nag utility - `pwd`"
+                                - gem install cfn-nag
+                                - cfn_nag -v
+                                - echo "cfn_nag utility installation complete `date`"
+                        build:
+                            commands:
+                                - echo "Starting cfn_nag scanning `date` in `pwd`"
+                                - for y in `find deployment/dist/* -name "*.template"`; do echo "============= $y ================" ; cfn_nag --fail-on-warnings $y || ec1=$?; done
+                                - if [ "$ec1" -ne "0" ]; then echo 'ERROR-1'; else echo 'SUCCESS-1'; ec1=0; fi
+                                - echo "Exit Code 1 `echo $ec1`"
+                                - for y in `find deployment/global-s3-assets/* -name "*.template"`; do echo "============= $y ================" ; cfn_nag --fail-on-warnings $y || ec2=$?; done
+                                - if [ "$ec2" -ne "0" ]; then echo 'ERROR-2'; else echo 'SUCCESS-2'; ec2=0; fi
+                                - echo "Exit Code 2 `echo $ec2`"
+                                - echo "Completed cfn_nag scanning `date`"
+                                - echo "Analyze exit codes and exit"
+                                - if [ "$ec1" -ne "0" ] || [ "$ec2" -ne "0" ]; then echo 'ERROR'; ec=1; else echo 'SUCCESS'; ec=0; fi;
+                                - echo "Exit Code Final `echo $ec`"
+                                - exit $ec
+                    artifacts:
+                        files:
+                            - deployment/**/*
+                            - source/**/*
+                            - LICENSE.txt
+                            - THIRD_PARTY_LICENSES.txt
+                            - NOTICE.txt
+                            - README.md
+                            - CODE_OF_CONDUCT.md
+                            - CONTRIBUTING.md
+                            - CHANGELOG.md
+                            - .github/PULL_REQUEST_TEMPLATE.md
+                            - buildspec.yml
+            Environment:
+                ComputeType: BUILD_GENERAL1_SMALL
+                Image: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Name"
+                ]
+                Type: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Type"
+                ]
+            Artifacts:
+                Name: CodeBuild-CfnNag-Scan-Verified
+                Type: CODEPIPELINE
+            EncryptionKey: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3"
+
+    StageDeploy:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${GitHubRepo}-${BuildType}-deploy-stage
+            Description: !Sub Deploy ${BuildType} for ${GitHubRepo} to Output Bucket
+            ServiceRole: !Sub ${CodeBuildRole.Arn}
+            Source:
+                Type: CODEPIPELINE
+                BuildSpec: !Sub |
+                    version: 0.2
+                    phases:
+                        install:
+                            runtime-versions:
+                                nodejs: 10
+                            commands:
+                                - echo "== Node Version = `node --version` =="
+                        pre_build:
+                            commands:
+                                - echo "== Nothing to od in pre_build =="
+                        build:
+                            commands:
+                                - echo "== Copying assets to output bucket `date` in `pwd` =="
+                                - echo "Copying CF templates to /$TEMPLATE_OUTPUT_BUCKET/"
+                                - aws s3 cp deployment/global-s3-assets/  s3://$TEMPLATE_OUTPUT_BUCKET/$SOLUTION_NAME/$VERSION/ --recursive --acl bucket-owner-full-control
+                                - echo "Copying assets to /$BUILD_OUTPUT_BUCKET/"
+                                - aws s3 cp deployment/regional-s3-assets/ s3://$BUILD_OUTPUT_BUCKET/$SOLUTION_NAME/$VERSION/ --recursive --acl bucket-owner-full-control
+                                - echo "Copying GitHub assets to /$GITHUB_OUTPUT_BUCKET/"
+                                - aws s3 cp deployment/open-source/ s3://$GITHUB_OUTPUT_BUCKET/$SOLUTION_NAME/$VERSION/open-source/ --recursive --acl bucket-owner-full-control
+                                - echo "== Copying assets to output bucket complete `date` =="
+                        post_build:
+                            commands:
+                                - echo "== Nothing to do in post_build =="
+                                - echo "deployment of assets completed on `date`"
+                    artifacts:
+                        files:
+                            - deployment/**/*
+                            - source/**/*
+                            - LICENSE.txt
+                            - THIRD_PARTY_LICENSES.txt
+                            - NOTICE.txt
+                            - README.md
+                            - CODE_OF_CONDUCT.md
+                            - CONTRIBUTING.md
+                            - CHANGELOG.md
+                            - .github/PULL_REQUEST_TEMPLATE.md
+            Environment:
+                ComputeType: BUILD_GENERAL1_MEDIUM
+                Image: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Name"
+                ]
+                Type: !FindInMap [
+                    "CodeBuild",
+                    "Image",
+                    "Type"
+                ]
+                EnvironmentVariables:
+                    -
+                        Name: SOLUTION_NAME
+                        Value: !Ref SolutionName
+                    -
+                        Name: VERSION
+                        Value: !Ref BuildVersion
+                    -
+                        Name: PIPELINE_TYPE
+                        Value: !Ref BuildType
+                    -
+                        Name: BUILD_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: DIST_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: TEMPLATE_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+                    -
+                        Name: GITHUB_OUTPUT_BUCKET
+                        Value: !Ref BucketOutput
+            Artifacts:
+                Name: !Sub ${GitHubRepo}-${BuildType}-deployed
+                Type: CODEPIPELINE
+            EncryptionKey: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3"

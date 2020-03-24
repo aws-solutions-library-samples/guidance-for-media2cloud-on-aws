@@ -98,6 +98,7 @@ function copy_deployment_folder() {
   echo "------------------------------------------------------------------------------"
   local files=(\
     "build-s3-dist.sh" \
+    "build-open-source-dist.sh" \
     "common.sh" \
     "deploy-s3-dist.sh" \
     "run-unit-tests.sh" \
