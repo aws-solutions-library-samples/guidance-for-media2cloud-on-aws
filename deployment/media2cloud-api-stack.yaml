@@ -767,6 +767,12 @@ Resources:
 
     Deployment:
         Type: AWS::ApiGateway::Deployment
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W68
+                        reason: "suppress UsagePlan requirement"
         Properties:
             Description: !Sub "(${SolutionId}) Created by ${RootStackName}"
             RestApiId: !Ref RestApi
