@@ -7,18 +7,8 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-unused-vars */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable no-console */
-/* eslint-disable max-classes-per-file */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable implicit-arrow-linebreak */
 const AWS = require('aws-sdk');
-const {
-  AmazonConnection,
-} = require('aws-elasticsearch-connector');
+const AmazonConnection = require('aws-elasticsearch-connector');
 
 const {
   Client,
@@ -174,7 +164,7 @@ class BaseIndex {
   async searchDocument(params) {
     const size = Number.parseInt(params.pageSize || BaseIndex.Constants.DefaultPageSize, 10);
     const from = Number.parseInt(params.token || 0, 10);
-    const query = params.exact ? params.query : `*${params.query}*`;
+    const operator = params.exact ? 'AND' : 'OR';
 
     const response = await this.client.search({
       index: this.indexName,
@@ -193,7 +183,8 @@ class BaseIndex {
         }],
         query: {
           query_string: {
-            query,
+            default_operator: operator,
+            query: params.query,
           },
         },
       },

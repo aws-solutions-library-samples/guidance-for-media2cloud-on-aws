@@ -5,8 +5,8 @@
   "main": "index.js",
   "private": true,
   "dependencies": {
-    "@elastic/elasticsearch": "^6.8.2",
-    "aws-elasticsearch-connector": "^8.0.0",
+    "@elastic/elasticsearch": "6.8.2",
+    "aws-elasticsearch-connector": "8.0.0",
     "deepmerge": "^2.1.1",
     "mime": "^2.3.1"
   },

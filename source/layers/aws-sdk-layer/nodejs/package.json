@@ -7,7 +7,7 @@
   "author": "aws-mediaent-solutions",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.469.0"
+    "aws-sdk": "^2.709.0"
   },
   "scripts": {
     "pretest": "npm install",
