@@ -64,10 +64,10 @@ describe('mediainfo', async function () {
     it('should return mediainfo object', async function () {
       expect({
         $: {},
-        file: {
+        media: {
           track: [],
         },
-      }).to.be.an('object').that.has.keys('$', 'file');
+      }).to.be.an('object').that.has.keys('$', 'media');
     });
   });
 });
