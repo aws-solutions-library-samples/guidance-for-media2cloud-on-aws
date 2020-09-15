@@ -130,23 +130,7 @@ class Transcode {
   createChannelMappings() {
     const audio = (this.input.mediainfo || {}).audio || [];
     const name = 'Audio Selector 1';
-    /* #1: input has no audio */
-    /* #2: input has one audio track */
-    /* #3: multiple audio tracks and contain stereo track */
-    /* #4: multiple audio tracks and contain Dolby E track */
-    /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
-    let tracks = (audio.length === 1)
-      ? audio[0]
-      : audio.find(x => x.channelS >= 2)
-        || audio.find(x => x.format === 'Dolby E')
-        || audio.filter(x =>
-          x.channelS === 1).sort((a, b) =>
-          a.streamIdentifier - b.streamIdentifier).slice(0, 2);
-
-    if (!Array.isArray(tracks)) {
-      tracks = [tracks];
-    }
-
+    const tracks = this.parseTracks(audio);
     return (!tracks.length)
       ? undefined
       : {
@@ -156,11 +140,52 @@ class Transcode {
             Offset: 0,
             DefaultSelection: 'DEFAULT',
             SelectorType: 'TRACK',
-            /* note: streamIdentifier is 0-based, Track is 1-based */
-            Tracks: tracks.map(x => x.streamIdentifier + 1),
+            Tracks: tracks,
           },
         },
       };
+  }
+
+  getTrackId(track) {
+    /* note: streamIdentifier is 0-based, streamOrder is 1-based */
+    return (track.streamIdentifier !== undefined)
+      ? track.streamIdentifier + 1
+      : track.streamOrder;
+  }
+
+  getChannels(track) {
+    return (track.channelS !== undefined)
+      ? track.channelS
+      : track.channels;
+  }
+
+  parseTracks(audio) {
+    /* #1: input has no audio */
+    if (!audio.length) {
+      return [];
+    }
+    /* #2: input has one audio track */
+    if (audio.length === 1) {
+      return [this.getTrackId(audio[0])];
+    }
+    /* #3: multiple audio tracks and contain stereo track */
+    for (let i = 0; i < audio.length; i++) {
+      if (this.getChannels(audio[i]) >= 2) {
+        return [this.getTrackId(audio[i])];
+      }
+    }
+    /* #4: multiple audio tracks and contain Dolby E track */
+    for (let i = 0; i < audio.length; i++) {
+      if (audio[i].format === 'Dolby E') {
+        return [this.getTrackId(audio[i])];
+      }
+    }
+    /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
+    let pcms = audio.filter(x => this.getChannels(x) === 1);
+    pcms = pcms.sort((a, b) => this.getTrackId(a) - this.getTrackId(b))
+      .map(x => this.getTrackId(x))
+      .slice(0, 2);
+    return pcms;
   }
 
   /**

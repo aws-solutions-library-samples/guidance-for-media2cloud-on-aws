@@ -80,8 +80,21 @@ class Indexer extends BaseIndex {
     if (!Environment.Solution.Metrics.AnonymousUsage) {
       return;
     }
-    const duration = ((((data.mediainfo || {}).file || {}).track || []).find(x =>
-      x.$.type.toLowerCase() === 'general') || {}).duration;
+
+    // backward compatible with older version of mediainfo
+    let duration = (data.mediainfo)
+      ? (data.mediainfo.media || data.mediainfo.file)
+      : undefined;
+
+    if (duration) {
+      duration = (duration.track || []).find(x => x.$.type.toLowerCase() === 'general');
+      duration = (duration || {}).duration || 0;
+      // v20.08 duration is in seconds. Converted to milliseconds.
+      if (data.mediainfo.media) {
+        duration = Math.floor(duration * 1000);
+      }
+    }
+
     await Metrics.sendAnonymousData({
       uuid: this.stateData.uuid,
       process: 'ingest',

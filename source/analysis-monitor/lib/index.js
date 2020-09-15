@@ -109,6 +109,7 @@ class Analysis {
       'proxies',
       'key',
       'type',
+      'mediainfo',
     ]);
 
     /* check analysis options */
@@ -141,11 +142,21 @@ class Analysis {
       status: responses[3] ? StateData.Statuses.Started : StateData.Statuses.NotStarted,
     });
 
-    const container = (((input.mediainfo || {}).file || {}).track || []).find(x =>
-      x.$.type.toLowerCase() === 'general');
+    // backward compatible with older version of mediainfo
+    let duration = (input.mediainfo)
+      ? (input.mediainfo.media || input.mediainfo.file)
+      : undefined;
+    if (duration) {
+      duration = (duration.track || []).find(x => x.$.type.toLowerCase() === 'general');
+      duration = (duration || {}).duration || 0;
+      // v20.08 duration is in seconds. Converted to milliseconds.
+      if (input.mediainfo.media) {
+        duration = Math.floor(duration * 1000);
+      }
+    }
 
     this.stateData.setData('metrics', {
-      duration: (container || {}).duration || 1000,
+      duration: duration || 1000,
       requestTime: this.timestamp,
       startTime: (new Date()).getTime(),
     });

@@ -250,7 +250,7 @@ class Ingest {
         mi.toXML()
       ),
       db.update(this.stateData.uuid, undefined, {
-        mediainfo: fullData.mediainfo,
+        mediainfo: fullData.mediaInfo,
       }, false),
     ]);
 
