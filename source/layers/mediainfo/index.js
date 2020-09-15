@@ -7,17 +7,7 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-underscore-dangle */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable no-console */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-nested-ternary */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const AWS = require('aws-sdk');
-const OS = require('os');
 const FS = require('fs');
 const URL = require('url');
 const PATH = require('path');
@@ -29,13 +19,16 @@ const {
 } = require('xml2js');
 
 /**
- * @class MediainfoError
+ * @class MediaInfoError
+ * @description Error code 1900
  */
-class MediainfoError extends Error {
+class MediaInfoError extends Error {
   constructor(...args) {
     super(...args);
     this.name = this.constructor.name;
-    Error.captureStackTrace(this, MediainfoError);
+    this.errorCode = 1900;
+    this.message = `${this.errorCode} - ${this.message || 'unknown mediainfo error'}`;
+    Error.captureStackTrace(this, MediaInfoError);
   }
 }
 
@@ -45,22 +38,24 @@ class MediainfoError extends Error {
  */
 class MediaInfoCommand {
   constructor(options) {
-    const subpath = (OS.platform() === 'darwin')
-      ? 'macos'
-      : process.version.indexOf('v10') >= 0
-        ? 'amazon/linux2'
-        : 'amazon/linux';
-
-    this.$libPath = PATH.join(__dirname, subpath);
-    this.$bin = PATH.join(this.$libPath, 'mediainfo');
-
-    this.$s3 = new AWS.S3(Object.assign({
+    this.$s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
-    }, options));
-
+      s3DisableBodySigning: false,
+      ...options,
+    });
     this.$rawXml = undefined;
     this.$jsonData = undefined;
+  }
+
+  static GetConfiguration() {
+    const subPath = 'amazon/linux2';
+    return {
+      LD_LIBRARY_PATH: PATH.join(__dirname, subPath),
+      PATH: PATH.join(__dirname, subPath),
+      MEDIAINFO: PATH.join(__dirname, subPath, 'mediainfo'),
+    };
   }
 
   static get Constants() {
@@ -81,6 +76,7 @@ class MediaInfoCommand {
           'overallBitRate',
         ],
         Video: [
+          'streamOrder',
           'streamIdentifier',
           'format',
           'formatProfile',
@@ -100,6 +96,7 @@ class MediaInfoCommand {
           'timeCodeFirstFrame',
         ],
         Audio: [
+          'streamOrder',
           'streamIdentifier',
           'format',
           'codec',
@@ -115,14 +112,6 @@ class MediaInfoCommand {
         ],
       },
     };
-  }
-
-  get libPath() {
-    return this.$libPath;
-  }
-
-  get bin() {
-    return this.$bin;
   }
 
   get s3() {
@@ -158,33 +147,32 @@ class MediaInfoCommand {
   get video() {
     return !this.jsonData
       ? undefined
-      : ((this.jsonData.mediainfo.file || {}).track || []).filter(x => x.$.type.toLowerCase() === 'video');
+      : ((this.jsonData.mediaInfo.media || {}).track || []).filter(x => x.$.type.toLowerCase() === 'video');
   }
 
   get audio() {
     return !this.jsonData
       ? undefined
-      : ((this.jsonData.mediainfo.file || {}).track || []).filter(x => x.$.type.toLowerCase() === 'audio');
+      : ((this.jsonData.mediaInfo.media || {}).track || []).filter(x => x.$.type.toLowerCase() === 'audio');
   }
 
   get container() {
     return !this.jsonData
       ? undefined
-      : ((this.jsonData.mediainfo.file || {}).track || []).filter(x => x.$.type.toLowerCase() === 'general');
+      : ((this.jsonData.mediaInfo.media || {}).track || []).filter(x => x.$.type.toLowerCase() === 'general');
   }
 
   get others() {
     return !this.jsonData
       ? undefined
-      : ((this.jsonData.mediainfo.file || {}).track || []).filter(x =>
+      : ((this.jsonData.mediaInfo.media || {}).track || []).filter(x =>
         x.$.type.toLowerCase() !== 'general'
         && x.$.type.toLowerCase() !== 'audio'
         && x.$.type.toLowerCase() !== 'video');
   }
 
-
   toJSON() {
-    return this.jsonData;
+    return JSON.parse(JSON.stringify(this.jsonData));
   }
 
   toXML() {
@@ -307,21 +295,30 @@ class MediaInfoCommand {
    * @param {string} url
    */
   async command(url) {
-    return new Promise((resolve, reject) => {
-      const cmd = [
-        `LD_LIBRARY_PATH=${this.libPath}`,
-        this.bin,
-        ...MediaInfoCommand.Constants.Command.Options,
-        `'${url}'`,
-      ].join(' ');
-
-      CHILD.exec(cmd, (e, stdout, stderr) =>
-        ((e)
-          ? reject(e)
-          : (stderr)
-            ? reject(new Error(stderr))
-            : resolve(stdout))).once('error', e => reject(e));
-    });
+    const config = MediaInfoCommand.GetConfiguration();
+    const ldLibraryPath = [
+      config.LD_LIBRARY_PATH,
+      process.env.LD_LIBRARY_PATH,
+    ].filter(x => x).join(':');
+    const defaults = {
+      cwd: undefined,
+      env: {
+        ...process.env,
+        LD_LIBRARY_PATH: ldLibraryPath,
+      },
+    };
+    const params = [
+      ...MediaInfoCommand.Constants.Command.Options,
+      url,
+    ];
+    const response = CHILD.spawnSync(config.MEDIAINFO, params, defaults);
+    if (response.error) {
+      throw response.error;
+    }
+    if (response.status !== 0) {
+      throw new Error(response.stderr.toString());
+    }
+    return response.stdout.toString();
   }
 
   /**
@@ -335,11 +332,10 @@ class MediaInfoCommand {
       this.rawXml = await this.command(parsed);
       parsed = await this.parseXml(this.rawXml);
       parsed = MediaInfoCommand.dedup(parsed);
-
       this.jsonData = MediaInfoCommand.strip(params, parsed);
       return this.toJSON();
     } catch (e) {
-      throw (e instanceof MediainfoError) ? e : new MediainfoError(e);
+      throw (e instanceof MediaInfoError) ? e : new MediaInfoError(e);
     }
   }
 
@@ -365,7 +361,7 @@ class MediaInfoCommand {
 
     const modified = Object.assign({}, data);
 
-    const container = modified.mediainfo.file.track.find(x =>
+    const container = modified.mediaInfo.media.track.find(x =>
       x.$.type.toLowerCase() === 'general');
     container.completeName = ref;
     container.fileExtension = ext;
@@ -434,6 +430,9 @@ class MediaInfoCommand {
 }
 
 module.exports = {
-  MediainfoError,
+  MediaInfoError,
   MediaInfoCommand,
+  MediaInfoConfig: MediaInfoCommand.GetConfiguration(),
+  XParser: Parser,
+  XBuilder: Builder,
 };
