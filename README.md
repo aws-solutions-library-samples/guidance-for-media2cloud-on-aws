@@ -14,6 +14,14 @@ For more information and a detailed deployment guide visit the Media2Cloud Solut
 ![Architecture](./deployment/tutorials/images/architecture.png)
 
 
+## Launching solution with Pre-built AWS CloudFormation Template
+
+The solution is deployed using an AWS CloudFormation template with AWS Lambda backed custom resources. To deploy the solution, use one of the following CloudFormation templates and follows the instructions.
+
+<a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=media2cloud&templateURL=https%3A%2F%2Fmediaent-solution.s3.amazonaws.com%2Fmedia2cloud%2F2.0.2%2Fmedia2cloud.template" target="_blank"><img src="./deployment/tutorials/images/launch-stack.png"></img></a>
+
+__
+
 ## Running unit tests for customization
 * Clone the repository, then make the desired code changes
 * Next, run unit tests to make sure added customization passes the tests
@@ -21,6 +29,7 @@ For more information and a detailed deployment guide visit the Media2Cloud Solut
 cd ./deployment
 bash ./run-unit-tests.sh
 ```
+__
 
 ## Building distributable for customization
 * Configure the bucket name of your target Amazon S3 distribution bucket. (_Note:_ You would have to create an S3 bucket with this naming convention:
@@ -49,6 +58,8 @@ bash ./deploy-s3-dist.sh --bucket MY_BUCKET_BASENAME --region eu-west-1
 * Get the link of the media2cloud-deploy.template uploaded to your Amazon S3 bucket.
 * Deploy the Media2Cloud Solution to your account by launching a new AWS CloudFormation stack using the link of the media2cloud-deploy.template.
 
+__
+
 ## Overview of Media2Cloud Core Components
 The Media2Cloud Solution consists of a demo web portal, an ingest, audio, video, image analysis, a labeling job, a search and storage, and an API layers.
 * The demo web portal uses JQuery framework that interacts with Amazon S3, Amazon API Gateway, AWS Iot Core, and Amazon Cognito.
@@ -56,6 +67,8 @@ The Media2Cloud Solution consists of a demo web portal, an ingest, audio, video,
 * The set of analysis (audio, video, image) orchestration layer are AWS Step Functions state machine that coordinates metadata extraction from Amazon AI services.
 * The search and storage layer uses Amazon Elasticsearch to index all metadata extracted from ingest and analysis states and to provide search capability.
 * The API layer provides simple APIs (assets, analysis, and search) to process HTTP requests from the web client.
+
+__
 
 ## Code Layout
 | Path | Description |
