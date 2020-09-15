@@ -14,7 +14,7 @@
 const Solution = {
   Id: 'SO0050',
   Name: 'media2cloud',
-  Version: '2.0.0',
+  Version: '2.0.2',
 };
 
 /**
