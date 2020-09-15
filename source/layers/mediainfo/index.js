@@ -104,6 +104,7 @@ class MediaInfoCommand {
           'bitDepth',
           'bitRateMode',
           'bitRate',
+          'channels',
           'channelS',
           'channelLayout',
           'samplesPerFrame',
@@ -360,11 +361,12 @@ class MediaInfoCommand {
     }
 
     const modified = Object.assign({}, data);
+    modified.mediaInfo.media.$.ref = ref;
 
     const container = modified.mediaInfo.media.track.find(x =>
       x.$.type.toLowerCase() === 'general');
     container.completeName = ref;
-    container.fileExtension = ext;
+    container.fileNameExtension = ext;
 
     return modified;
   }
