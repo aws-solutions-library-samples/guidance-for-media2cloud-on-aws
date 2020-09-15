@@ -422,7 +422,6 @@ class VideoPreview extends BasePreview {
     return element;
   }
 
-
   /**
    * @function domCreateMediaInfoData
    * @description create mediainfo data block
@@ -432,7 +431,8 @@ class VideoPreview extends BasePreview {
     const items = [];
     items.push(BasePreview.carouselLead('Technical metadata'));
 
-    const tracks = ((card.mediainfo || {}).file || {}).track || [];
+    let tracks = (card.mediainfo || {}).media || (card.mediainfo || {}).file || {};
+    tracks = tracks.track || [];
 
     const container = tracks.filter(x =>
       x.$.type.toLowerCase() === 'general').shift();
