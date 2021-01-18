@@ -64,7 +64,7 @@ We just wired our lambda function to our S3 bucket. Now that when you upload any
 --
 
 ### Step 3: Add API permission to lambda
-Go back to the lambda configuration page, scroll down until you see **Execution role** section. Click on **View m2c-start-ingest-on-s3-event-role-blah-blah role** on the IAM console (note that your role name will be different). 
+Go back to the lambda configuration page, click the Permission Tab, then you see **Execution role** section. Click on **View m2c-start-ingest-on-s3-event-role-blah-blah role** on the IAM console (note that your role name will be different). 
 
 ![View lambda execution role](./images/lambda-execution-role.png)
 
@@ -79,7 +79,7 @@ Under Attach Permissions page, search **AmazonAPIGatewayInvokeFullAccess**, chec
 --
 
 ### Step 4: Adjust Lambda Function Timeout setting
-Go back to the lambda configuration page to adjust the timeout setting. By default, the lambda function is configured to timeout in 3 seconds. So, let's change it to 1 minute to allow enough time for the execution. (note that even if you set it to 15 minutes, you still get charged for the **actual** execution time.)
+Go back to the lambda configuration page, the Execution role session of the Permission Tab to adjust the timeout setting. By default, the lambda function is configured to timeout in 3 seconds. So, let's change it to 1 minute to allow enough time for the execution. (note that even if you set it to 15 minutes, you still get charged for the **actual** execution time.)
 
 Optionally you can increase the **Memory (MB)** but for our exercise, 128 MB is more than enough.
 
