@@ -1,0 +1,21 @@
+{
+  "name": "pdf-lib",
+  "version": "2.2.228",
+  "description": "lambda layer of of Mozilla PDF.JS wrapper to read and convert PDF to PNG image",
+  "main": "index.js",
+  "private": true,
+  "author": "aws-mediaent-solutions",
+  "dependencies": {
+    "pdfjs-dist": "2.2.228"
+  },
+  "scripts": {
+    "pretest": "npm install",
+    "test": "echo \"layer wrapping PDF.JS, skipping unit test.\"",
+    "build:clean": "rm -rf dist && mkdir -p dist/nodejs",
+    "build:copy": "cp -rv package.json dist/nodejs/",
+    "build:install": "cd dist/nodejs && npm install --production",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "devDependencies": {}
+}

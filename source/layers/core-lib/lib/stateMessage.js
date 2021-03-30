@@ -3,21 +3,8 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-
-const {
-  States,
-} = require('./states');
-
-const {
-  Statuses,
-} = require('./statuses');
+const States = require('./states');
+const Statuses = require('./statuses');
 
 /**
  * @class StateMessage
@@ -31,7 +18,6 @@ class StateMessage {
     this.$status = params.status;
     this.$progress = Number.parseInt(params.progress || 0, 10);
     this.$errorMessage = params.errorMessage;
-    this.$data = params.data ? Object.assign({}, params.data) : undefined;
   }
 
   /* eslint-disable class-methods-use-this */
@@ -72,6 +58,14 @@ class StateMessage {
     this.$operation = val;
   }
 
+  get overallStatus() {
+    return (this.status.indexOf(Statuses.Error) >= 0)
+      ? Statuses.Error
+      : (this.status === Statuses.AnalysisCompleted)
+        ? Statuses.Completed
+        : Statuses.Processing;
+  }
+
   get status() {
     return this.$status;
   }
@@ -96,26 +90,13 @@ class StateMessage {
     this.$errorMessage = (e instanceof Error) ? e.message : e;
   }
 
-  get data() {
-    return this.$data;
-  }
-
-  set data(val) {
-    this.$data = (typeof val !== 'object') ? val : Object.assign(this.$data, val);
-  }
-
-  setState(stateMachine, operation) {
-    this.stateMachine = stateMachine;
-    this.operation = operation;
-  }
-
-  setStarted() {
-    this.status = Statuses.Started;
+  setStarted(status) {
+    this.status = status || Statuses.Started;
     this.progress = 0;
   }
 
-  setCompleted() {
-    this.status = Statuses.Completed;
+  setCompleted(status) {
+    this.status = status || Statuses.Completed;
     this.progress = 100;
   }
 
@@ -134,54 +115,17 @@ class StateMessage {
     this.progress = 100;
   }
 
-  setData(key, val, mergeKey = true) {
-    if (!this.event.next) {
-      this.event.next = {};
-    }
-    if (val === undefined && !mergeKey) {
-      delete this.event.next[key];
-      if ((this.event.input || {})[key]) {
-        delete this.event.input[key];
-      }
-    } else {
-      this.event.next[key]
-        = Object.assign({}, mergeKey ? (this.event.input || {})[key] : undefined, val);
-    }
-  }
-
-  resetData(key) {
-    if ((this.event.next || {}).key) {
-      this.event.next[key] = undefined;
-    }
-  }
-
-  resetAllData() {
-    this.event.input = undefined;
-    this.event.next = undefined;
-  }
-
-
   toJSON() {
     return {
       uuid: this.uuid,
       stateMachine: this.stateMachine,
       operation: this.operation,
+      overallStatus: this.overallStatus,
       status: this.status,
       progress: this.progress,
       errorMessage: this.errorMessage,
-      data: this.data,
     };
   }
 }
 
-module.exports = {
-  StateMessage,
-};
-
-/**
- * @description expose classess to window globals
- */
-global.AWSomeNamespace =
-  Object.assign(global.AWSomeNamespace || {}, {
-    StateMessage,
-  });
+module.exports = StateMessage;

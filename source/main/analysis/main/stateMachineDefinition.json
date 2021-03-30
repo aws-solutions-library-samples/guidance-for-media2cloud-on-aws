@@ -1,0 +1,227 @@
+{
+    "StartAt": "Prepare analysis",
+    "States": {
+        "Prepare analysis": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "prepare-analysis",
+                "executionArn.$": "$$.Execution.Id",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input"
+            },
+            "Next": "Run parallel states",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Run parallel states": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Video analysis enabled?",
+                    "States": {
+                        "Video analysis enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.video.enabled",
+                                    "BooleanEquals": false,
+                                    "Next": "Skip video analysis"
+                                }
+                            ],
+                            "Default": "Start video analysis and wait"
+                        },
+                        "Start video analysis and wait": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Parameters": {
+                                "Input": {
+                                    "uuid.$": "$.uuid",
+                                    "status": "NOT_STARTED",
+                                    "progress": 0,
+                                    "input.$": "$.input",
+                                    "data.$": "$.data"
+                                },
+                                "StateMachineArn": "${VideoStateMachine}"
+                            },
+                            "End": true
+                        },
+                        "Skip video analysis": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Audio analysis enabled?",
+                    "States": {
+                        "Audio analysis enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.audio.enabled",
+                                    "BooleanEquals": false,
+                                    "Next": "Skip audio analysis"
+                                }
+                            ],
+                            "Default": "Start audio analysis and wait"
+                        },
+                        "Start audio analysis and wait": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Parameters": {
+                                "Input": {
+                                    "uuid.$": "$.uuid",
+                                    "status": "NOT_STARTED",
+                                    "progress": 0,
+                                    "input.$": "$.input",
+                                    "data.$": "$.data"
+                                },
+                                "StateMachineArn": "${AudioStateMachine}"
+                            },
+                            "End": true
+                        },
+                        "Skip audio analysis": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Image analysis enabled?",
+                    "States": {
+                        "Image analysis enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.image.enabled",
+                                    "BooleanEquals": false,
+                                    "Next": "Skip image analysis"
+                                }
+                            ],
+                            "Default": "Start image analysis and wait"
+                        },
+                        "Start image analysis and wait": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Parameters": {
+                                "Input": {
+                                    "uuid.$": "$.uuid",
+                                    "status": "NOT_STARTED",
+                                    "progress": 0,
+                                    "input.$": "$.input",
+                                    "data.$": "$.data"
+                                },
+                                "StateMachineArn": "${ImageStateMachine}"
+                            },
+                            "End": true
+                        },
+                        "Skip image analysis": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Document analysis enabled?",
+                    "States": {
+                        "Document analysis enabled?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.input.document.enabled",
+                                    "BooleanEquals": false,
+                                    "Next": "Skip document analysis"
+                                }
+                            ],
+                            "Default": "Start document analysis and wait"
+                        },
+                        "Start document analysis and wait": {
+                            "Type": "Task",
+                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Parameters": {
+                                "Input": {
+                                    "uuid.$": "$.uuid",
+                                    "status": "NOT_STARTED",
+                                    "progress": 0,
+                                    "input.$": "$.input",
+                                    "data.$": "$.data"
+                                },
+                                "StateMachineArn": "${DocumentStateMachine}"
+                            },
+                            "End": true
+                        },
+                        "Skip document analysis": {
+                            "Type": "Succeed"
+                        }
+                    }
+                }
+            ],
+            "Next": "Collect analysis results"
+        },
+        "Collect analysis results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "collect-analysis-results",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "parallelStateOutputs.$": "$"
+            },
+            "Next": "Index analysis results",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Index analysis results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "index-analysis-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "Analysis completed",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Analysis completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "End": true
+        }
+    }
+}

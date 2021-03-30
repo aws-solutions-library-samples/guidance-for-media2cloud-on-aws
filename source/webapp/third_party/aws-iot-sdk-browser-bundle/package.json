@@ -1,0 +1,20 @@
+{
+  "name": "aws-iot-sdk-browser-bundle",
+  "version": "2.0.0",
+  "description": "build aws-iot-sdk for browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist && mkdir -p dist/js",
+    "build:browserify": "export AWS_SERVICES=cognitoidentity,cognitoidentityserviceprovider,iot,iotdata,s3; browserify index.js -r aws-iot-device-sdk -r aws-sdk -o dist/js/aws-iot-sdk-bundle.js",
+    "build:minify": "terser dist/js/aws-iot-sdk-bundle.js -o ./dist/js/aws-iot-sdk-bundle.min.js",
+    "build": "npm-run-all -s build:clean build:browserify build:minify"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "aws-iot-device-sdk": "^2.2.6",
+    "aws-sdk": "2.642.0"
+  },
+  "devDependencies": {}
+}

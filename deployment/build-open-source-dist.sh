@@ -40,13 +40,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${SOLUTION}" ] && \
-  SOLUTION=$(grep_solution_name "../source/layers/core-lib/lib/index.js")
-
-[ -z "${SOLUTION}" ] && \
-  echo "error: SOLUTION variable is not defined" && \
-  usage && \
-  exit 1
+[ -z "$SOLUTION" ] && \
+  SOLUTION="media2cloud"
 
 echo "------------------------------------------------------------------------------"
 echo "Building open-source Folder"

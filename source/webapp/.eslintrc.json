@@ -1,0 +1,62 @@
+{
+  "extends": ["airbnb-base"],
+  "rules": {
+    "strict": "error",
+    "func-names": ["error", "never"],
+    "comma-dangle": ["error", {
+      "arrays": "always-multiline",
+      "objects": "always-multiline",
+      "imports": "always-multiline",
+      "exports": "always-multiline",
+      "functions": "never"
+    }],
+    "no-use-before-define": ["error", {
+      "functions": false,
+      "classes": true,
+      "variables": true
+    }],
+    "prefer-arrow-callback": 0,
+    "prefer-object-spread": 0,
+    "arrow-parens": 0,
+    "max-classes-per-file": 0,
+    "implicit-arrow-linebreak": 0,
+    "operator-linebreak": 0,
+    "no-unused-vars": 0,
+    "class-methods-use-this": 0,
+    "no-plusplus": 0,
+    "no-continue": 0,
+    "no-alert": 0,
+    "no-console": 0,
+    "max-len": 0,
+    "no-nested-ternary": 0,
+    "no-await-in-loop": 0,
+    "no-loop-func": 0,
+    "no-restricted-globals": 0,
+    "prefer-destructuring": 0,
+    "no-restricted-properties": 0,
+    "import/extensions": 0,
+    "import/no-absolute-path": 0,
+    "import/no-unresolved": 0,
+    "no-underscore-dangle": 0,
+    "no-return-assign": 0
+  },
+  "env": {
+    "es6": true,
+    "browser": true,
+    "node": false,
+    "jquery": true
+  },
+  "globals": {
+    "AWS": true,
+    "AWSIoTData": true,
+    "AmazonCognitoIdentity": true,
+    "AWSomeNamespace": true,
+    "CryptoJS": true,
+    "Cropper": true,
+    "SparkMD5": true,
+    "google": true,
+    "videojs": true,
+    "echarts": true,
+    "location": true
+  }
+}

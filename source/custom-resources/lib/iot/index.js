@@ -7,21 +7,9 @@
 /**
  * @author MediaEnt Solutions
  */
+const AWS = require('aws-sdk');
 
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-
-const {
-  Iot,
-} = require('aws-sdk');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @function IotEndpoint
@@ -38,21 +26,18 @@ exports.IotEndpoint = async (event, context) => {
       return x0.responseData;
     }
 
-    const instance = new Iot({
+    const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
     });
-
-    const response = await instance.describeEndpoint({
+    const response = await iot.describeEndpoint({
       endpointType: 'iot:Data-ATS',
     }).promise();
 
-    if (!response || !response.endpointAddress) {
+    if (!(response || {}).endpointAddress) {
       throw new Error('fail to get Iot endpoint');
     }
-
     x0.storeResponseData('Endpoint', response.endpointAddress);
     x0.storeResponseData('Status', 'SUCCESS');
-
     return x0.responseData;
   } catch (e) {
     e.message = `IotEndpoint: ${e.message}`;
@@ -75,50 +60,30 @@ exports.IotDetachPolices = async (event, context) => {
       return x0.responseData;
     }
 
-    const {
-      ResourceProperties = {},
-    } = event || {};
-
-    const {
-      IotThingPolicy,
-    } = ResourceProperties;
-
-    if (!IotThingPolicy) {
-      console.error('missing event.ResourceProperties.IotThingPolicy. skipping...');
-
+    if (!event.ResourceProperties.Data.IotThingPolicy) {
       x0.storeResponseData('Status', 'SKIPPED');
-
       return x0.responseData;
     }
 
-    /* TODO: could have more than 200 targets! */
-    const params = {
-      policyName: IotThingPolicy,
-      pageSize: 200,
-    };
-
-    const instance = new Iot({
+    const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
     });
-
     const {
       targets = [],
-    } = await instance.listTargetsForPolicy(params).promise();
-
+    } = await iot.listTargetsForPolicy({
+      policyName: event.ResourceProperties.Data.IotThingPolicy,
+      pageSize: 200,
+    }).promise();
     console.log(JSON.stringify(targets, null, 2));
 
-    const promises = targets.map(target =>
-      instance.detachPolicy({
-        policyName: IotThingPolicy,
+    const response = await Promise.all(targets.map(target =>
+      iot.detachPolicy({
+        policyName: event.ResourceProperties.Data.IotThingPolicy,
         target,
-      }).promise());
-
-    const response = await Promise.all(promises);
-
+      }).promise()));
     console.log(JSON.stringify(response, null, 2));
 
     x0.storeResponseData('Status', 'SUCCESS');
-
     return x0.responseData;
   } catch (e) {
     e.message = `IotDetachPolices: ${e.message}`;

@@ -3,24 +3,8 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
+const WebVttCue = require('./webVttCue');
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-continue */
-const {
-  WebVttCue,
-} = require('./webVttCue');
-
-/**
- * @class WebVttTrack
- * @description create webvtt track
- */
 class WebVttTrack {
   constructor(unit = WebVttTrack.Constants.UnitInMilliseconds) {
     this.$factor = unit;
@@ -136,6 +120,4 @@ class WebVttTrack {
   }
 }
 
-module.exports = {
-  WebVttTrack,
-};
+module.exports = WebVttTrack;

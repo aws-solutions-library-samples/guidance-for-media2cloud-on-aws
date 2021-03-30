@@ -1,0 +1,131 @@
+{
+    "StartAt": "Check project version status",
+    "States": {
+        "Check project version status": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "check-project-version-status",
+                "jobTag.$": "$.jobTag",
+                "input.$": "$.input",
+                "output.$": "$.output"
+            },
+            "Next": "Project version started?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Project version started?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.output['check-project-version-status'].status",
+                            "StringEquals": "TRAINING_FAILED"
+                        },
+                        {
+                            "Variable": "$.output['check-project-version-status'].status",
+                            "StringEquals": "FAILED"
+                        },
+                        {
+                            "Variable": "$.output['check-project-version-status'].status",
+                            "StringEquals": "DELETING"
+                        }
+                    ],
+                    "Next": "Project version failed"
+                },
+                {
+                    "Variable": "$.output['check-project-version-status'].status",
+                    "StringEquals": "RUNNING",
+                    "Next": "Detect custom labels"
+                },
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.output['check-project-version-status'].status",
+                            "StringEquals": "TRAINING_COMPLETED"
+                        },
+                        {
+                            "Variable": "$.output['check-project-version-status'].status",
+                            "StringEquals": "STOPPED"
+                        }
+                    ],
+                    "Next": "Start project version"
+                }
+            ],
+            "Default": "Wait for project version status (3mins)"
+        },
+        "Wait for project version status (3mins)": {
+            "Type": "Wait",
+            "Seconds": 180,
+            "Next": "Check project version status"
+        },
+        "Start project version": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "start-project-version",
+                "jobTag.$": "$.jobTag",
+                "input.$": "$.input",
+                "output.$": "$.output"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "Wait for project version status (3mins)"
+        },
+        "Detect custom labels": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "detect-custom-labels",
+                "jobTag.$": "$.jobTag",
+                "input.$": "$.input",
+                "output.$": "$.output"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "More custom labels?"
+        },
+        "More custom labels?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.output['detect-custom-labels'].status",
+                    "StringEquals": "completed",
+                    "Next": "Custom labels completed"
+                }
+            ],
+            "Default": "Detect custom labels"
+        },
+        "Custom labels completed": {
+            "Type": "Succeed"
+        },
+        "Project version failed": {
+            "Type": "Fail"
+        }
+    }
+}

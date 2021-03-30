@@ -1,0 +1,1362 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-service-backlog) Media2Cloud - manages Amazon Rekognition async processes to avoid hitting service quotas and queues request when is needed.
+
+Mappings:
+    Layer:
+        BacklogLib:
+            Package: "%LAYER_BACKLOG%"
+            Name: "service-backlog-lib"
+    Workflow:
+        BacklogStatusUpdater:
+            Package: "%PKG_BACKLOG_STATUS_UPDATER%"
+            Name: "backlog-status-updater"
+        BacklogStreamConnector:
+            Package: "%PKG_BACKLOG_STREAM_CONNECTOR%"
+            Name: "backlog-stream-connector"
+        CustomLabels:
+            Package: "%PKG_BACKLOG_CUSTOMLABELS%"
+            Name: "backlog-custom-labels"
+    SNS:
+        BacklogTopic:
+            Name: "service-backlog-topic"
+            DisplayName: BacklogSNS
+    EventBridge:
+        Bus:
+            Name: "service-backlog"
+        Rule:
+            Name: StatusChange
+            Detail: Service Backlog Status Change
+            Source: custom.servicebacklog
+    DynamoDB:
+        BacklogTable:
+            Name: service-backlog
+            PartitionKey: id
+            SortKey: serviceApi
+            # status-timestamp global secondary index
+            GSIStatusIndex: gsi-status-timestamp
+            GSIStatusPartitionKey: status
+            GSIStatusSortKey: timestamp
+            # jobId global secondary index
+            GSIJobIdIndex: gsi-jobId
+            GSIJobIdPartitionKey: jobId
+        AtomicLockTable:
+            Name: atomic-lock
+            PartitionKey: lockId
+    Node:
+        Runtime:
+            Version: nodejs14.x
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: solution ID
+    RootStackName:
+        Type: String
+        Description: used to suffix resources
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    IngestBucket:
+        Type: String
+        Description: bucket to store source files
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    ProxyBucket:
+        Type: String
+        Description: bucket to store proxies
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    AwsSdkLayer:
+        Type: String
+        Description: AWS SDK layer
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "General Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: "Created by parent stack"
+                Parameters:
+                    - IngestBucket
+                    - ProxyBucket
+                    - AwsSdkLayer
+        ParameterLabels:
+            SolutionId:
+                default: "Solution ID"
+            RootStackName:
+                default: "Top Stack Name"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution Key Prefix"
+            IngestBucket:
+                default: "Source Bucket"
+            ProxyBucket:
+                default: "Proxy Bucket"
+            AwsSdkLayer:
+                default: "AWS SDK Layer"
+
+Resources:
+    ################################################################################
+    #
+    # Amazon Lambda Layers
+    # * Service Backlog (implementation of backlog queue management system)
+    #
+    ################################################################################
+    BacklogLibLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Layer",
+                        "BacklogLib",
+                        "Name"
+                    ]
+                }
+            ]
+            CompatibleRuntimes:
+                - nodejs10.x
+                - nodejs12.x
+                - nodejs14.x
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Layer",
+                            "BacklogLib",
+                            "Package"
+                        ]
+                    }
+                ]
+            Description: !Sub "(${SolutionId}) Service Backlog Layer"
+            LicenseInfo: MIT-0
+
+    ################################################################################
+    #
+    # Amazon DynamoDB
+    # * BacklogTable: DynamoDB table to queue service requests and start the process when
+    # * service quotas is available
+    # * AtomicLockTable: DynamoDB table to acquire and release a specific lock. Currently
+    # * used for Rekognition Custom Labels model to serialize requests.
+    #
+    ################################################################################
+    BacklogTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "Name"
+                    ]
+                }
+            ]
+            BillingMode: "PAY_PER_REQUEST"
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "SortKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "GSIStatusPartitionKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "GSIStatusSortKey"
+                    ]
+                    AttributeType: "N"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "GSIJobIdPartitionKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "SortKey"
+                    ]
+                    KeyType: RANGE
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: true
+            TimeToLiveSpecification:
+                AttributeName: ttl
+                Enabled: true
+            GlobalSecondaryIndexes:
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "GSIStatusIndex"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "BacklogTable",
+                                "GSIStatusPartitionKey"
+                            ]
+                            KeyType: HASH
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "BacklogTable",
+                                "GSIStatusSortKey"
+                            ]
+                            KeyType: RANGE                            
+                    Projection:
+                        ProjectionType: INCLUDE
+                        NonKeyAttributes:
+                            - serviceParams
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "BacklogTable",
+                        "GSIJobIdIndex"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "BacklogTable",
+                                "GSIJobIdPartitionKey"
+                            ]
+                            KeyType: HASH
+                    Projection:
+                        ProjectionType: INCLUDE
+                        NonKeyAttributes:
+                            - serviceParams
+            StreamSpecification:
+                StreamViewType: NEW_AND_OLD_IMAGES
+
+    AtomicLockTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "AtomicLockTable",
+                        "Name"
+                    ]
+                }
+            ]
+            BillingMode: "PAY_PER_REQUEST"
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AtomicLockTable",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AtomicLockTable",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: true
+            TimeToLiveSpecification:
+                AttributeName: ttl
+                Enabled: true
+
+    ################################################################################
+    #
+    # Service Data Access role (Comprehend) for async operations
+    # * allows Backlog Stream connector to pass DataAccessRole to Comprehend
+    #
+    ################################################################################
+    BacklogServiceDataAccessRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service:
+                                - "comprehend.amazonaws.com"
+                                - "transcribe.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-backlog-data-access"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # Read objects from source bucket
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            # List objects on destination bucket
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}"
+                            # Write to proxy bucket
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+
+    ################################################################################
+    #
+    # Custom Backlog Workflow
+    # * Custom Labels State Machine
+    #
+    ################################################################################
+    # Rekognition Custom Labels (state machine), serialize requests for a specific project version
+    StateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: !Sub "states.${AWS::Region}.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-backlog-custom-labels-role"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action: "lambda:InvokeFunction"
+                                Resource: !Sub [
+                                    "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                        x0: !FindInMap [
+                                            "Workflow",
+                                            "CustomLabels",
+                                            "Name"
+                                        ]
+                                    }
+                                ]
+
+    CustomLabelsStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "CustomLabels",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    CustomLabelsStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-backlog-custom-labels"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt CustomLabelsStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                    - "s3:PutObjectAcl"
+                                    - "s3:SelectObjectContent"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                # state machine lambda read/write access to AtomicLockTable
+                                Resource: !GetAtt AtomicLockTable.Arn
+                            # Rekognition Custom Labels
+                            -
+                                Effect: Allow
+                                Action: "rekognition:DescribeProjectVersions"
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/*"
+                            -
+                                Effect: Allow
+                                Action:
+                                    - "rekognition:DetectCustomLabels"
+                                    - "rekognition:StartProjectVersion"
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/version/*/*"
+
+    CustomLabelsStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "CustomLabels",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Backlog Custom Labels state machine lambda (128MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt CustomLabelsStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "CustomLabels",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref BacklogLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
+
+    CustomLabelsStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "CustomLabels",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Check project version status",
+                            "States": {
+                                "Check project version status": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "check-project-version-status",
+                                        "jobTag.$": "$.jobTag",
+                                        "input.$": "$.input",
+                                        "output.$": "$.output"
+                                    },
+                                    "Next": "Project version started?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Project version started?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Or": [
+                                                {
+                                                    "Variable": "$.output['check-project-version-status'].status",
+                                                    "StringEquals": "TRAINING_FAILED"
+                                                },
+                                                {
+                                                    "Variable": "$.output['check-project-version-status'].status",
+                                                    "StringEquals": "FAILED"
+                                                },
+                                                {
+                                                    "Variable": "$.output['check-project-version-status'].status",
+                                                    "StringEquals": "DELETING"
+                                                }
+                                            ],
+                                            "Next": "Project version failed"
+                                        },
+                                        {
+                                            "Variable": "$.output['check-project-version-status'].status",
+                                            "StringEquals": "RUNNING",
+                                            "Next": "Detect custom labels"
+                                        },
+                                        {
+                                            "Or": [
+                                                {
+                                                    "Variable": "$.output['check-project-version-status'].status",
+                                                    "StringEquals": "TRAINING_COMPLETED"
+                                                },
+                                                {
+                                                    "Variable": "$.output['check-project-version-status'].status",
+                                                    "StringEquals": "STOPPED"
+                                                }
+                                            ],
+                                            "Next": "Start project version"
+                                        }
+                                    ],
+                                    "Default": "Wait for project version status (3mins)"
+                                },
+                                "Wait for project version status (3mins)": {
+                                    "Type": "Wait",
+                                    "Seconds": 180,
+                                    "Next": "Check project version status"
+                                },
+                                "Start project version": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "start-project-version",
+                                        "jobTag.$": "$.jobTag",
+                                        "input.$": "$.input",
+                                        "output.$": "$.output"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ],
+                                    "Next": "Wait for project version status (3mins)"
+                                },
+                                "Detect custom labels": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "detect-custom-labels",
+                                        "jobTag.$": "$.jobTag",
+                                        "input.$": "$.input",
+                                        "output.$": "$.output"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ],
+                                    "Next": "More custom labels?"
+                                },
+                                "More custom labels?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.output['detect-custom-labels'].status",
+                                            "StringEquals": "completed",
+                                            "Next": "Custom labels completed"
+                                        }
+                                    ],
+                                    "Default": "Detect custom labels"
+                                },
+                                "Custom labels completed": {
+                                    "Type": "Succeed"
+                                },
+                                "Project version failed": {
+                                    "Type": "Fail"
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt CustomLabelsStateMachineFunction.Arn
+                        }
+
+    ################################################################################
+    #
+    # Backlog Stream connector
+    # * Data Access Role (Amazon Transcribe, Amazon Comprehend, and AWS Elemental MediaConvert)
+    # * Connector lambda role
+    # * Connector lambda
+    # * Configure Lambda Event Source Mapping to trigger on DDB Stream
+    #
+    ################################################################################
+    BacklogStreamConnectorLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "BacklogStreamConnector",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    BacklogStreamConnectorRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+                    -
+                        id: W76
+                        reason: "Suppress SPCM higher than 25 warning"
+        Properties:
+            AssumeRolePolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                    Effect: "Allow"
+                    Principal:
+                        Service: "lambda.amazonaws.com"
+                    Action: "sts:AssumeRole"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-service-backlog-stream"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt BacklogStreamConnectorLogGroup.Arn
+                            # DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:Query"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:EnclosingOperation"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource:
+                                    - !GetAtt BacklogTable.Arn
+                                    - !Sub [
+                                        "${BacklogTable.Arn}/index/${x0}", {
+                                            x0: !FindInMap [
+                                                "DynamoDB",
+                                                "BacklogTable",
+                                                "GSIStatusIndex"
+                                            ]
+                                        }
+                                    ]
+                            # DynamoDB stream permission
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DescribeStream"
+                                    - "dynamodb:GetRecords"
+                                    - "dynamodb:GetShardIterator"
+                                    - "dynamodb:ListStreams"
+                                Resource: !GetAtt BacklogTable.StreamArn
+                            # EventBridge
+                            -
+                                Effect: "Allow"
+                                Action: "events:PutEvents"
+                                Resource: !GetAtt EventBridgeBus.Arn
+                            # Rekognition
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "rekognition:StartContentModeration"
+                                    - "rekognition:StartCelebrityRecognition"
+                                    - "rekognition:StartFaceDetection"
+                                    - "rekognition:StartFaceSearch"
+                                    - "rekognition:StartLabelDetection"
+                                    - "rekognition:StartPersonTracking"
+                                    - "rekognition:StartSegmentDetection"
+                                    - "rekognition:StartTextDetection"
+                                Resource: !Join ["", ["*"]]
+                            -
+                                Effect: "Allow"
+                                Action: "iam:PassRole"
+                                Resource: !GetAtt BacklogTopicRole.Arn
+                            # Textract
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "textract:StartDocumentAnalysis"
+                                    - "textract:StartDocumentTextDetection"
+                                Resource: !Join ["", ["*"]]
+                            ## Comprehend
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "comprehend:StartEntitiesDetectionJob"
+                                    - "comprehend:StartKeyPhrasesDetectionJob"
+                                    - "comprehend:StartDominantLanguageDetectionJob"
+                                    - "comprehend:StartSentimentDetectionJob"
+                                    - "comprehend:StartTopicsDetectionJob"
+                                Resource: !Join ["", ["*"]]
+                            -
+                                Effect: "Allow"
+                                Action: "iam:PassRole"
+                                Resource: !GetAtt BacklogServiceDataAccessRole.Arn
+                            # S3 - StreamConnectorLambda starts AI/ML job on behalf
+                            #      which requires GetObject when the services assume role
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            # List objects on destination bucket
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}"
+                            # Read and write to destination bucket
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## Custom backlog job requires atomic lock and state machines
+                            # Step Functions (Custom Labels)
+                            -
+                                Effect: "Allow"
+                                Action: "states:StartExecution"
+                                Resource: !Ref CustomLabelsStateMachine
+                            # DynamoDB - AtomicLock table to acquire lock
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:Query"
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:EnclosingOperation"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !GetAtt AtomicLockTable.Arn
+                            -
+                                Effect: Allow
+                                Action: "rekognition:StopProjectVersion"
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/version/*/*"
+
+    BacklogStreamConnectorLambda:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "BacklogStreamConnector",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) backlog stream connector (128MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt BacklogStreamConnectorRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "BacklogStreamConnector",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref BacklogLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
+                    ENV_DATA_ACCESS_ROLE: !GetAtt BacklogServiceDataAccessRole.Arn
+                    ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
+
+    BacklogStreamEventSource:
+        Type: AWS::Lambda::EventSourceMapping
+        Properties:
+            Enabled: true
+            EventSourceArn: !GetAtt BacklogTable.StreamArn
+            FunctionName: !Ref BacklogStreamConnectorLambda
+            BatchSize: 1
+            MaximumRetryAttempts: 10
+            StartingPosition: LATEST
+
+    ################################################################################
+    #
+    # Backlog Status Updater
+    # * Updater lambda role
+    # * Updater lambda
+    # * Amazon CloudWatch Event (AWS Elemental MediaConvert)
+    # * Amazon CloudWatch Event (Amazon Transcribe)
+    # * Amazon SNS (Amazon Rekognition, Amazon Textract, Amazon ElasticTranscoder)
+    # * Amazon CloudWatch Event (Amazon Step Functions of Custom Labels)
+    #
+    ################################################################################
+    BacklogStatusUpdaterLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "BacklogStatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    BacklogStatusUpdaterRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-service-backlog-status-updater"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt BacklogStatusUpdaterLogGroup.Arn
+                            ## DynamoDB - query and delete item from backlog table / jobId index
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:EnclosingOperation"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource:
+                                    - !GetAtt BacklogTable.Arn
+                                    - !Sub [
+                                        "${BacklogTable.Arn}/index/${x0}", {
+                                            x0: !FindInMap [
+                                                "DynamoDB",
+                                                "BacklogTable",
+                                                "GSIJobIdIndex"
+                                            ]
+                                        }
+                                    ]
+                            # EventBridge
+                            -
+                                Effect: "Allow"
+                                Action: "events:PutEvents"
+                                Resource: !GetAtt EventBridgeBus.Arn
+                            ## DynamoDB - Atomic Lock Table to delete lock
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:EnclosingOperation"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !GetAtt AtomicLockTable.Arn
+                            ## Step Functions - describe custom labels execution
+                            -
+                                Effect: "Allow"
+                                Action: "states:DescribeExecution"
+                                Resource: !Sub [
+                                    "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${x0}:*", {
+                                        x0: !Select [
+                                            6,
+                                            !Split [
+                                                ":",
+                                                !Ref CustomLabelsStateMachine
+                                            ]
+                                        ]
+                                    }
+                                ]
+
+    BacklogStatusUpdaterLambda:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "BacklogStatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) service backlog status updater lambda (128MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt BacklogStatusUpdaterRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "BacklogStatusUpdater",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref BacklogLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
+                    ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
+
+    ## Rekognition/Textract (SNS) ##
+    BacklogTopic:
+        Type: AWS::SNS::Topic
+        Properties:
+            TopicName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "SNS",
+                        "BacklogTopic",
+                        "Name"
+                    ]
+                }
+            ]
+            DisplayName: !FindInMap [
+                "SNS",
+                "BacklogTopic",
+                "DisplayName"
+            ]
+            KmsMasterKeyId: "alias/aws/sns"
+
+    BacklogTopicPolicy:
+        Type: AWS::SNS::TopicPolicy
+        Properties:
+            Topics:
+                - !Ref BacklogTopic
+            PolicyDocument:
+                Id: !Sub "${SolutionId}-${RootStackName}-service-backlog-topic-id"
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Sid: "allow-services-publish-sns"
+                        Effect: "Allow"
+                        Principal:
+                            Service:
+                                - "rekognition.amazonaws.com"
+                                - "textract.amazonaws.com"
+                        Action: "sns:Publish"
+                        Resource: !Ref BacklogTopic
+
+    BacklogTopicRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service:
+                                - "rekognition.amazonaws.com"
+                                - "textract.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-service-backlog-topic-role"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action: "sns:Publish"
+                                Resource: !Ref BacklogTopic
+
+    BacklogTopicSubscription:
+        Type: AWS::SNS::Subscription
+        Properties:
+            Protocol: lambda
+            TopicArn: !Ref BacklogTopic
+            Endpoint: !GetAtt BacklogStatusUpdaterLambda.Arn
+
+    BacklogTopicPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref BacklogStatusUpdaterLambda
+            Action: lambda:InvokeFunction
+            Principal: sns.amazonaws.com
+            SourceArn: !Ref BacklogTopic
+
+    ## Step Functions of Custom Labels ##
+    CustomLabelsStateMachineStatusEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "CustomLabels",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) backlog custom labels state machine status change"
+            EventPattern:
+                source:
+                    - "aws.states"
+                detail-type:
+                    - "Step Functions Execution Status Change"
+                detail:
+                    status:
+                        - FAILED
+                        - ABORTED
+                        - TIMED_OUT
+                        - SUCCEEDED
+                    stateMachineArn:
+                        - !Ref CustomLabelsStateMachine
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${BacklogStatusUpdaterLambda}"
+                    Arn: !GetAtt BacklogStatusUpdaterLambda.Arn
+
+    CustomLabelsStateMachineStatusPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref BacklogStatusUpdaterLambda
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt CustomLabelsStateMachineStatusEvent.Arn
+
+    ################################################################################
+    #
+    # Amazon EventBridge
+    # * an EventBridge bus that interfaces with upstream/downstream processes
+    #
+    ################################################################################
+    EventBridgeLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/events/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "EventBridge",
+                        "Bus",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    EventBridgeBus:
+        Type: AWS::Events::EventBus
+        Properties:
+            Name: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "EventBridge",
+                        "Bus",
+                        "Name"
+                    ]
+                }
+            ]
+
+    EventBridgeRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "events.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-eventbridge"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt EventBridgeLogGroup.Arn
+
+    EventBridgeRule:
+        Type: AWS::Events::Rule
+        Properties:
+            Description: !FindInMap [
+                "EventBridge",
+                "Rule",
+                "Detail"
+            ]
+            EventBusName: !GetAtt EventBridgeBus.Name
+            EventPattern:
+                detail-type:
+                    - !FindInMap [
+                        "EventBridge",
+                        "Rule",
+                        "Detail"
+                    ]
+                source:
+                    - !FindInMap [
+                        "EventBridge",
+                        "Rule",
+                        "Source"
+                    ]
+                account:
+                    - !Ref AWS::AccountId
+                region:
+                    - !Ref AWS::Region
+            Name: !FindInMap [
+                "EventBridge",
+                "Rule",
+                "Name"
+            ]
+            RoleArn: !GetAtt EventBridgeRole.Arn
+            State: ENABLED
+            Targets:
+                -
+                    Arn: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EventBridgeLogGroup}"
+                    Id: !Sub "${SolutionId}-${RootStackName}-log-group-target"
+
+Outputs:
+    # Environment Variables
+    BacklogLibLayerArn:
+        Value: !Ref BacklogLibLayer
+        Description: Lambda Layer (Service Backlog Library)
+    BacklogTable:
+        Value: !Ref BacklogTable
+        Description: DynamoDB Table (Service Backlog)
+    BacklogEBBus:
+        Value: !GetAtt EventBridgeBus.Name
+        Description: EventBridge Bus (Service Backlog)
+    BacklogTopicArn:
+        Value: !Ref BacklogTopic
+        Description: SNS Topic Arn (Service Backlog)
+    BacklogTopicRoleArn:
+        Value: !GetAtt BacklogTopicRole.Arn
+        Description: SNS Topic Role Arn (Service Backlog)
+    BacklogServiceDataAccessRoleArn:
+        Value: !GetAtt BacklogServiceDataAccessRole.Arn
+        Description: IAM Role Arn for Data Access (Service Backlog)
+    AtomicLockTable:
+        Value: !Ref AtomicLockTable
+        Description: DynamoDB Table (Atomic Lock)
+    CustomLabelsStateMachineArn:
+        Value: !Ref CustomLabelsStateMachine
+        Description: State Machine Arn (Backlog Custom Labels)
+    ### Resources URLs ###
+    BacklogLibLayer:
+        Value : !Sub [
+            "https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/layers/${x0}/versions/${x1}", {
+                x0: !Select [
+                    6,
+                    !Split [
+                        ":",
+                        !Ref BacklogLibLayer
+                    ]
+                ],
+                x1: !Select [
+                    7,
+                    !Split [
+                        ":",
+                        !Ref BacklogLibLayer
+                    ]
+                ]
+            }
+        ]
+        Description: Lambda Layer (Backlog)
+    BacklogStreamConnectorLambda:
+        Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/lambda/home?${AWS::Region}#/functions/${BacklogStreamConnectorLambda}"
+        Description: Lambda (Service Backlog Stream Connector)
+    BacklogStatusUpdaterLambda:
+        Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/lambda/home?${AWS::Region}#/functions/${BacklogStatusUpdaterLambda}"
+        Description: Lambda (Service Backlog Status Updater)

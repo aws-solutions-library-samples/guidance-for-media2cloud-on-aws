@@ -37,5 +37,5 @@ aws-elasticsearch-connector under the Massachusetts Institute of Technology (MIT
 node-xml2js under the Massachusetts Institute of Technology (MIT) license
 Rusha (NodeJS) under the Massachusetts Institute of Technology (MIT) license
 node-tar under Internet Systems Consortium (ISC) license
-ExitTool by Phil Harvey under Artistic License
-Perl/Perl5 under Artistic License
+ExitTool by Phil Harvey - This package is distributed under Artistic License 1.0 (Perl). Amazon expressly elects to distribute the package under the Artistic License 1.0 (Perl) and NOT under GNU General Public License Version 1.
+Perl/Perl5 - This package is distributed under Artistic License 1.0 (Perl). Amazon expressly elects to distribute the package under the Artistic License 1.0 (Perl) and NOT under GNU General Public License Version 1.

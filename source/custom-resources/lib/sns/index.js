@@ -8,11 +8,6 @@
  * @author MediaEnt Solutions
  */
 
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-
 /**
  * @function EmailSubscribe
  * @param {object} event
@@ -20,17 +15,13 @@
  */
 exports.EmailSubscribe = async (event, context) => {
   try {
-    const {
-      SNS,
-    } = require('./sns');
+    const SNS = require('./sns');
 
-    const instance = new SNS(event, context);
+    const sns = new SNS(event, context);
 
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.unsubscribe()
-      : await instance.subscribe();
-
-    return responseData;
+    return sns.isRequestType('Delete')
+      ? sns.unsubscribe()
+      : sns.subscribe();
   } catch (e) {
     e.message = `EmailSubscribe: ${e.message}`;
     throw e;

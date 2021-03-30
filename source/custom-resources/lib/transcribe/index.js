@@ -8,11 +8,6 @@
  * @author MediaEnt Solutions
  */
 
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-
 /**
  * @function CreateCustomVocabulary
  * @param {object} event
@@ -20,17 +15,11 @@
  */
 exports.CreateCustomVocabulary = async (event, context) => {
   try {
-    const {
-      Vocabulary,
-    } = require('./vocabulary');
-
-    const instance = new Vocabulary(event, context);
-
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
+    const Vocabulary = require('./vocabulary');
+    const vocabulary = new Vocabulary(event, context);
+    return (vocabulary.isRequestType('delete'))
+      ? vocabulary.purge()
+      : vocabulary.create();
   } catch (e) {
     e.message = `Vocabulary: ${e.message}`;
     throw e;

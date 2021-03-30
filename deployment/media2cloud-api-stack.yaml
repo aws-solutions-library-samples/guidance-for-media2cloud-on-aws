@@ -3,12 +3,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: (SO0050-api) Media2Cloud - create API Gateway endpoint for frontend web client.
 
 Mappings:
-    Solution:
-        Package:
-            API: "%PKG_API%"
-    Function:
-        Handler:
-            OnRequest: index.onRequest
+    Workflow:
+        Api:
+            Package: "%PKG_API%"
+            Name: "api"
+    APIGateway:
+        Throttle:
+            RateLimit: 2000
+            BurstLimit: 4000
     UserDefined:
         # The solution creates a CloudWatch Log IAM role automatically to allow API Gateway to log
         # endpoint access. If you already configured API Gateway CloudWatch logs, set
@@ -17,6 +19,9 @@ Mappings:
         # https://aws.amazon.com/premiumsupport/knowledge-center/api-gateway-cloudwatch-logs/
         APIGateway:
             CreateCloudWatchRole: true
+    Node:
+        Runtime:
+            Version: nodejs14.x
 
 Parameters:
     SolutionId:
@@ -49,6 +54,9 @@ Parameters:
         Type: String
         Description: "Leave it as is"
         Default: demo
+    MainStateMachine:
+        Type: String
+        Description: "created by parent stack"
     IngestStateMachine:
         Type: String
         Description: "created by parent stack"
@@ -58,36 +66,15 @@ Parameters:
     IotThingPolicy:
         Type: String
         Description: "created by parent stack"
-    GroundTruthStateMachine:
-        Type: String
-        Description: "created by parent stack"
-    GroundTruthTeamName:
-        Type: String
-        Description: "created by parent stack"
-    GroundTruthTeamUserPool:
-        Type: String
-        Description: "created by parent stack"
-    GroundTruthTeamTopicName:
-        Type: String
-        Description: "created by parent stack"
     IotHost:
         Type: String
         Description: Iot host
     IotTopic:
         Type: String
         Description: Iot topic
-    LanguageCode:
-        Type: String
-        Description: Language code
     AIOptions:
         Type: String
         Description: AI Options
-    FaceCollectionId:
-        Type: String
-        Description: default face collection id
-    CustomVocabulary:
-        Type: String
-        Description: default custom vocabulary name
     MinConfidence:
         Type: Number
         Description: default min. confidence level
@@ -99,9 +86,6 @@ Parameters:
     CoreLibLayer:
         Type: String
         Description: Core Library layer
-    GSIIndexName:
-        Type: String
-        Description: GSI Index name
     IngestBucket:
         Type: String
         Description: "assets automatically transition to Glacier storage"
@@ -137,23 +121,16 @@ Metadata:
                 Label:
                     default: Created by other stacks
                 Parameters:
+                    - MainStateMachine
                     - IngestStateMachine
                     - AnalysisStateMachine
                     - IotThingPolicy
-                    - GroundTruthStateMachine
-                    - GroundTruthTeamName
-                    - GroundTruthTeamUserPool
-                    - GroundTruthTeamTopicName
                     - IotHost
                     - IotTopic
-                    - LanguageCode
                     - AIOptions
-                    - FaceCollectionId
-                    - CustomVocabulary
                     - MinConfidence
                     - AwsSdkLayer
                     - CoreLibLayer
-                    - GSIIndexName
                     - IngestBucket
                     - ProxyBucket
                     - ElasticsearchDomainName
@@ -178,6 +155,8 @@ Metadata:
                 default: "Solution Bucket"
             KeyPrefix:
                 default: "Solution Key Prefix"
+            MainStateMachine:
+                default: "Main State Machine Name"
             IngestStateMachine:
                 default: "Ingest State Machine Name"
             AnalysisStateMachine:
@@ -188,34 +167,18 @@ Metadata:
                 default: "API Gateway Name"
             StageName:
                 default: "Deployment Stage"
-            GroundTruthStateMachine:
-                default: "GroundTruth State Machine Name"
-            GroundTruthTeamName:
-                default: "GroundTruth Team Name"
-            GroundTruthTeamUserPool:
-                default: "GroundTruth Team User Pool"
-            GroundTruthTeamTopicName:
-                default: "GroundTruth Team Topic Name"
             IotHost:
                 default: "IoT Host"
             IotTopic:
                 default: "IoT Topic"
-            LanguageCode:
-                default: "Default language code"
             AIOptions:
                 default: "Default AI options"
-            FaceCollectionId:
-                default: "Rekognition collection Id"
-            CustomVocabulary:
-                default: "Transcribe vocabulary name"
             MinConfidence:
                 default: "Minimum Confidence"
             AwsSdkLayer:
                 default: "AWS SDK Layer"
             CoreLibLayer:
                 default: "Core Library Layer"
-            GSIIndexName:
-                default: "Global Secondary Index"
             IngestBucket:
                 default: "Ingest Bucket"
             ProxyBucket:
@@ -238,7 +201,27 @@ Conditions:
     ]
 
 Resources:
-    ExecutionRole:
+    ApiFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Api",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    ApiFunctionRole:
         Type: AWS::IAM::Role
         Metadata:
             cfn_nag:
@@ -255,8 +238,7 @@ Resources:
                   Principal:
                     Service:
                       - "lambda.amazonaws.com"
-                  Action:
-                    - "sts:AssumeRole"
+                  Action: "sts:AssumeRole"
             Path: /
             Policies:
               -
@@ -271,19 +253,18 @@ Resources:
                                 - "states:DescribeStateMachine"
                                 - "states:StartExecution"
                             Resource:
+                                - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${MainStateMachine}"
                                 - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${IngestStateMachine}"
                                 - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AnalysisStateMachine}"
-                                - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${GroundTruthStateMachine}"
                         -
                             Effect: "Allow"
                             Action:
                                 - "states:DescribeExecution"
                                 - "states:StopExecution"
                             Resource:
+                                - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${MainStateMachine}:*"
                                 - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${IngestStateMachine}:*"
                                 - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${AnalysisStateMachine}:*"
-                                - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${GroundTruthStateMachine}:*"
-
                         # logs
                         -
                             Effect: "Allow"
@@ -291,20 +272,15 @@ Resources:
                                 - "logs:CreateLogGroup"
                                 - "logs:CreateLogStream"
                                 - "logs:PutLogEvents"
-                            Resource:
-                                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
-
+                            Resource: !GetAtt ApiFunctionLogGroup.Arn
                         # Iot - allow api to attach iot policy to current cognito user
                         -
                             Effect: "Allow"
-                            Action:
-                                - "iot:AttachPolicy"
+                            Action: "iot:AttachPolicy"
                             # This wildcard is present because we are attaching Cognito Identity Id
                             # cert/* and thinggroup/* resources won't work!
                             # resource. See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
-                            Resource:
-                                - !Join ["", ["*"]]
-
+                            Resource: !Join ["", ["*"]]
                         # Rekognition - for face index to collections
                         -
                             Effect: "Allow"
@@ -313,23 +289,30 @@ Resources:
                                 - "rekognition:DeleteCollection"
                                 - "rekognition:DeleteFaces"
                                 - "rekognition:DescribeCollection"
-                                - "rekognition:IndexFaces"
+                                - "rekognition:ListCollections"
                                 - "rekognition:ListFaces"
+                                - "rekognition:IndexFaces"
                                 - "rekognition:SearchFaces"
                                 - "rekognition:SearchFacesByImage"
-                            # This wildcard is present as Collection Id is not known.
-                            # https://docs.aws.amazon.com/rekognition/latest/dg/api-permissions-reference.html
-                            Resource:
-                                - !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*"
+                            Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*"
+                        -
+                            Effect: "Allow"
+                            Action: "rekognition:DescribeProjects"
+                            Resource: !Join ["", ["*"]]
+                        -
+                            Effect: "Allow"
+                            Action: "rekognition:DescribeProjectVersions"
+                            Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/*"
+                        -
+                            Effect: "Allow"
+                            Action: "comprehend:ListEntityRecognizers"
+                            Resource: !Join ["", ["*"]]
                         -
                             Effect: "Allow"
                             Action:
-                                - "rekognition:ListCollections"
-                            # This wildcard is present as Collection is not known.
-                            # https://docs.aws.amazon.com/rekognition/latest/dg/api-permissions-reference.html
-                            Resource:
-                                - !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:*"
-
+                                - "transcribe:ListLanguageModels"
+                                - "transcribe:ListVocabularies"
+                            Resource: !Join ["", ["*"]]
                         # DynamoDB - read/write/delete access to Ingest, Analysis, IndexedFaces, and QueuedFaces tables
                         -
                             Effect: "Allow"
@@ -344,22 +327,17 @@ Resources:
                                 - "dynamodb:ReturnConsumedCapacity"
                                 - "dynamodb:ReturnValues"
                                 - "dynamodb:Select"
-                            Resource:
-                                - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
                         # check object exist on ingest bucket
                         -
                             Effect: "Allow"
-                            Action:
-                                - "s3:GetObject"
-                            Resource:
-                                - !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            Action: "s3:GetObject"
+                            Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
                         # list objects on proxy bucket only
                         -
                             Effect: "Allow"
-                            Action:
-                                - "s3:ListBucket"
-                            Resource:
-                                - !Sub "arn:aws:s3:::${ProxyBucket}"
+                            Action: "s3:ListBucket"
+                            Resource: !Sub "arn:aws:s3:::${ProxyBucket}"
                         # S3 - upload face objects. also allows API to delete object on proxy bucket
                         -
                             Effect: "Allow"
@@ -367,43 +345,12 @@ Resources:
                                 - "s3:GetObject"
                                 - "s3:PutObject"
                                 - "s3:DeleteObject"
-                            Resource:
-                                - !Sub "arn:aws:s3:::${ProxyBucket}/*"
-
+                            Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
                         # SageMaker - describe private workteam
                         -
                             Effect: "Allow"
-                            Action:
-                                - "sagemaker:DescribeWorkteam"
-                            Resource:
-                                - !Sub "arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/*"
-
-                        # Cognito - allow API to create, delete, and list users from GT Cognito UserPool
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "cognito-idp:ListUsersInGroup"
-                                - "cognito-idp:AdminAddUserToGroup"
-                                - "cognito-idp:AdminCreateUser"
-                                - "cognito-idp:AdminDeleteUser"
-                                - "cognito-idp:AdminRemoveUserFromGroup"
-                            Resource:
-                                - !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${GroundTruthTeamUserPool}"
-
-                        # SNS - allow API to subscribe and unsubscribe team member
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "sns:ListSubscriptionsByTopic"
-                                - "sns:Subscribe"
-                            Resource:
-                                - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${GroundTruthTeamTopicName}"
-                        -
-                            # sns.Unsubscribe must use wildcard in Resource
-                            Effect: "Allow"
-                            Action: "sns:Unsubscribe"
-                            Resource: !Join ["", ["*"]]
-
+                            Action: "sagemaker:DescribeWorkteam"
+                            Resource: !Sub "arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/*"
                         ## Elasticsearch
                         -
                             Effect: "Allow"
@@ -421,27 +368,45 @@ Resources:
                                 - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}"
                                 - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}/*"
 
-
     #
     # (Metadata State machine) lambda function to monitor media analysis state machine
     #
-    OnRequestFunction:
+    ApiFunction:
         Type: AWS::Lambda::Function
         Properties:
-            FunctionName: !Sub "${SolutionId}-${RootStackName}-api"
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Api",
+                        "Name"
+                    ]
+                }
+            ]
             Description: !Sub "(${SolutionId}) Handle POST, GET, OPTION requests"
-            Runtime: nodejs10.x
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
             MemorySize: 128
             Timeout: 300
-            Handler: !FindInMap ["Function", "Handler", "OnRequest"]
-            Role: !GetAtt ExecutionRole.Arn
+            Handler: index.handler
+            Role: !GetAtt ApiFunctionRole.Arn
             Code:
                 S3Bucket: !Ref S3Bucket
-                S3Key: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "API"]}]
-            Layers: [
-                !Ref AwsSdkLayer,
-                !Ref CoreLibLayer
-            ]
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Api",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
             Environment:
                 Variables:
                     ENV_SOLUTION_ID: !Ref SolutionId
@@ -451,13 +416,8 @@ Resources:
                     ENV_IOT_HOST: !Ref IotHost
                     ENV_IOT_TOPIC: !Ref IotTopic
                     ENV_IOT_THING_POLICY_NAME: !Ref IotThingPolicy
-                    ENV_DEFAULT_LANGUAGE_CODE: !Ref LanguageCode
                     ENV_DEFAULT_AI_OPTIONS: !Ref AIOptions
-                    ENV_DEFAULT_COLLECTION_ID: !Ref FaceCollectionId
-                    ENV_DEFAULT_VOCABULARY: !Ref CustomVocabulary
                     ENV_DEFAULT_MINCONFIDENCE: !Ref MinConfidence
-                    ENV_WORKTEAM_NAME: !Ref GroundTruthTeamName
-                    ENV_GSI_INDEX_NAME: !Ref GSIIndexName
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_ES_DOMAIN_ENDPOINT: !Ref ElasticsearchDomainEndpoint
@@ -517,8 +477,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -545,8 +506,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -573,8 +535,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -606,8 +569,9 @@ Resources:
                                             type: "string"
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -640,8 +604,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -673,8 +638,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -706,8 +672,9 @@ Resources:
                                 - sigv4: []
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -744,8 +711,9 @@ Resources:
                                             type: "string"
                             x-amazon-apigateway-integration:
                                 uri: !Sub [
-                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations",
-                                    { x0: !GetAtt OnRequestFunction.Arn }
+                                    "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${x0}/invocations", {
+                                        x0: !GetAtt ApiFunction.Arn
+                                    }
                                 ]
                                 responses:
                                     default:
@@ -772,7 +740,7 @@ Resources:
                 rules_to_suppress:
                     -
                         id: W68
-                        reason: "suppress UsagePlan requirement"
+                        reason: Supress UsagePlan requirement
         Properties:
             Description: !Sub "(${SolutionId}) Created by ${RootStackName}"
             RestApiId: !Ref RestApi
@@ -791,40 +759,40 @@ Resources:
                     -
                         ResourcePath: /~1{operation}
                         HttpMethod: GET
-                        DataTraceEnabled: true
+                        DataTraceEnabled: false
                         LoggingLevel: ERROR
                     -
                         ResourcePath: /~1{operation}
                         HttpMethod: POST
-                        DataTraceEnabled: true
-                        LoggingLevel: INFO
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
                     -
                         ResourcePath: /~1{operation}
                         HttpMethod: DELETE
-                        DataTraceEnabled: true
-                        LoggingLevel: INFO
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
                     -
                         ResourcePath: /~1{operation}~1{uuid+}
                         HttpMethod: GET
-                        DataTraceEnabled: true
+                        DataTraceEnabled: false
                         LoggingLevel: ERROR
                     -
                         ResourcePath: /~1{operation}~1{uuid+}
                         HttpMethod: POST
-                        DataTraceEnabled: true
-                        LoggingLevel: INFO
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
                     -
                         ResourcePath: /~1{operation}~1{uuid+}
                         HttpMethod: DELETE
-                        DataTraceEnabled: true
-                        LoggingLevel: INFO
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
 
     # lambda permission for HTTP command for {operation} and {uuid+} path parameters
     DELETEOperation:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/DELETE/*"
 
@@ -832,7 +800,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/GET/*"
 
@@ -840,7 +808,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/OPTIONS/*"
 
@@ -848,7 +816,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/POST/*"
 
@@ -856,7 +824,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/DELETE/*/*"
 
@@ -864,7 +832,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/GET/*/*"
 
@@ -872,7 +840,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/OPTIONS/*/*"
 
@@ -880,7 +848,7 @@ Resources:
         Type: AWS::Lambda::Permission
         Properties:
             Action: lambda:InvokeFunction
-            FunctionName: !GetAtt OnRequestFunction.Arn
+            FunctionName: !GetAtt ApiFunction.Arn
             Principal: apigateway.amazonaws.com
             SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${StageName}/POST/*/*"
 
@@ -888,15 +856,12 @@ Outputs:
     ApiId:
         Value: !Ref RestApi
         Description: API Id
-
     Endpoint:
         Value: !Sub "https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}"
         Description: API Endpoint
-
     FunctionName:
-        Value: !Ref OnRequestFunction
-        Description: Function Name (OnRequestFunction)
-
+        Value: !Ref ApiFunction
+        Description: Function Name (ApiFunction)
     FunctionArn:
-        Value: !GetAtt OnRequestFunction.Arn
-        Description: Function Arn (OnRequestFunction)
+        Value: !GetAtt ApiFunction.Arn
+        Description: Function Arn (ApiFunction)

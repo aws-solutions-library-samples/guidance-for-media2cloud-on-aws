@@ -1,16 +1,14 @@
 {
-    "Comment": "Create SageMaker Ground Truth custom labeling job and index the results",
-    "StartAt": "Sanity check",
+    "Comment": "Create Amazon SageMaker Ground Truth custom labeling job and index the results",
+    "StartAt": "Create dataset",
     "States": {
-        "Sanity check": {
-            "Type": "Pass",
-            "Result": "create-dataset",
-            "ResultPath": "$.operation",
-            "Next": "Create dataset"
-        },
         "Create dataset": {
             "Type": "Task",
             "Resource": "${x0}",
+            "Parameters": {
+                "input.$": "$",
+                "operation": "create-dataset"
+            },
             "Next": "No dataset?",
             "Retry": [
                 {
@@ -21,20 +19,7 @@
                     "MaxAttempts": 2,
                     "BackoffRate": 1.2
                 }
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "Next": "Dataset error"
-                }
             ]
-        },
-        "Dataset error": {
-            "Type": "Task",
-            "Resource": "${x0}",
-            "Next": "Fail"
         },
         "No dataset?": {
             "Type": "Choice",
@@ -42,22 +27,28 @@
                 {
                     "Variable": "$.status",
                     "StringEquals": "NO_DATA",
-                    "Next": "Completed"
+                    "Next": "Labeling job succeeded"
                 }
             ],
-            "Default": "Create labeling job"
+            "Default": "Create and wait for labeling job"
         },
-        "Create labeling job": {
+        "Create and wait for labeling job": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "operation": "create-labeling-job",
-                "uuid.$": "$.uuid",
-                "status": "NOT_STARTED",
-                "progress": 0,
-                "input.$": "$.next"
+                "FunctionName": "${a0}",
+                "Payload": {
+                    "token.$":"$$.Task.Token",
+                    "operation": "create-labeling-job",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
             },
-            "Next": "Wait for labeling",
+            "TimeoutSeconds": 172800,
+            "Next": "Check labeling job status",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -67,22 +58,9 @@
                     "MaxAttempts": 2,
                     "BackoffRate": 1.2
                 }
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "Next": "Labeling error"
-                }
             ]
         },
-        "Wait for labeling": {
-            "Type": "Wait",
-            "Seconds": 180,
-            "Next": "Check labeling status"
-        },
-        "Check labeling status": {
+        "Check labeling job status": {
             "Type": "Task",
             "Resource": "${x0}",
             "Parameters": {
@@ -90,29 +68,22 @@
                 "uuid.$": "$.uuid",
                 "status.$": "$.status",
                 "progress.$": "$.progress",
-                "input.$": "$.next"
+                "input.$": "$.input",
+                "data.$": "$.data"
             },
-            "Next": "Job complete?",
+            "Next": "Labeling job completed?",
             "Retry": [
                 {
                     "ErrorEquals": [
                         "States.ALL"
                     ],
                     "IntervalSeconds": 1,
-                    "MaxAttempts": 6,
-                    "BackoffRate": 1.1
-                }
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "Next": "Labeling error"
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
                 }
             ]
         },
-        "Job complete?": {
+        "Labeling job completed?": {
             "Type": "Choice",
             "Choices": [
                 {
@@ -121,12 +92,13 @@
                     "Next": "Index results"
                 }
             ],
-            "Default": "Wait for labeling"
+            "Default": "Wait for labeling job"
+
         },
-        "Labeling error": {
-            "Type": "Task",
-            "Resource": "${x0}",
-            "Next": "Fail"
+        "Wait for labeling job": {
+            "Type": "Wait",
+            "Seconds": 60,
+            "Next": "Check labeling job status"
         },
         "Index results": {
             "Type": "Task",
@@ -135,10 +107,11 @@
                 "operation": "index-results",
                 "uuid.$": "$.uuid",
                 "status": "NOT_STARTED",
-                "progress": "0",
-                "input.$": "$.next"
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
             },
-            "Next": "Completed",
+            "Next": "Labeling job succeeded",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -148,33 +121,18 @@
                     "MaxAttempts": 2,
                     "BackoffRate": 1.2
                 }
-            ],
-            "Catch": [
-                {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "Next": "Indexing error"
-                }
             ]
         },
-        "Indexing error": {
-            "Type": "Task",
-            "Resource": "${x0}",
-            "Next": "Fail"
-        },
-        "Fail": {
-            "Type": "Fail"
-        },
-        "Completed": {
+        "Labeling job succeeded": {
             "Type": "Task",
             "Resource": "${x0}",
             "Parameters": {
                 "operation": "job-completed",
                 "uuid.$": "$.uuid",
-                "status.$": "$.status",
-                "progress.$": "$.progress",
-                "input.$": "$.next"
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
             },
             "End": true
         }

@@ -7,23 +7,11 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable import/no-extraneous-dependencies */
 const FS = require('fs');
 const PATH = require('path');
 const AWS = require('aws-sdk');
 
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @class WorkTeam
@@ -32,30 +20,10 @@ const {
 class WorkTeam extends mxBaseResponse(class {}) {
   constructor(event, context) {
     super(event, context);
-
-    const {
-      ResourceProperties = {},
-    } = event || {};
-
     /* sanity check */
-    const REQUIRED_PROPERTIES = [
-      'ServiceToken',
-      'FunctionName',
-      'SolutionId',
-      'StackName',
-      'UserPool',
-      'UserGroup',
-      'AppClientId',
-      'TopicArn',
-      'UserPoolDomain',
-    ];
-
-    const missing = REQUIRED_PROPERTIES.filter(x =>
-      ResourceProperties[x] === undefined);
-
-    if (missing.length) {
-      throw new Error(`event.ResourceProperties missing ${missing.join(', ')}`);
-    }
+    const data = event.ResourceProperties.Data;
+    this.sanityCheck(data);
+    this.$data = data;
 
     this.$cognito = new AWS.CognitoIdentityServiceProvider({
       apiVersion: '2016-04-18',
@@ -66,32 +34,51 @@ class WorkTeam extends mxBaseResponse(class {}) {
     });
   }
 
+  sanityCheck(data) {
+    const missing = [
+      'SolutionId',
+      'StackName',
+      'UserPool',
+      'UserGroup',
+      'AppClientId',
+      'TopicArn',
+      'UserPoolDomain',
+    ].filter(x => data[x] === undefined);
+    if (missing.length) {
+      throw new Error(`missing ${missing.join(', ')}`);
+    }
+  }
+
+  get data() {
+    return this.$data;
+  }
+
   get solutionId() {
-    return this.event.ResourceProperties.SolutionId;
+    return this.data.SolutionId;
   }
 
   get stackName() {
-    return this.event.ResourceProperties.StackName;
+    return this.data.StackName;
   }
 
   get userPool() {
-    return this.event.ResourceProperties.UserPool;
+    return this.data.UserPool;
   }
 
   get userGroup() {
-    return this.event.ResourceProperties.UserGroup;
+    return this.data.UserGroup;
   }
 
   get clientId() {
-    return this.event.ResourceProperties.AppClientId;
+    return this.data.AppClientId;
   }
 
   get topicArn() {
-    return this.event.ResourceProperties.TopicArn;
+    return this.data.TopicArn;
   }
 
   get userPoolDomain() {
-    return this.event.ResourceProperties.UserPoolDomain;
+    return this.data.UserPoolDomain;
   }
 
   get workteamName() {
@@ -397,6 +384,4 @@ class WorkTeam extends mxBaseResponse(class {}) {
   }
 }
 
-module.exports = {
-  WorkTeam,
-};
+module.exports = WorkTeam;

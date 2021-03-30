@@ -69,9 +69,8 @@ const mxBaseResponse = Base => class extends Base {
     } else {
       this.$responseData[key] = val[key];
     }
-
     return this;
   }
 };
 
-module.exports.mxBaseResponse = mxBaseResponse;
+module.exports = mxBaseResponse;

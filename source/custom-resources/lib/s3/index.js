@@ -7,35 +7,8 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-
-/**
- * @function SetNotification
- * @param {object} event
- * @param {object} context
- */
-exports.SetNotification = async (event, context) => {
-  try {
-    const {
-      S3Notification,
-    } = require('./s3ex');
-
-    const instance = new S3Notification(event, context);
-
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
-  } catch (e) {
-    e.message = `SetNotification: ${e.message}`;
-    throw e;
-  }
-};
+const AWS = require('aws-sdk');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @function SetCORS
@@ -43,68 +16,51 @@ exports.SetNotification = async (event, context) => {
  * @param {object} context
  */
 exports.SetCORS = async (event, context) => {
+  class X0 extends mxBaseResponse(class {}) {}
+  const x0 = new X0(event, context);
   try {
-    const {
-      S3Cors,
-    } = require('./s3ex');
+    if (x0.isRequestType('Delete')) {
+      x0.storeResponseData('Status', 'SKIPPED');
+      return x0.responseData;
+    }
 
-    const instance = new S3Cors(event, context);
+    const data = event.ResourceProperties.Data;
+    const missing = [
+      'Bucket',
+      'AllowedOrigins',
+      'AllowedMethods',
+      'AllowedHeaders',
+      'ExposeHeaders',
+      'MaxAgeSeconds',
+    ].filter(x => data[x] === undefined);
+    if (missing.length) {
+      throw new Error(`missing ${missing.join(', ')}`);
+    }
 
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
+    const s3 = new AWS.S3({
+      apiVersion: '2006-03-01',
+      computeChecksums: true,
+      signatureVersion: 'v4',
+      s3DisableBodySigning: false,
+    });
+    await s3.putBucketCors({
+      Bucket: data.Bucket,
+      CORSConfiguration: {
+        CORSRules: [
+          {
+            AllowedOrigins: data.AllowedOrigins,
+            AllowedMethods: data.AllowedMethods,
+            AllowedHeaders: data.AllowedHeaders,
+            ExposeHeaders: data.ExposeHeaders,
+            MaxAgeSeconds: Number.parseInt(data.MaxAgeSeconds, 10),
+          },
+        ],
+      },
+    }).promise();
+    x0.storeResponseData('Status', 'SUCCESS');
+    return x0.responseData;
   } catch (e) {
     e.message = `SetCORS: ${e.message}`;
-    throw e;
-  }
-};
-
-/**
- * @function SetLifecyclePolicy
- * @param {object} event
- * @param {object} context
- */
-exports.SetLifecyclePolicy = async (event, context) => {
-  try {
-    const {
-      S3LifecyclePolicy,
-    } = require('./s3ex');
-
-    const instance = new S3LifecyclePolicy(event, context);
-
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
-  } catch (e) {
-    e.message = `SetLifecyclePolicy: ${e.message}`;
-    throw e;
-  }
-};
-
-/**
- * @function CheckBucketAvailability
- * @param {object} event
- * @param {object} context
- */
-exports.CheckBucketAvailability = async (event, context) => {
-  try {
-    const {
-      S3BucketAvailibility,
-    } = require('./s3ex');
-
-    const instance = new S3BucketAvailibility(event, context);
-
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
-  } catch (e) {
-    e.message = `S3BucketAvailibility: ${e.message}`;
     throw e;
   }
 };

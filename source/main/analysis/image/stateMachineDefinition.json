@@ -1,0 +1,30 @@
+{
+    "StartAt": "Start image analysis",
+    "States": {
+        "Start image analysis": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "start-image-analysis",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "startTime.$": "$$.Execution.StartTime",
+                "executionArn.$": "$$.Execution.Id",
+                "stateName.$": "$$.State.Name"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.1
+                }
+            ]
+        }
+    }
+}

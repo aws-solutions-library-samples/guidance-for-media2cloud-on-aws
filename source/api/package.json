@@ -4,7 +4,6 @@
   "description": "media2cloud api gateway lambda",
   "main": "index.js",
   "private": true,
-  "dependencies": {},
   "scripts": {
     "pretest": "npm install",
     "test": "mocha *.spec.js",
@@ -16,6 +15,6 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "m2c-core-lib": "file:../layers/core-lib"
+    "core-lib": "file:../layers/core-lib"
   }
 }

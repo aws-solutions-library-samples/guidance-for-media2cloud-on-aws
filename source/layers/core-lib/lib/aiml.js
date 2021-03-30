@@ -3,50 +3,47 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
+const AnalysisTypes = require('./analysisTypes');
 
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-const AIML = {
-  /* video */
-  celeb: false,
-  face: false,
-  faceMatch: false,
-  label: false,
-  moderation: false,
-  person: false,
-  text: false, // rekog-image only
-  /* audio */
-  transcript: false,
-  classification: false,
-  entity: false,
-  keyphrase: false,
-  sentiment: false,
-  topic: false,
-  /* document */
-  document: false,
-  /* misc. settings */
-  languageCode: 'en-US',
-  customVocabulary: undefined,
-  vocabularies: undefined,
-  faceCollectionId: undefined,
-  minConfidence: 80,
+const REKOGNITION_OPTIONS = Object.values(AnalysisTypes.Rekognition)
+  .reduce((a0, c0) => ({
+    ...a0,
+    [c0]: false,
+  }), undefined);
+const COMPREHEND_OPTIONS = Object.values(AnalysisTypes.Comprehend)
+  .reduce((a0, c0) => ({
+    ...a0,
+    [c0]: false,
+  }), undefined);
+const TRANSCRIBE_OPTIONS = {
+  [AnalysisTypes.Transcribe]: false,
 };
+const TEXTRACT_OPTIONS = {
+  [AnalysisTypes.Textract]: false,
+};
+const DEFAULT_MINCONFIDENCE = 80;
+const DEFAULT_TEXTROI = [
+  false, false, false,
+  false, false, false,
+  false, false, false,
+];
 
 module.exports = {
-  AIML,
+  ...REKOGNITION_OPTIONS,
+  /* rekognition customization */
+  minConfidence: DEFAULT_MINCONFIDENCE,
+  faceCollectionId: undefined,
+  customLabelModels: [],
+  frameCaptureMode: 0,
+  textROI: DEFAULT_TEXTROI,
+  framebased: false,
+  ...TRANSCRIBE_OPTIONS,
+  /* transcribe customization */
+  languageCode: undefined,
+  customVocabulary: undefined,
+  customLanguageModel: undefined,
+  ...COMPREHEND_OPTIONS,
+  /* comprehend customization */
+  customEntityRecognizer: undefined,
+  ...TEXTRACT_OPTIONS,
 };
-
-/**
- * @description expose classess to window globals
- */
-global.AWSomeNamespace =
-  Object.assign(global.AWSomeNamespace || {}, {
-    AIML,
-  });

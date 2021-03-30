@@ -3,26 +3,10 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const {
   BaseIndex,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
 class SearchOp extends BaseOp {
   async onPOST() {
@@ -34,36 +18,42 @@ class SearchOp extends BaseOp {
   }
 
   async onGET() {
-    const params = Object.assign({}, this.request.queryString);
-
-    Object.keys(params).forEach((x) => {
-      if (!params[x] || params[x] === 'undefined') {
-        delete params[x];
+    const qs = {
+      ...this.request.queryString,
+    };
+    Object.keys(qs).forEach((x) => {
+      if (qs[x] === undefined || qs[x] === 'undefined') {
+        delete qs[x];
       }
     });
-
-    if (!params.query) {
+    qs.query = qs.query && decodeURIComponent(qs.query);
+    if (!qs.query || !/^[^<>()%&'"]*$/.test(qs.query)) {
       throw new Error('invalid query');
     }
-
-    params.query = decodeURIComponent(params.query);
-
-    if (!/^[^<>()%&'"]*$/.test(params.query)) {
-      throw new Error('invalid query');
-    }
-
-    if (params.token && !Number.parseInt(params.token, 10)) {
+    if (qs.token && !Number.parseInt(qs.token, 10)) {
       throw new Error('invalid token');
     }
-
-    if (params.pageSize && !Number.parseInt(params.pageSize, 10)) {
+    if (qs.pageSize && !Number.parseInt(qs.pageSize, 10)) {
       throw new Error('invalid pageSize');
     }
-
+    const categories = [
+      'audio',
+      'video',
+      'image',
+      'document',
+    ].map(x => ((qs[x] === undefined || qs[x] === 'true')
+      ? `type:${x}`
+      : undefined)).filter(x => x);
+    const params = {
+      query: (categories.length)
+        ? `(${categories.join(' OR ')}) AND (${qs.query})`
+        : qs.query,
+      exact: (qs.exact === 'true'),
+      pageSize: qs.pageSize,
+      token: qs.token,
+    };
     return super.onGET(await (new BaseIndex()).searchDocument(params));
   }
 }
 
-module.exports = {
-  SearchOp,
-};
+module.exports = SearchOp;

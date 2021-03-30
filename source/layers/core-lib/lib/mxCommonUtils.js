@@ -3,18 +3,12 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
 const AWS = require('aws-sdk');
 const URL = require('url');
 const CRYPTO = require('crypto');
 const MIME = require('mime');
+const ZLIB = require('zlib');
+const PATH = require('path');
 
 const RAW_IMAGE_MIME_TYPES = {
   'image/x-adobe-dng': ['DNG'],
@@ -35,6 +29,158 @@ const RAW_IMAGE_MIME_TYPES = {
   'image/x-sony-srf': ['SRF'],
   'image/x-sigma-x3f': ['X3F'],
 };
+
+class X0 {
+  /**
+   * @static
+   * @function isObject
+   * @description test if obj is object type
+   * @param {object} obj
+   * @returns {boolean}
+   */
+  static isObject(obj) {
+    return obj && typeof obj === 'object';
+  }
+
+  /**
+   * @static
+   * @function isPrimitive
+   * @description test if object is primitive type
+   * note: the logic also consider 'null' is primitive!
+   * @param {object} obj
+   * @returns {boolean}
+   */
+  static isPrimitive(obj) {
+    switch (typeof obj) {
+      case 'string':
+      case 'number':
+      case 'boolean':
+      case 'undefined':
+      case 'symbol':
+        return true;
+      default:
+        break;
+    }
+    return (obj === null);
+  }
+
+  /**
+   * @static
+   * @function internalMerge
+   * @description merge two objects recursively
+   * @param {object} target
+   * @param {object} source
+   * @returns {object} merged object
+   */
+  static internalMerge(target, source) {
+    if (!X0.isObject(target) || !X0.isObject(source)) {
+      return source;
+    }
+
+    Object.keys(source).forEach(key => {
+      const targetValue = target[key];
+      const sourceValue = source[key];
+      if (Array.isArray(targetValue) && Array.isArray(sourceValue)) {
+        target[key] = Array.from(new Set(targetValue.concat(sourceValue)))
+          .filter(x => x !== undefined);
+      } else if (X0.isObject(targetValue) && X0.isObject(sourceValue)) {
+        target[key] = X0.internalMerge({
+          ...targetValue,
+        }, sourceValue);
+      } else {
+        target[key] = sourceValue;
+      }
+    });
+    return target;
+  }
+
+  /**
+   * @static
+   * @function internalCleansing
+   * @description remove empty key recursively
+   * @param {object} obj
+   * @param {object} [removeList]
+   * @param {boolean} [removeList.array] - should remove empty array
+   * @param {boolean} [removeList.object] - should remove empty object
+   * @returns {object} clean object
+   */
+  static internalCleansing(obj, removeList = {}) {
+    if (X0.isPrimitive(obj)) {
+      return ((obj === null) || (typeof obj === 'string' && !obj.length))
+        ? undefined
+        : obj;
+    }
+
+    if ((removeList.array || removeList.object) && !Object.keys(obj).length) {
+      return undefined;
+    }
+
+    const duped = Array.isArray(obj) ? [] : {};
+    Object.keys(obj).forEach((x) => {
+      duped[x] = X0.internalCleansing(obj[x], removeList);
+    });
+
+    return Array.isArray(duped)
+      ? duped.filter(x => x !== undefined)
+      : duped;
+  }
+
+  static flatten(arr, depth = 1) {
+    return (depth > 0)
+      ? arr.reduce((acc, cur) =>
+        acc.concat(Array.isArray(cur)
+          ? X0.flatten(cur, depth - 1)
+          : cur), [])
+      : arr.slice();
+  }
+}
+
+class M0 {
+  /**
+   * @function getMime
+   * @param {string} file
+   * @returns {string} mime type
+   */
+  static getMime(file) {
+    MIME.define(RAW_IMAGE_MIME_TYPES, true);
+    return MIME.getType(file) || 'application/octet-stream';
+  }
+
+  /**
+   * @static
+   * @function getExtensionByMime
+   * @description get file extension by mime type
+   * @param {string} mime - mime type
+   */
+  static getExtensionByMime(mime) {
+    MIME.define({
+      'image/jpeg': [
+        'jpg',
+      ],
+    }, true);
+    return MIME.getExtension(mime);
+  }
+
+  /**
+   * @function parseMimeType
+   * @param {string} mime - 'video/mp4', 'audio/mp4'
+   */
+  static parseMimeType(mime) {
+    const [
+      type,
+      subtype,
+    ] = (mime || '').split('/').filter(x => x).map(x => x.toLowerCase());
+
+    // eslint-disable-next-line
+    return (type === 'video' || type === 'audio' || type === 'image')
+      ? type
+      : (subtype === 'mxf' || subtype === 'gxf')
+        ? 'video'
+        : (subtype === 'pdf')
+          ? 'document'
+          : subtype;
+  }
+}
 
 /**
  * @mixins mxCommonUtils
@@ -60,7 +206,9 @@ const mxCommonUtils = Base => class extends Base {
   static async headObject(Bucket, Key) {
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     return s3.headObject({
@@ -71,33 +219,33 @@ const mxCommonUtils = Base => class extends Base {
     });
   }
 
-  /* eslint-disable no-await-in-loop */
   /**
    * @function listObjects
    * @param {string} Bucket
    * @param {string} Prefix
    */
-  static async listObjects(Bucket, Prefix) {
+  static async listObjects(Bucket, Prefix, MaxKeys = 100) {
     let response;
     let collection = [];
 
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     do {
       response = await s3.listObjectsV2({
         Bucket,
         Prefix,
-        MaxKeys: 100,
+        MaxKeys,
         ContinuationToken: (response || {}).NextContinuationToken,
       }).promise();
       collection = collection.concat(response.Contents);
     } while ((response || {}).NextContinuationToken);
     return collection;
   }
-  /* eslint-enable no-await-in-loop */
 
   /**
    * @function getSignedUrl
@@ -107,7 +255,9 @@ const mxCommonUtils = Base => class extends Base {
   static getSignedUrl(params) {
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     const {
@@ -193,7 +343,9 @@ const mxCommonUtils = Base => class extends Base {
   static async download(Bucket, Key, bodyOnly = true) {
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     return s3.getObject({
@@ -230,9 +382,38 @@ const mxCommonUtils = Base => class extends Base {
 
     return (new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     })).putObject(modified).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${params.Bucket}/${params.Key}`);
+    });
+  }
+
+  static async uploadFile(bucket, prefix, name, data) {
+    const body = (typeof data === 'string' || data instanceof Buffer)
+      ? data
+      : JSON.stringify(data, null, 2);
+    /* ensure header doesn't contain invalid character */
+    const disposition = (/[^\t\x20-\x7e\x80-\xff]/.test(name))
+      ? 'attachment'
+      : `attachment; filename="${name}"`;
+
+    const s3 = new AWS.S3({
+      apiVersion: '2006-03-01',
+      computeChecksums: true,
+      signatureVersion: 'v4',
+      s3DisableBodySigning: false,
+    });
+    return s3.putObject({
+      Bucket: bucket,
+      Key: PATH.join(prefix, name),
+      Body: body,
+      ContentType: M0.getMime(name),
+      ContentDisposition: disposition,
+      ServerSideEncryption: 'AES256',
+    }).promise().catch((e) => {
+      throw new Error(`${e.statusCode} ${e.code} ${bucket}/${prefix}/${name}`);
     });
   }
 
@@ -246,6 +427,29 @@ const mxCommonUtils = Base => class extends Base {
   }
 
   /**
+   * @function sanitizedPath
+   * @description strip off leading forward slash
+   * @param {string} path
+   */
+  static sanitizedPath(path) {
+    const {
+      root,
+      dir,
+      base,
+      ext,
+      name,
+    } = PATH.parse(path);
+
+    return {
+      root,
+      dir: (dir[0] === '/') ? dir.slice(1) : dir,
+      base,
+      ext,
+      name,
+    };
+  }
+
+  /**
    * @function deleteObject
    * @description delete object if exists
    * @param {string} Bucket
@@ -255,7 +459,9 @@ const mxCommonUtils = Base => class extends Base {
   static async deleteObject(Bucket, Key) {
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     return s3.deleteObject({
@@ -276,7 +482,9 @@ const mxCommonUtils = Base => class extends Base {
   static async getTags(Bucket, Key) {
     return (new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     })).getObjectTagging({
       Bucket,
       Key,
@@ -295,7 +503,9 @@ const mxCommonUtils = Base => class extends Base {
   static async tagObject(Bucket, Key, TagSet) {
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     });
 
     const response = await s3.getObjectTagging({
@@ -340,7 +550,9 @@ const mxCommonUtils = Base => class extends Base {
     try {
       return (new AWS.S3({
         apiVersion: '2006-03-01',
+        computeChecksums: true,
         signatureVersion: 'v4',
+        s3DisableBodySigning: false,
       })).getObject(Object.assign({
         Bucket,
         Key,
@@ -365,7 +577,9 @@ const mxCommonUtils = Base => class extends Base {
       const escaped = query.replace(/'/g, '\'\'');
       const s3 = new AWS.S3({
         apiVersion: '2006-03-01',
+        computeChecksums: true,
         signatureVersion: 'v4',
+        s3DisableBodySigning: false,
       });
 
       s3.selectObjectContent({
@@ -429,7 +643,9 @@ const mxCommonUtils = Base => class extends Base {
   static async restoreObject(bucket, key, options) {
     return (new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     })).restoreObject(Object.assign({
       Bucket: bucket,
       Key: key,
@@ -441,7 +657,9 @@ const mxCommonUtils = Base => class extends Base {
   static async copyObject(source, bucket, key, options) {
     return (new AWS.S3({
       apiVersion: '2006-03-01',
+      computeChecksums: true,
       signatureVersion: 'v4',
+      s3DisableBodySigning: false,
     })).copyObject(Object.assign({
       CopySource: source,
       Bucket: bucket,
@@ -589,8 +807,17 @@ const mxCommonUtils = Base => class extends Base {
    * @returns {string} mime type
    */
   static getMime(file) {
-    MIME.define(RAW_IMAGE_MIME_TYPES, true);
-    return MIME.getType(file);
+    return M0.getMime(file);
+  }
+
+  /**
+   * @static
+   * @function getExtensionByMime
+   * @description get file extension by mime type
+   * @param {string} mime - mime type
+   */
+  static getExtensionByMime(mime) {
+    return M0.getExtensionByMime(mime);
   }
 
   /**
@@ -598,17 +825,7 @@ const mxCommonUtils = Base => class extends Base {
    * @param {string} mime - 'video/mp4', 'audio/mp4'
    */
   static parseMimeType(mime) {
-    const [
-      type,
-      subtype,
-    ] = (mime || '').split('/').filter(x => x).map(x => x.toLowerCase());
-
-    // eslint-disable-next-line
-    return (type === 'video' || type === 'audio' || type === 'image')
-      ? type
-      : (subtype === 'mxf')
-        ? 'video'
-        : subtype;
+    return M0.parseMimeType(mime);
   }
 
   /**
@@ -627,6 +844,95 @@ const mxCommonUtils = Base => class extends Base {
    */
   static timeToLiveInSecond(days = 2) {
     return Math.floor((new Date().getTime() / 1000)) + (days * 86400);
+  }
+
+  /**
+   * @static
+   * @async
+   * @function compressData
+   * @description compress data with zlib and return slices of base64 compressed data in an array
+   * @param {string|object} target - target first gets stringify before compressed
+   * @param {number} [slice] - size per array item. default to 255 characters per array item
+   * @return {Array} - slices of base64 compressed data
+   */
+  static async compressData(target, slice = 255) {
+    const size = Math.max(10, slice);
+    const t = (target instanceof Buffer)
+      ? target
+      : (typeof target === 'string')
+        ? target
+        : JSON.stringify(target);
+
+    let buf = await new Promise((resolve, reject) =>
+      ZLIB.gzip(t, (err, res) => (err ? reject(err) : resolve(res))));
+
+    buf = buf.toString('base64');
+
+    const response = [];
+    while (buf.length) {
+      response.push(buf.slice(0, size));
+      buf = buf.slice(size);
+    }
+    return response;
+  }
+
+  /**
+   * @static
+   * @async
+   * @function decompressData
+   * @description decompress data with zlib and return JSON object (if parse-able) or buffer
+   * @param {Array} target
+   * @return {object|Buffer} - return JSON object if parseable. Otherwise, return buffer from unzip.
+   */
+  static async decompressData(target) {
+    if (!Array.isArray(target)) {
+      throw new Error('target must be Array object');
+    }
+
+    const buf = Buffer.from(target.join(''), 'base64');
+    const response = await new Promise((resolve, reject) =>
+      ZLIB.unzip(buf, (err, res) => (err ? reject(err) : resolve(res))));
+
+    try {
+      return JSON.parse(response.toString());
+    } catch (e) {
+      return response;
+    }
+  }
+
+  static merge(target, source) {
+    return X0.internalMerge(JSON.parse(JSON.stringify(target)), source);
+  }
+
+  static cleansing(obj, removeList) {
+    const options = {
+      array: true,
+      object: true,
+      ...removeList,
+    };
+    const parsed = X0.internalCleansing(JSON.parse(JSON.stringify(obj)), options);
+    return JSON.parse(JSON.stringify(parsed));
+  }
+
+  static flatten(arr, depth = 1) {
+    return X0.flatten(arr, depth);
+  }
+
+  static makeSafeOutputPrefix(uuid, key, keyword = '') {
+    /* compatible with transcribe requirement */
+    let safeKey = (!(/^[a-zA-Z0-9_.!*'()/-]{1,1024}$/.test(key)))
+      ? key.replace(/[^a-zA-Z0-9_.!*'()/-]/g, '_')
+      : key;
+    if (safeKey[0] === '/') {
+      safeKey = safeKey.slice(1);
+    }
+    const parsed = PATH.parse(safeKey);
+    return PATH.join(
+      uuid,
+      parsed.dir,
+      keyword,
+      '/'
+    );
   }
 };
 

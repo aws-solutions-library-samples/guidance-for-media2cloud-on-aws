@@ -3,59 +3,23 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const {
   ApiOps,
   CommonUtils,
-} = require('m2c-core-lib');
-
-const {
-  AnalysisOp,
-} = require('./operations/analysisOp');
-
-const {
-  AssetOp,
-} = require('./operations/assetOp');
-
-const {
-  LabelingOp,
-} = require('./operations/labelingOp');
-
-const {
-  IotOp,
-} = require('./operations/iotOp');
-
-const {
-  SearchOp,
-} = require('./operations/searchOp');
-
-const {
-  StepOp,
-} = require('./operations/stepOp');
-
-const {
-  WorkteamOp,
-} = require('./operations/workteamOp');
-
-const {
-  FaceCollectionOp,
-} = require('./operations/faceCollectionOp');
-
-const {
-  EditLabelOp,
-} = require('./operations/editLabelOp');
+} = require('core-lib');
+const AnalysisOp = require('./operations/analysisOp');
+const AssetOp = require('./operations/assetOp');
+const LabelingOp = require('./operations/labelingOp');
+const IotOp = require('./operations/iotOp');
+const SearchOp = require('./operations/searchOp');
+const StepOp = require('./operations/stepOp');
+const WorkteamOp = require('./operations/workteamOp');
+const FaceCollectionOp = require('./operations/faceCollectionOp');
+const EditLabelOp = require('./operations/editLabelOp');
+const RekognitionOp = require('./operations/rekognitionOp');
+const TranscribeOp = require('./operations/transcribeOp');
+const ComprehendOp = require('./operations/comprehendOp');
+const StatsOp = require('./operations/statsOp');
 
 class ApiRequest {
   constructor(event, context) {
@@ -127,33 +91,51 @@ class ApiRequest {
   }
 
   getProcessor() {
-    switch ((this.pathParameters || {}).operation) {
-      case ApiOps.AttachPolicy:
-        return new IotOp(this);
-      case ApiOps.Assets:
-        return new AssetOp(this);
-      case ApiOps.Analysis:
-        return new AnalysisOp(this);
-      case ApiOps.Search:
-        return new SearchOp(this);
-      case ApiOps.Labeling:
-        return new LabelingOp(this);
-      case ApiOps.Execution:
-        return new StepOp(this);
-      case ApiOps.Workteam:
-        return new WorkteamOp(this);
-      case ApiOps.IndexFace:
-      case ApiOps.QueueFace:
-      case ApiOps.FaceColection:
-        return new FaceCollectionOp(this);
-      case ApiOps.EditLabel:
-        return new EditLabelOp(this);
-      default:
-        throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
+    const op = this.pathParameters.operation;
+    if (op === ApiOps.AttachPolicy) {
+      return new IotOp(this);
     }
+    if (op === ApiOps.Assets) {
+      return new AssetOp(this);
+    }
+    if (op === ApiOps.Analysis) {
+      return new AnalysisOp(this);
+    }
+    if (op === ApiOps.Search) {
+      return new SearchOp(this);
+    }
+    if (op === ApiOps.Labeling) {
+      return new LabelingOp(this);
+    }
+    if (op === ApiOps.Execution) {
+      return new StepOp(this);
+    }
+    if (op === ApiOps.Workteam) {
+      return new WorkteamOp(this);
+    }
+    if (op === ApiOps.IndexFace || op === ApiOps.QueueFace || op === ApiOps.FaceColection) {
+      return new FaceCollectionOp(this);
+    }
+    if (op === ApiOps.EditLabel) {
+      return new EditLabelOp(this);
+    }
+    if (op === ApiOps.FaceCollections.split('/').shift() || op === ApiOps.CustomLabelModels.split('/').shift()) {
+      return new RekognitionOp(this);
+    }
+    if (op === ApiOps.CustomVocabularies.split('/').shift()) {
+      return new TranscribeOp(this);
+    }
+    if (op === ApiOps.CustomLanguageModels.split('/').shift()) {
+      return new TranscribeOp(this);
+    }
+    if (op === ApiOps.CustomEntityRecognizers.split('/').shift()) {
+      return new ComprehendOp(this);
+    }
+    if (op === ApiOps.Stats) {
+      return new StatsOp(this);
+    }
+    throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
   }
 }
 
-module.exports = {
-  ApiRequest,
-};
+module.exports = ApiRequest;

@@ -3,18 +3,6 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-
-/**
- * @class Retry
- * @description wrapper class to retry the function if the exception is caused by throttling
- */
 class Retry {
   /**
    * @static
@@ -63,6 +51,4 @@ class Retry {
   }
 }
 
-module.exports = {
-  Retry,
-};
+module.exports = Retry;

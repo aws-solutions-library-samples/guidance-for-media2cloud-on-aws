@@ -16,6 +16,6 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "m2c-core-lib": "file:../layers/core-lib"
+    "core-lib": "file:../layers/core-lib"
   }
 }

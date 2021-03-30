@@ -3,48 +3,25 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable no-plusplus */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable class-methods-use-this */
 const AWS = require('aws-sdk');
 const URL = require('url');
 const PATH = require('path');
-
-const REQUIRED_ENVS = [
-  'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
-];
-
-const MAX_RETRIES = 5;
-
-const TAG_MODE_MANUAL = 'manual';
-const TAG_MODE_GROUNDTRUTH = 'groundtruth'; // eslint-disable-line
-
-const QUEUED_FACE_EXPIRE_IN_DAYS = 7;
-
-const {
-  Environment,
-} = require('./index');
-
-const {
-  DB,
-} = require('./db');
-
+const DB = require('./db');
+const Environment = require('./environment');
 const {
   mxCommonUtils,
 } = require('./mxCommonUtils');
 
 class X extends mxCommonUtils(class {}) {}
+
+const REQUIRED_ENVS = [
+  'ENV_SOLUTION_ID',
+  'ENV_STACKNAME',
+];
+const MAX_RETRIES = 5;
+const TAG_MODE_MANUAL = 'manual';
+const TAG_MODE_GROUNDTRUTH = 'groundtruth';
+const QUEUED_FACE_EXPIRE_IN_DAYS = 7;
 
 /**
  * @class FaceCollection
@@ -542,6 +519,4 @@ class FaceCollection {
   }
 }
 
-module.exports = {
-  FaceCollection,
-};
+module.exports = FaceCollection;

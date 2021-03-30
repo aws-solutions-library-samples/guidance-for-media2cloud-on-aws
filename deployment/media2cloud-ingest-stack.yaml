@@ -1,0 +1,2626 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-ingest) Ingest Workflow handles checksum validation, proxy creation, and technical metadata extraction
+
+Mappings:
+    Layer:
+        MediainfoLib:
+            Package: "%LAYER_MEDIAINFO%"
+            Name: "mediainfo"
+        ImageProcessLib:
+            Package: "%LAYER_IMAGE_PROCESS%"
+            Name: "image-process-lib"
+        FixityLib:
+            Package: "%LAYER_FIXITY_LIB%"
+            Name: "fixity-lib"
+        PDFLib:
+            Package: "%LAYER_PDF_LIB%"
+            Name: "pdf-lib"
+    DynamoDB:
+        Ingest:
+            Suffix: ingest
+            EnablePITR: true
+            PartitionKey: uuid
+            IndexSortKey: timestamp
+            SchemaVersionIndexName: gsi-schemaversion-timestamp
+            SchemaVersionIndexKey: schemaVersion
+            TypeIndexName: gsi-type-timestamp
+            TypeIndexKey: type
+            GroupIndexName: gsi-group-timestamp
+            GroupIndexKey: group
+            StatusIndexName: gsi-overallstatus-timestamp
+            StatusIndexKey: overallStatus
+    Workflow:
+        # State Machine lambdas
+        Main:
+            Package: "%PKG_INGEST_MAIN%"
+            Name: "ingest-main"
+        Fixity:
+            Package: "%PKG_INGEST_FIXITY%"
+            Name: "ingest-fixity"
+        Video:
+            Package: "%PKG_INGEST_VIDEO%"
+            Name: "ingest-video"
+        Audio:
+            Package: "%PKG_INGEST_AUDIO%"
+            Name: "ingest-audio"
+        Image:
+            Package: "%PKG_INGEST_IMAGE%"
+            Name: "ingest-image"
+        Document:
+            Package: "%PKG_INGEST_DOCUMENT%"
+            Name: "ingest-document"
+        # Automation lambdas
+        S3Event:
+            Package: "%PKG_INGEST_S3EVENT%"
+            Name: "ingest-s3event"
+        StatusUpdater:
+            Package: "%PKG_INGEST_STATUS_UPDATER%"
+            Name: "ingest-status-updater"
+    Node:
+        Runtime:
+            Version: nodejs14.x
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: solution ID
+    RootStackName:
+        Type: String
+        Description: used to suffix resources
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    SolutionUuid:
+        Type: String
+        Description: unique solution uuid
+    AnonymousUsage:
+        Type: String
+        Description: send ananymous usage data
+        Default: "No"
+        AllowedValues:
+          - "No"
+          - "Yes"
+    CustomResourceArn:
+        Type: String
+        Description: custom resource arn
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    IngestBucket:
+        Type: String
+        Description: this is the ingest bucket specified by customer 
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    ProxyBucket:
+        Type: String
+        Description: bucket to store proxies
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    SNSTopicArn:
+        Type: String
+        Description: public status to SNS. Third Party should subscribe to receive the notification.
+    ElasticsearchDomainName:
+        Type: String
+        Description: created by search-engine stack
+    ElasticsearchDomainEndpoint:
+        Type: String
+        Description: created by search-engine stack
+    ElasticsearchDomainIndexName:
+        Type: String
+        Description: created by search-engine stack
+    IotHost:
+        Type: String
+        Description: Iot host
+    IotTopic:
+        Type: String
+        Description: Iot topic
+    AwsSdkLayer:
+        Type: String
+        Description: AWS SDK layer
+    CoreLibLayer:
+        Type: String
+        Description: Core Library layer
+    CanvasLibLayer:
+        Type: String
+        Description: Node Canvas Library layer
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "General Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - SolutionUuid
+                    - AnonymousUsage
+                    - CustomResourceArn
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: "Created by parent stack"
+                Parameters:
+                    - IngestBucket
+                    - SNSTopicArn
+                    - ProxyBucket
+                    - ElasticsearchDomainName
+                    - ElasticsearchDomainEndpoint
+                    - ElasticsearchDomainIndexName
+                    - IotTopic
+                    - IotHost
+                    - IotTopic
+                    - AwsSdkLayer
+                    - CoreLibLayer
+                    - CanvasLibLayer
+        ParameterLabels:
+            SolutionId:
+                default: "Solution ID"
+            RootStackName:
+                default: "Top Stack Name"
+            IngestBucket:
+                default: "Glacier Bucket"
+            SolutionUuid:
+                default: "UUID"
+            AnonymousUsage:
+                default: "Anonymous usage"
+            CustomResourceArn:
+                default: "Custom Resource Arn"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution Key Prefix"
+            SNSTopicArn:
+                default: "SNS Topic Arn"
+            ProxyBucket:
+                default: "Media Analysis Bucket"
+            ElasticsearchDomainName:
+                default: "ES Domain Name"
+            ElasticsearchDomainEndpoint:
+                default: "ES Domain Endpoint"
+            ElasticsearchDomainIndexName:
+                default: "ES Index Name"
+            IotHost:
+                default: "IoT Host"
+            IotTopic:
+                default: "IoT Topic"
+            AwsSdkLayer:
+                default: "AWS SDK Layer"
+            CoreLibLayer:
+                default: "Core Library Layer"
+            CanvasLibLayer:
+                default: "Canvas Library Layer"
+
+Resources:
+    ################################################################################
+    #
+    # DynamoDB Tables for ingest workflow
+    #
+    ################################################################################
+    IngestTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "Suffix"
+                    ]
+                }
+            ]
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "SchemaVersionIndexKey"
+                    ]
+                    AttributeType: "N"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "IndexSortKey"
+                    ]
+                    AttributeType: "N"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "TypeIndexKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "GroupIndexKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "StatusIndexKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: !FindInMap [
+                    "DynamoDB",
+                    "Ingest",
+                    "EnablePITR"
+                ]
+            GlobalSecondaryIndexes:
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "SchemaVersionIndexName"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "SchemaVersionIndexKey"
+                            ]
+                            KeyType: HASH
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "IndexSortKey"
+                            ]
+                            KeyType: RANGE
+                    Projection:
+                        ProjectionType: INCLUDE
+                        NonKeyAttributes:
+                            - !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "TypeIndexKey"
+                            ]
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "TypeIndexName"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "TypeIndexKey"
+                            ]
+                            KeyType: HASH
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "IndexSortKey"
+                            ]
+                            KeyType: RANGE
+                    Projection:
+                        ProjectionType: KEYS_ONLY
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "GroupIndexName"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "GroupIndexKey"
+                            ]
+                            KeyType: HASH
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "IndexSortKey"
+                            ]
+                            KeyType: RANGE
+                    Projection:
+                        ProjectionType: KEYS_ONLY
+                -
+                    IndexName: !FindInMap [
+                        "DynamoDB",
+                        "Ingest",
+                        "StatusIndexName"
+                    ]
+                    KeySchema:
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "StatusIndexKey"
+                            ]
+                            KeyType: HASH
+                        -
+                            AttributeName: !FindInMap [
+                                "DynamoDB",
+                                "Ingest",
+                                "IndexSortKey"
+                            ]
+                            KeyType: RANGE
+                    Projection:
+                        ProjectionType: KEYS_ONLY
+
+    ################################################################################
+    #
+    # Lambda Layers specific to Ingest Workflow
+    #
+    ################################################################################
+    MediainfoLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Layer",
+                        "MediainfoLib",
+                        "Name"
+                    ]
+                }
+            ]
+            CompatibleRuntimes:
+                - nodejs10.x
+                - nodejs12.x
+                - nodejs14.x
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Layer",
+                            "MediainfoLib",
+                            "Package"
+                        ]
+                    }
+                ]
+            Description: !Sub "(${SolutionId}) MediaInfo Layer"
+            LicenseInfo: MIT
+
+    ImageProcessLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Layer",
+                        "ImageProcessLib",
+                        "Name"
+                    ]
+                }
+            ]
+            CompatibleRuntimes:
+                - nodejs10.x
+                - nodejs12.x
+                - nodejs14.x
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Layer",
+                            "ImageProcessLib",
+                            "Package"
+                        ]
+                    }
+                ]
+            Description: !Sub "(${SolutionId}) Image Process Layer (EXIFtool and JIMP)"
+            LicenseInfo: MIT
+
+    FixityLibLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Layer",
+                        "FixityLib",
+                        "Name"
+                    ]
+                }
+            ]
+            CompatibleRuntimes:
+                - nodejs10.x
+                - nodejs12.x
+                - nodejs14.x
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Layer",
+                            "FixityLib",
+                            "Package"
+                        ]
+                    }
+                ]
+            Description: !Sub "(${SolutionId}) Fixity Layer (SPARK and RUSHA)"
+            LicenseInfo: MIT
+
+    PDFLibLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Layer",
+                        "PDFLib",
+                        "Name"
+                    ]
+                }
+            ]
+            CompatibleRuntimes:
+                - nodejs10.x
+                - nodejs12.x
+                - nodejs14.x
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Layer",
+                            "PDFLib",
+                            "Package"
+                        ]
+                    }
+                ]
+            Description: !Sub "(${SolutionId}) PDF Layer (PDF.JS)"
+            LicenseInfo: MIT
+
+    ################################################################################
+    #
+    # MediaConvert Data Access role (MediaConvert) for async operations
+    #
+    ################################################################################
+    MediaConvertDataAccessRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "mediaconvert.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-mediaconvert-data-access"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # Read objects from source bucket
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            # Write to proxy bucket
+                            -
+                                Effect: "Allow"
+                                Action: "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+
+    ################################################################################
+    #
+    # CloudFormation Custom Resource (Describe MediaConvert endpoint)
+    #
+    ################################################################################
+    DescribeMediaConvert:
+        Type: Custom::MediaConvertEndpoint
+        Properties:
+            ServiceToken: !Ref CustomResourceArn
+
+    ################################################################################
+    #
+    # State Machine Service Role
+    #
+    ################################################################################
+    StateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                -
+                    Effect: "Allow"
+                    Action: "sts:AssumeRole"
+                    Principal:
+                        Service: !Sub "states.${AWS::Region}.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-statemachine-role"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action: "lambda:InvokeFunction"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Main",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Fixity",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            # Below polices are needed for Service Integration of nested workflows
+                            # https://docs.aws.amazon.com/step-functions/latest/dg/stepfunctions-iam.html
+                            -
+                                Effect: "Allow"
+                                Action: "states:StartExecution"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Fixity",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "states:DescribeExecution"
+                                    - "states:StopExecution"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Fixity",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "events:PutTargets"
+                                    - "events:PutRule"
+                                    - "events:DescribeRule"
+                                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"
+
+    ################################################################################
+    #
+    # Ingest Workflow
+    # * Fixity (Nested) State Machine
+    # * Audio (Nested) State Machine
+    # * Video (Nested) State Machine
+    # * Image (Nested) State Machine
+    # * Document (Nested) State Machine
+    # * Ingest (Main) State Machine
+    #
+    ################################################################################
+    # Ingest Fixity (nested state machine)
+    FixityStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Fixity",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    FixityStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-fixity"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt FixityStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:GetObjectTagging"
+                                    - "s3:GetObjectVersionTagging"
+                                    - "s3:PutObjectTagging"
+                                    - "s3:PutObjectVersionTagging"
+                                    - "s3:RestoreObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    FixityStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Fixity",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest fixity state machine lambda (2048MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 2048
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt FixityStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Fixity",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref FixityLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+
+    FixityStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Fixity",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "Ingest Fixity state machine auto restores s3 object from GLAICER or DEEP_ARCHIVE and to run checksum",
+                            "StartAt": "Check restore status",
+                            "States": {
+                                "Check restore status": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "check-restore-status",
+                                        "uuid.$": "$.uuid",
+                                        "status.$": "$.status",
+                                        "progress.$": "$.progress",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "Restore completed?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Restore completed?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "COMPLETED",
+                                            "Next": "Compute checksum"
+                                        },
+                                        {
+                                            "Variable": "$.data.restore.tier",
+                                            "StringEquals": "Expedited",
+                                            "Next": "Wait 4 mins"
+                                        },
+                                        {
+                                            "And": [
+                                                {
+                                                    "Variable": "$.data.restore.storageClass",
+                                                    "StringEquals": "DEEP_ARCHIVE"
+                                                },
+                                                {
+                                                    "Variable": "$.data.restore.tier",
+                                                    "StringEquals": "Bulk"
+                                                }
+                                            ],
+                                            "Next": "Wait 12 hrs"
+                                        }
+                                    ],
+                                    "Default": "Wait 4 hrs"
+                                },
+                                "Wait 4 mins": {
+                                    "Type": "Wait",
+                                    "Seconds": 240,
+                                    "Next": "Check restore status"
+                                },
+                                "Wait 4 hrs": {
+                                    "Type": "Wait",
+                                    "Seconds": 14400,
+                                    "Next": "Check restore status"
+                                },
+                                "Wait 12 hrs": {
+                                    "Type": "Wait",
+                                    "Seconds": 43200,
+                                    "Next": "Check restore status"
+                                },
+                                "Compute checksum": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "compute-checksum",
+                                        "uuid.$": "$.uuid",
+                                        "status.$": "$.status",
+                                        "progress.$": "$.progress",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "More data?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "More data?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "COMPLETED",
+                                            "Next": "Validate checksum"
+                                        }
+                                    ],
+                                    "Default": "Compute checksum"
+                                },
+                                "Validate checksum": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "validate-checksum",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt FixityStateMachineFunction.Arn
+                        }
+
+    # Ingest Video (nested state machine)
+    VideoStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    VideoStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-video"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt VideoStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource:
+                                    - !Sub "arn:aws:s3:::${IngestBucket}"
+                                    - !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## MediaConvert
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "mediaConvert:CreateJob"
+                                    - "mediaConvert:GetJob"
+                                Resource: !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*"
+                            -
+                                ## MediaConvert requires pass role policy
+                                Effect: "Allow"
+                                Action:
+                                    - "iam:GetRole"
+                                    - "iam:PassRole"
+                                Resource: !GetAtt MediaConvertDataAccessRole.Arn
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    VideoStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest video state machine lambda (2048MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 2048
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt VideoStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Video",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref MediainfoLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_MEDIACONVERT_HOST: !GetAtt DescribeMediaConvert.Endpoint
+                    ENV_MEDIACONVERT_ROLE: !GetAtt MediaConvertDataAccessRole.Arn
+
+    VideoStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "video ingest state machine to run mediainfo and start mediaconvert job to create proxy",
+                            "StartAt": "Run mediainfo",
+                            "States": {
+                                "Run mediainfo": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "run-mediainfo",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "Start and wait for mediaconvert job",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Start and wait for mediaconvert job": {
+                                    "Type": "Task",
+                                    "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                    "Parameters": {
+                                        "FunctionName": "${a0}",
+                                        "Payload": {
+                                            "token.$":"$$.Task.Token",
+                                            "operation": "start-transcode",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        }
+                                    },
+                                    "TimeoutSeconds": 86400,
+                                    "End": true
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt VideoStateMachineFunction.Arn,
+                            a0: !Ref VideoStateMachineFunction
+                        }
+
+    # Ingest Audio (nested state machine)
+    AudioStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    AudioStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-audio"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt AudioStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource:
+                                    - !Sub "arn:aws:s3:::${IngestBucket}"
+                                    - !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## MediaConvert
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "mediaConvert:CreateJob"
+                                    - "mediaConvert:GetJob"
+                                Resource: !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*"
+                            -
+                                ## MediaConvert requires pass role policy
+                                Effect: "Allow"
+                                Action:
+                                    - "iam:GetRole"
+                                    - "iam:PassRole"
+                                Resource: !GetAtt MediaConvertDataAccessRole.Arn
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    AudioStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest audio state machine lambda (256MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 256
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt AudioStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Audio",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref MediainfoLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_MEDIACONVERT_HOST: !GetAtt DescribeMediaConvert.Endpoint
+                    ENV_MEDIACONVERT_ROLE: !GetAtt MediaConvertDataAccessRole.Arn
+
+    AudioStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "audio ingest state machine to run mediainfo and start elastictranscode job to create proxy",
+                            "StartAt": "Run mediainfo",
+                            "States": {
+                                "Run mediainfo": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "run-mediainfo",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "Start and wait for transcode job",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Start and wait for transcode job": {
+                                    "Type": "Task",
+                                    "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                    "Parameters": {
+                                        "FunctionName": "${a0}",
+                                        "Payload": {
+                                            "token.$":"$$.Task.Token",
+                                            "operation": "start-transcode",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        }
+                                    },
+                                    "TimeoutSeconds": 86400,
+                                    "End": true
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt AudioStateMachineFunction.Arn,
+                            a0: !Ref AudioStateMachineFunction
+                        }
+
+    # Ingest Image (nested state machine)
+    ImageStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    ImageStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-image"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt ImageStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource:
+                                    - !Sub "arn:aws:s3:::${IngestBucket}"
+                                    - !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                # state machine lambda does have read/write/delete accesses to solution tables
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    ImageStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest image state machine lambda (1024MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 1024
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt ImageStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Image",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref ImageProcessLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+
+    ImageStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "image ingest state machine to run exiftool and extract thumbnail image",
+                            "StartAt": "Run imageinfo",
+                            "States": {
+                                "Run imageinfo": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "run-imageinfo",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt ImageStateMachineFunction.Arn
+                        }
+
+    # Ingest Document (nested state machine)
+    DocumentStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    DocumentStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-document"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt DocumentStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource:
+                                    - !Sub "arn:aws:s3:::${IngestBucket}"
+                                    - !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    DocumentStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest document state machine lambda (1024MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 1024
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt DocumentStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Document",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref PDFLibLayer
+                - !Ref CanvasLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+
+    DocumentStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "document ingest state machine lambda to run pdf info to extract metadata and convert pages to PNG images",
+                            "StartAt": "Run PDFInfo and extract pages",
+                            "States": {
+                                "Run PDFInfo and extract pages": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "run-docinfo",
+                                        "uuid.$": "$.uuid",
+                                        "status.$": "$.status",
+                                        "progress.$": "$.progress",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "More pages?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "More pages?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "COMPLETED",
+                                            "Next": "PDFInfo completed"
+                                        }
+                                    ],
+                                    "Default": "Run PDFInfo and extract pages"
+                                },
+                                "PDFInfo completed": {
+                                    "Type": "Succeed"
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt DocumentStateMachineFunction.Arn
+                        }
+
+    # Ingest (Main) state machine
+    MainStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    MainStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-main"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt MainStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:GetObjectTagging"
+                                    - "s3:GetObjectVersionTagging"
+                                    - "s3:PutObjectTagging"
+                                    - "s3:PutObjectVersionTagging"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+                            ## SNS
+                            -
+                                Effect: "Allow"
+                                Action: "sns:Publish"
+                                Resource: !Ref SNSTopicArn
+                            ## Elasticsearch
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "es:ESHttpGet"
+                                    - "es:ESHttpPost"
+                                    - "es:ESHttpPut"
+                                    - "es:ESHttpPost"
+                                    - "es:ESHttpDelete"
+                                Resource:
+                                    # Wildcards on ElasticSearch domain resources are
+                                    # present because documents are indexed based off of
+                                    # the Step Function job ID, which is unique per
+                                    # invocation.
+                                    - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}"
+                                    - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}/*"
+
+    MainStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) ingest main state machine lambda (128MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt MainStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Main",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+                    ENV_ES_DOMAIN_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+                    ENV_ES_INDEX_NAME: !Ref ElasticsearchDomainIndexName
+
+    MainStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "ingest state machine to create record, to extract media technical metadata, and to index results to elasticsearch",
+                            "StartAt": "Create record",
+                            "States": {
+                                "Create record": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "create-record",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "input.$": "$.input"
+                                    },
+                                    "Next": "Start fixity (nested)",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Start fixity (nested)": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                    "Parameters": {
+                                        "Input": {
+                                            "operation": "check-restore-status",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        },
+                                        "StateMachineArn": "${FixityStateMachine}"
+                                    },
+                                    "Next": "Fixity completed"
+                                },
+                                "Fixity completed": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "fixity-completed",
+                                        "nestedStateOutput.$": "$"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ],
+                                    "Next": "Choose by media type"
+                                },
+                                "Choose by media type": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable":  "$.input.type",
+                                            "StringEquals": "image",
+                                            "Next": "Start image ingest (nested)"
+                                        },
+                                        {
+                                            "Variable":  "$.input.type",
+                                            "StringEquals": "video",
+                                            "Next": "Start video ingest (nested)"
+                                        },
+                                        {
+                                            "Variable":  "$.input.type",
+                                            "StringEquals": "audio",
+                                            "Next": "Start audio ingest (nested)"
+                                        },
+                                        {
+                                            "Variable":  "$.input.type",
+                                            "StringEquals": "document",
+                                            "Next": "Start document ingest (nested)"
+                                        }
+                                    ],
+                                    "Default": "Media type not supported"
+                                },
+                                "Start image ingest (nested)": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                    "Parameters": {
+                                        "Input": {
+                                            "operation": "run-imageinfo",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        },
+                                        "StateMachineArn": "${ImageStateMachine}"
+                                    },
+                                    "Next": "Update record"
+                                },
+                                "Start video ingest (nested)": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                    "Parameters": {
+                                        "Input": {
+                                            "operation": "run-mediainfo",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        },
+                                        "StateMachineArn": "${VideoStateMachine}"
+                                    },
+                                    "Next": "Update record"
+                                },
+                                "Start audio ingest (nested)": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                    "Parameters": {
+                                        "Input": {
+                                            "operation": "run-mediainfo",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        },
+                                        "StateMachineArn": "${AudioStateMachine}"
+                                    },
+                                    "Next": "Update record"
+                                },
+                                "Start document ingest (nested)": {
+                                    "Type": "Task",
+                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                    "Parameters": {
+                                        "Input": {
+                                            "operation": "run-docinfo",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input",
+                                            "data.$": "$.data"
+                                        },
+                                        "StateMachineArn": "${DocumentStateMachine}"
+                                    },
+                                    "Next": "Update record"
+                                },
+                                "Media type not supported": {
+                                    "Type": "Fail"
+                                },
+                                "Update record": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "update-record",
+                                        "nestedStateOutput.$": "$"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ],
+                                    "Next": "Index ingest results"
+                                },
+                                "Index ingest results": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "index-ingest-results",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ],
+                                    "Next": "Completed"
+                                },
+                                "Completed": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "job-completed",
+                                        "uuid.$": "$.uuid",
+                                        "status.$": "$.status",
+                                        "progress.$": "$.progress",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "End": true
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt MainStateMachineFunction.Arn
+                        }
+
+    ################################################################################
+    #
+    # Ingest Automation resourc(es)
+    # * S3Event (to autostart ingest workflow on s3:objectcreated event)
+    # * Status Updater (to autostart analysis on ingest completed event)
+    #
+    ################################################################################
+    # Automation S3 Event
+    S3EventFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "S3Event",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    S3EventFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-s3event"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt S3EventFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${IngestBucket}/*"
+                            ## Step Function
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "states:DescribeStateMachine"
+                                    - "states:StartExecution"                            
+                                Resource: !Sub [
+                                    "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                        x0: !FindInMap [
+                                            "Workflow",
+                                            "Main",
+                                            "Name"
+                                        ]
+                                    }
+                                ]
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+
+    S3EventFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "S3Event",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Ingest S3Event, auto-start ingest workflow on s3:objectcreated:* event"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 300
+            Handler: index.handler
+            Role: !GetAtt S3EventFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "S3Event",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+
+    S3EventPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !Ref S3EventFunction
+            Principal: s3.amazonaws.com
+            SourceAccount: !Ref AWS::AccountId
+            SourceArn: !Sub "arn:aws:s3:::${IngestBucket}"
+
+    # Automation Status Updater
+    StatusUpdaterFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "StatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    StatusUpdaterFunctionRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-ingest-status-updater"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt StatusUpdaterFunctionLogGroup.Arn
+                            ## Step Functions - send task results
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "states:SendTaskSuccess"
+                                    - "states:SendTaskFailure"
+                                Resource:
+                                    - !Ref AudioStateMachine
+                                    - !Ref VideoStateMachine
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+                            ## SNS
+                            -
+                                Effect: "Allow"
+                                Action: "sns:Publish"
+                                Resource: !Ref SNSTopicArn
+                            ## DynamoDB - allow to fetch step functions state token
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:UpdateItem"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+
+    StatusUpdaterFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "StatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Ingest Status Updater handles CloudWatch events and auto-start analysis workflow"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt StatusUpdaterFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "StatusUpdater",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+
+    ################################################################################
+    #
+    # MediaConvert Status Change event (CloudWatch Event)
+    #
+    ################################################################################
+    MediaConvertStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${SolutionId}-${RootStackName}-mediaconvert-status-rule
+            Description: !Sub "(${SolutionId}) mediaconvert transcode status change event"
+            EventPattern:
+                source:
+                    - "aws.mediaconvert"
+                region:
+                    - !Sub "${AWS::Region}"
+                detail-type:
+                    - "MediaConvert Job State Change"
+                detail:
+                    status:
+                        - COMPLETE
+                        - CANCELED
+                        - ERROR
+                    userMetadata:
+                        solutionUuid:
+                            - !Ref SolutionUuid
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${StatusUpdaterFunction}"
+                    Arn: !GetAtt StatusUpdaterFunction.Arn
+
+    MediaConvertStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref StatusUpdaterFunction
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt MediaConvertStatusChangeEvent.Arn
+
+Outputs:
+    IngestTableName:
+        Value: !Ref IngestTable
+        Description: Table Name (Ingest)
+    IngestTableArn:
+        Value: !GetAtt IngestTable.Arn
+        Description: Table Arn (Ingest)
+    MainStateMachineArn:
+        Value: !Ref MainStateMachine
+        Description: State Machine Arn (Ingest Main)
+    MainStateMachineName:
+        Value: !GetAtt MainStateMachine.Name
+        Description: State Machine Name (Ingest Main)
+    ### Resources URLs ###
+    # Lambda Layers
+    MediainfoLayer:
+        Value : !Sub [
+            "https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/layers/${x0}/versions/${x1}", {
+                x0: !Select [
+                    6,
+                    !Split [
+                        ":",
+                        !Ref MediainfoLayer
+                    ]
+                ],
+                x1: !Select [
+                    7,
+                    !Split [
+                        ":",
+                        !Ref MediainfoLayer
+                    ]
+                ]
+            }
+        ]
+        Description: Lambda Layer (Mediainfo)
+    ImageProcessLayer:
+        Value : !Sub [
+            "https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/layers/${x0}/versions/${x1}", {
+                x0: !Select [
+                    6,
+                    !Split [
+                        ":",
+                        !Ref ImageProcessLayer
+                    ]
+                ],
+                x1: !Select [
+                    7,
+                    !Split [
+                        ":",
+                        !Ref ImageProcessLayer
+                    ]
+                ]
+            }
+        ]
+        Description: Lambda Layer (Image Process)
+    FixityLibLayer:
+        Value : !Sub [
+            "https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/layers/${x0}/versions/${x1}", {
+                x0: !Select [
+                    6,
+                    !Split [
+                        ":",
+                        !Ref FixityLibLayer
+                    ]
+                ],
+                x1: !Select [
+                    7,
+                    !Split [
+                        ":",
+                        !Ref FixityLibLayer
+                    ]
+                ]
+            }
+        ]
+        Description: Lambda Layer (Fixity)
+    PDFLibLayer:
+        Value : !Sub [
+            "https://${AWS::Region}.console.aws.amazon.com/lambda/home?region=${AWS::Region}#/layers/${x0}/versions/${x1}", {
+                x0: !Select [
+                    6,
+                    !Split [
+                        ":",
+                        !Ref PDFLibLayer
+                    ]
+                ],
+                x1: !Select [
+                    7,
+                    !Split [
+                        ":",
+                        !Ref PDFLibLayer
+                    ]
+                ]
+            }
+        ]
+        Description: Lambda Layer (PDF Library)
+    # Service Roles
+    MediaConvertDataAccessRole:
+        Value: !Sub "https://console.aws.amazon.com/iam/home?region=${AWS::Region}#/roles/${MediaConvertDataAccessRole}"
+        Description: Role (MediaConvert Data Access)
+    StateMachineServiceRole:
+        Value: !Sub "https://console.aws.amazon.com/iam/home?region=${AWS::Region}#/roles/${StateMachineServiceRole}"
+        Description: Role (Ingest State Machine)
+    # Fixity State Machine
+    FixityStateMachineFunctionRole:
+        Value: !Sub "https://console.aws.amazon.com/iam/home?region=${AWS::Region}#/roles/${FixityStateMachineFunctionRole}"
+        Description: Lambda Role (Ingest Fixity State Machine)
+    FixityStateMachineFunction:
+        Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/lambda/home?${AWS::Region}#/functions/${FixityStateMachineFunction}"
+        Description: Lambda (Ingest Fixity State Machine)
+    FixityStateMachine:
+        Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/states/home?region=${AWS::Region}#/statemachines/view/${FixityStateMachine}"
+        Description: Lambda (Ingest Fixity State Machine)

@@ -7,21 +7,11 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-unused-vars */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable global-require */
-/* eslint-disable max-classes-per-file */
 const {
   BaseIndex,
-} = require('m2c-core-lib');
+} = require('core-lib');
 
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @function CreateIndex
@@ -40,24 +30,22 @@ exports.CreateIndex = async (event, context) => {
       return x0.responseData;
     }
 
-    const Props = (event || {}).ResourceProperties;
-    if (!Props.DomainEndpoint || !Props.IndexName) {
+    const data = event.ResourceProperties.Data;
+    if (!data.DomainEndpoint || !data.IndexName) {
       throw new Error('missing DomainEndpoint or IndexName');
     }
 
-    const client = new BaseIndex(Props.DomainEndpoint);
-    const response = await client.createIndex(Props.IndexName);
-
+    const client = new BaseIndex(data.DomainEndpoint);
+    const response = await client.createIndex(data.IndexName);
     console.log(`CreateIndex.response = ${JSON.stringify(response, null, 2)}`);
 
-    x0.storeResponseData('IndexName', Props.IndexName);
+    x0.storeResponseData('IndexName', data.IndexName);
     x0.storeResponseData('Status', 'SUCCESS');
     return x0.responseData;
   } catch (e) {
     e.message = `CreateIndex: ${e.message}`;
     console.error(e);
     x0.storeResponseData('Status', 'FAILED');
-
     return x0.responseData;
   }
 };

@@ -7,61 +7,44 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
 const AWS = require('aws-sdk');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
-
-const REQUIRED_PROPERTIES = [
-  'ServiceToken',
-  'FunctionName',
-  'EmailList',
-  'TopicArn',
-];
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 class SNS extends mxBaseResponse(class {}) {
   constructor(event, context) {
     super(event, context);
-
-    const {
-      ResourceProperties = {},
-    } = event || {};
-
     /* sanity check */
-    const missing = REQUIRED_PROPERTIES.filter(x => ResourceProperties[x] === undefined);
-
-    if (missing.length) {
-      throw new Error(`event.ResourceProperties missing ${missing.join(', ')}`);
-    }
-
-    const {
-      TopicArn,
-      EmailList,
-    } = ResourceProperties;
-
+    const data = event.ResourceProperties.Data;
+    this.sanityCheck(data);
+    this.$data = data;
     /* create unique email list */
-    const list = EmailList.split(',').filter(x => x).map(x => x.trim());
-
+    const list = (Array.isArray(data.EmailList)
+      ? data.EmailList.slice(0)
+      : data.EmailList.split(','))
+      .filter(x => x).map(x => x.trim());
     this.$emailList = Array.from(new Set(list));
-
-    /* topic to subscribe */
-    this.$topicArn = TopicArn;
   }
 
-  get topicArn() {
-    return this.$topicArn;
+  sanityCheck(data) {
+    const missing = [
+      'EmailList',
+      'TopicArn',
+    ].filter(x => data[x] === undefined);
+    if (missing.length) {
+      throw new Error(`missing ${missing.join(', ')}`);
+    }
+  }
+
+  get data() {
+    return this.$data;
   }
 
   get emailList() {
     return this.$emailList;
+  }
+
+  get topicArn() {
+    return this.data.TopicArn;
   }
 
   /**
@@ -74,19 +57,15 @@ class SNS extends mxBaseResponse(class {}) {
     const sns = new AWS.SNS({
       apiVersion: '2010-03-31',
     });
-
-    const promises = this.emailList.map(email =>
+    const response = await Promise.all(this.emailList.map(email =>
       sns.subscribe({
         Protocol: 'email',
         TopicArn: this.topicArn,
         Endpoint: email,
-      }).promise());
-
-    const response = await Promise.all(promises);
+      }).promise()));
 
     this.storeResponseData('Subscribed', response.length);
     this.storeResponseData('Status', 'SUCCESS');
-
     return this.responseData;
   }
 
@@ -102,6 +81,4 @@ class SNS extends mxBaseResponse(class {}) {
   }
 }
 
-module.exports = {
-  SNS,
-};
+module.exports = SNS;

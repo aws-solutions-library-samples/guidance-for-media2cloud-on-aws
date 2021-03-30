@@ -1,0 +1,2979 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (SO0050-analysis) Analysis Workflow uses Amazon Rekognition, Amazon Transcribe, Amazon Comprehend, and Amazon Textract services to extrac AI/ML metadata.
+
+Mappings:
+    DynamoDB:
+        ServiceToken:
+            Suffix: service-token
+            EnablePITR: true
+            PartitionKey: uuid
+            SortKey: keyword
+            TimeToLiveAttributeName: ttl
+        AIML:
+            Suffix: aiml
+            EnablePITR: true
+            PartitionKey: uuid
+            SortKey: type
+        Stats:
+            Suffix: stats
+            EnablePITR: true
+            PartitionKey: type
+    Workflow:
+        # State Machine lambdas
+        Main:
+            Package: "%PKG_ANALYSIS_MAIN%"
+            Name: "analysis-main"
+        Video:
+            Package: "%PKG_ANALYSIS_VIDEO%"
+            Name: "analysis-video"
+        Audio:
+            Package: "%PKG_ANALYSIS_AUDIO%"
+            Name: "analysis-audio"
+        Image:
+            Package: "%PKG_ANALYSIS_IMAGE%"
+            Name: "analysis-image"
+        Document:
+            Package: "%PKG_ANALYSIS_DOCUMENT%"
+            Name: "analysis-document"
+        # Automation lambdas
+        StatusUpdater:
+            Package: "%PKG_ANALYSIS_STATUS_UPDATER%"
+            Name: "analysis-status-updater"
+    Node:
+        Runtime:
+            Version: nodejs14.x
+
+Parameters:
+    SolutionId:
+        Type: String
+        Description: solution ID
+    RootStackName:
+        Type: String
+        Description: used to suffix resources
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    SolutionUuid:
+        Type: String
+        Description: unique solution uuid
+    AnonymousUsage:
+        Type: String
+        Description: send ananymous usage data
+        Default: "No"
+        AllowedValues:
+          - "No"
+          - "Yes"
+    S3Bucket:
+        Type: String
+        Description: solution bucket
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    KeyPrefix:
+        Type: String
+        Description: solution key prefix
+    IngestBucket:
+        Type: String
+        Description: this is the ingest bucket specified by customer 
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    ProxyBucket:
+        Type: String
+        Description: bucket to store proxies
+        AllowedPattern: "[a-zA-Z][a-zA-Z0-9-_]*"
+    SNSTopicArn:
+        Type: String
+        Description: public status to SNS. Third Party should subscribe to receive the notification.
+    ElasticsearchDomainName:
+        Type: String
+        Description: created by search-engine stack
+    ElasticsearchDomainEndpoint:
+        Type: String
+        Description: created by search-engine stack
+    ElasticsearchDomainIndexName:
+        Type: String
+        Description: created by search-engine stack
+    IotHost:
+        Type: String
+        Description: Iot host
+    IotTopic:
+        Type: String
+        Description: Iot topic
+    AIOptions:
+        Type: String
+        Description: AI Options
+    MinConfidence:
+        Type: Number
+        Description: default min. confidence level
+        MinValue: 1
+        MaxValue: 99
+    AwsSdkLayer:
+        Type: String
+        Description: AWS SDK layer
+    CoreLibLayer:
+        Type: String
+        Description: Core Library layer
+    CanvasLibLayer:
+        Type: String
+        Description: Canvas Library layer
+    BacklogLibLayerArn:
+        Type: String
+        Description: Backlog Library layer
+    BacklogTable:
+        Type: String
+        Description: Backlog Table
+    BacklogEBBus:
+        Type: String
+        Description: Backlog EventBridge Bus Name
+    BacklogTopicArn:
+        Type: String
+        Description: Backlog SNS Topic Arn
+    BacklogTopicRoleArn:
+        Type: String
+        Description: Backlog SNS Topic Role Arn
+    BacklogServiceDataAccessRoleArn:
+        Type: String
+        Description: Backlog Data Access Role Arn
+    AtomicLockTable:
+        Type: String
+        Description: Backlog Atomic Lock Table
+    CustomLabelsStateMachineArn:
+        Type: String
+        Description: Backlog Custom Labels state machine Arn
+
+Metadata:
+    AWS::CloudFormation::Interface:
+        ParameterGroups:
+            -
+                Label:
+                    default: "General Configuration"
+                Parameters:
+                    - SolutionId
+                    - RootStackName
+                    - SolutionUuid
+                    - AnonymousUsage
+                    - S3Bucket
+                    - KeyPrefix
+            -
+                Label:
+                    default: "Created by parent stack"
+                Parameters:
+                    - IngestBucket
+                    - SNSTopicArn
+                    - ProxyBucket
+                    - ElasticsearchDomainName
+                    - ElasticsearchDomainEndpoint
+                    - ElasticsearchDomainIndexName
+                    - IotTopic
+                    - IotHost
+                    - IotTopic
+                    - AIOptions
+                    - MinConfidence
+                    - AwsSdkLayer
+                    - CoreLibLayer
+                    - CanvasLibLayer
+                    - BacklogLibLayerArn
+                    - BacklogTable
+                    - BacklogEBBus
+                    - BacklogTopicArn
+                    - BacklogTopicRoleArn
+                    - BacklogServiceDataAccessRoleArn
+                    - AtomicLockTable
+                    - CustomLabelsStateMachineArn
+        ParameterLabels:
+            SolutionId:
+                default: "Solution ID"
+            RootStackName:
+                default: "Top Stack Name"
+            IngestBucket:
+                default: "Glacier Bucket"
+            SolutionUuid:
+                default: "UUID"
+            AnonymousUsage:
+                default: "Anonymous usage"
+            S3Bucket:
+                default: "Solution Bucket"
+            KeyPrefix:
+                default: "Solution Key Prefix"
+            SNSTopicArn:
+                default: "SNS Topic Arn"
+            ProxyBucket:
+                default: "Media Analysis Bucket"
+            ElasticsearchDomainName:
+                default: "ES Domain Name"
+            ElasticsearchDomainEndpoint:
+                default: "ES Domain Endpoint"
+            ElasticsearchDomainIndexName:
+                default: "ES Index Name"
+            IotHost:
+                default: "IoT Host"
+            IotTopic:
+                default: "IoT Topic"
+            AIOptions:
+                default: "Default AI options"
+            MinConfidence:
+                default: "Minimum Confidence"
+            AwsSdkLayer:
+                default: "AWS SDK Layer"
+            CoreLibLayer:
+                default: "Core Library Layer"
+            CanvasLibLayer:
+                default: "Node Canvas Library Layer"
+            BacklogLibLayerArn:
+                default: "Backlog Library Layer"
+            BacklogTable:
+                default: "Backlog DynamoDB Table"
+            BacklogEBBus:
+                default: "Backlog EventBridge Bus Name"
+            BacklogTopicArn:
+                default: "Backlog SNS Topic Arn"
+            BacklogTopicRoleArn:
+                default: "Backlog SNS Topic Role Arn"
+            BacklogServiceDataAccessRoleArn:
+                default: "Backlog Data Access Role Arn"
+            AtomicLockTable:
+                default: "Backlog Atomic Lock DynamoDB Table"
+            CustomLabelsStateMachineArn:
+                default: "Backlog Custom Labels State Machine Arn"
+
+Resources:
+    ################################################################################
+    #
+    # DynamoDB tables for analysis process
+    #
+    ################################################################################
+    ServiceTokenTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "ServiceToken",
+                        "Suffix"
+                    ]
+                }
+            ]
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "ServiceToken",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "ServiceToken",
+                        "SortKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "ServiceToken",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "ServiceToken",
+                        "SortKey"
+                    ]
+                    KeyType: RANGE
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: !FindInMap [
+                    "DynamoDB",
+                    "ServiceToken",
+                    "EnablePITR"
+                ]
+            TimeToLiveSpecification:
+                AttributeName: !FindInMap [
+                    "DynamoDB",
+                    "ServiceToken",
+                    "TimeToLiveAttributeName"
+                ]
+                Enabled: true
+
+    AIMLTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "AIML",
+                        "Suffix"
+                    ]
+                }
+            ]
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AIML",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AIML",
+                        "SortKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AIML",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "AIML",
+                        "SortKey"
+                    ]
+                    KeyType: RANGE
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: !FindInMap [
+                    "DynamoDB",
+                    "AIML",
+                    "EnablePITR"
+                ]
+
+    StatsTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: "Tables are explicitly assigned with predefined names"
+        Properties:
+            TableName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "DynamoDB",
+                        "Stats",
+                        "Suffix"
+                    ]
+                }
+            ]
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Stats",
+                        "PartitionKey"
+                    ]
+                    AttributeType: "S"
+            KeySchema:
+                -
+                    AttributeName: !FindInMap [
+                        "DynamoDB",
+                        "Stats",
+                        "PartitionKey"
+                    ]
+                    KeyType: HASH
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: !FindInMap [
+                    "DynamoDB",
+                    "Stats",
+                    "EnablePITR"
+                ]
+
+    ################################################################################
+    #
+    # State Machine Service Role
+    #
+    ################################################################################
+    StateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                -
+                    Effect: "Allow"
+                    Action: "sts:AssumeRole"
+                    Principal:
+                        Service: !Sub "states.${AWS::Region}.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-statemachine-role"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: "Allow"
+                                Action: "lambda:InvokeFunction"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Main",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            # Below polices are needed for Service Integration of nested workflows
+                            # https://docs.aws.amazon.com/step-functions/latest/dg/stepfunctions-iam.html
+                            -
+                                Effect: "Allow"
+                                Action: "states:StartExecution"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${SolutionId}-${RootStackName}-${x0}", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "states:DescribeExecution"
+                                    - "states:StopExecution"
+                                Resource:
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Video",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Audio",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Image",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                                    - !Sub [
+                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${SolutionId}-${RootStackName}-${x0}:*", {
+                                            x0: !FindInMap [
+                                                "Workflow",
+                                                "Document",
+                                                "Name"
+                                            ]
+                                        }
+                                    ]
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "events:PutTargets"
+                                    - "events:PutRule"
+                                    - "events:DescribeRule"
+                                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule"
+
+    ################################################################################
+    #
+    # Analysis Workflow
+    # * Audio (Nested) State Machine
+    # * Video (Nested) State Machine
+    # * Image (Nested) State Machine
+    # * Document (Nested) State Machine
+    # * Analysis (Main) State Machine
+    #
+    ################################################################################
+    # Analysis Audio (nested state machine)
+    AudioStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    AudioStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-audio"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt AudioStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                    - "s3:PutObjectAcl"
+                                    - "s3:SelectObjectContent"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                # state machine lambda does have read/write/delete accesses to solution tables
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## Comprehend
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "comprehend:BatchDetectDominantLanguage"
+                                    - "comprehend:BatchDetectEntities"
+                                    - "comprehend:BatchDetectKeyPhrases"
+                                    - "comprehend:BatchDetectSentiment"
+                                    - "comprehend:BatchDetectSyntax"
+                                    - "comprehend:StartEntitiesDetectionJob"
+                                    - "comprehend:StartKeyPhrasesDetectionJob"
+                                    - "comprehend:StartDominantLanguageDetectionJob"
+                                    - "comprehend:StartSentimentDetectionJob"
+                                    - "comprehend:StartTopicsDetectionJob"
+                                    - "comprehend:StopDominantLanguageDetectionJob"
+                                    - "comprehend:StopEntitiesDetectionJob"
+                                    - "comprehend:StopKeyPhrasesDetectionJob"
+                                    - "comprehend:StopSentimentDetectionJob"
+                                    - "comprehend:DescribeDominantLanguageDetectionJob"
+                                    - "comprehend:DescribeEntitiesDetectionJob"
+                                    - "comprehend:DescribeKeyPhrasesDetectionJob"
+                                    - "comprehend:DescribeSentimentDetectionJob"
+                                    - "comprehend:DescribeTopicsDetectionJob"
+                                # These actions require resource wildcards per the
+                                # Comprehend documentation.
+                                # https://docs.aws.amazon.com/comprehend/latest/dg/comprehend-api-permissions-ref.html
+                                Resource: !Join ["", ["*"]]
+                            -
+                                Effect: "Allow"
+                                Action: "comprehend:DescribeEntityRecognizer"
+                                Resource: !Sub "arn:aws:comprehend:${AWS::Region}:${AWS::AccountId}:entity-recognizer/*"
+                            ## Transcribe
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "transcribe:GetTranscriptionJob"
+                                    - "transcribe:StartTranscriptionJob"
+                                    - "transcribe:GetVocabulary"
+                                    - "transcribe:DescribeLanguageModel"
+                                # These actions require resource wildcards per the
+                                # Transcribe documentation.
+                                # https://docs.aws.amazon.com/transcribe/latest/dg/asc-api-permissions-ref.html
+                                Resource: !Join ["", ["*"]]
+                            ## IAM
+                            -
+                                Effect: "Allow"
+                                Action: "iam:PassRole"
+                                Resource: !Ref BacklogServiceDataAccessRoleArn
+                            # EventBridge
+                            -
+                                Effect: "Allow"
+                                Action: "events:PutEvents"
+                                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${BacklogEBBus}"
+
+    AudioStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Audio state machine lambda (512MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 512
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt AudioStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Audio",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref BacklogLibLayerArn
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_DATA_ACCESS_ROLE: !Ref BacklogServiceDataAccessRoleArn
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !Ref BacklogEBBus
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopicArn
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !Ref BacklogTopicRoleArn
+
+    AudioStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Audio",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Start transcribe and wait",
+                            "States": {
+                                "Start transcribe and wait": {
+                                    "Type": "Task",
+                                    "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                    "Parameters": {
+                                        "FunctionName": "${a0}",
+                                        "Payload": {
+                                            "token.$":"$$.Task.Token",
+                                            "operation": "start-transcribe",
+                                            "uuid.$": "$.uuid",
+                                            "status": "NOT_STARTED",
+                                            "progress": 0,
+                                            "input.$": "$.input"
+                                        }
+                                    },
+                                    "TimeoutSeconds": 86400,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 1,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ],
+                                    "Next": "Got transcription data?"
+                                },
+                                "Got transcription data?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "NO_DATA",
+                                            "Next": "Analysis completed"
+                                        }
+                                    ],
+                                    "Default": "Collect transcribe results"
+                                },
+                                "Collect transcribe results": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "collect-transcribe-results",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "Start comprehend analysis",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                },
+                                "Start comprehend analysis": {
+                                    "Type": "Parallel",
+                                    "Branches": [
+                                        {
+                                            "StartAt": "Start entity",
+                                            "States": {
+                                                "Start entity": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress.$": "$.progress",
+                                                        "operation": "start-entity",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "Next": "Got entity data?",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 8,
+                                                            "BackoffRate": 1.2
+                                                        }
+                                                    ]
+                                                },
+                                                "Got entity data?" : {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.status",
+                                                            "StringEquals": "NO_DATA",
+                                                            "Next": "Entity skipped"
+                                                        }
+                                                    ],
+                                                    "Default": "Create entity track"
+                                                },
+                                                "Create entity track": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "operation": "create-entity-track",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 6,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Entity skipped": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Start keyphrase",
+                                            "States": {
+                                                "Start keyphrase": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress.$": "$.progress",
+                                                        "operation": "start-keyphrase",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "Next": "Got keyphrase data?",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 8,
+                                                            "BackoffRate": 1.2
+                                                        }
+                                                    ]
+                                                },
+                                                "Got keyphrase data?" : {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.status",
+                                                            "StringEquals": "NO_DATA",
+                                                            "Next": "Keyphrase skipped"
+                                                        }
+                                                    ],
+                                                    "Default": "Create keyphrase track"
+                                                },
+                                                "Create keyphrase track": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "operation": "create-keyphrase-track",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 6,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Keyphrase skipped": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Start sentiment",
+                                            "States": {
+                                                "Start sentiment": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress.$": "$.progress",
+                                                        "operation": "start-sentiment",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "Next": "Got sentiment data?",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 8,
+                                                            "BackoffRate": 1.2
+                                                        }
+                                                    ]
+                                                },
+                                                "Got sentiment data?" : {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.status",
+                                                            "StringEquals": "NO_DATA",
+                                                            "Next": "Sentiment skipped"
+                                                        }
+                                                    ],
+                                                    "Default": "Create sentiment track"
+                                                },
+                                                "Create sentiment track": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "operation": "create-sentiment-track",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 6,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Sentiment skipped": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Check custom entity criteria",
+                                            "States": {
+                                                "Check custom entity criteria": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress.$": "$.progress",
+                                                        "operation": "check-custom-entity-criteria",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "Next": "Can start custom entity?",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 1,
+                                                            "BackoffRate": 1.2
+                                                        }
+                                                    ]
+                                                },
+                                                "Can start custom entity?" : {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.status",
+                                                            "StringEquals": "NO_DATA",
+                                                            "Next": "Custom entity skipped"
+                                                        }
+                                                    ],
+                                                    "Default": "Start custom entity"
+                                                },
+                                                "Start custom entity": {
+                                                    "Type": "Task",
+                                                    "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                                    "Parameters": {
+                                                        "FunctionName": "${a0}",
+                                                        "Payload": {
+                                                            "token.$":"$$.Task.Token",
+                                                            "uuid.$": "$.uuid",
+                                                            "status": "NOT_STARTED",
+                                                            "progress.$": "$.progress",
+                                                            "operation": "start-custom-entity",
+                                                            "input.$": "$.input",
+                                                            "data.$": "$.data"
+                                                        }
+                                                    },
+                                                    "TimeoutSeconds": 86400,
+                                                    "Next": "Wait for custom entity status (3mins)",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 6,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Wait for custom entity status (3mins)": {
+                                                    "Type": "Wait",
+                                                    "Seconds": 180,
+                                                    "Next": "Check custom entity status"
+                                                },
+                                                "Check custom entity status": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "operation": "check-custom-entity-status",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "Next": "Custom entity completed?",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 1,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Custom entity completed?": {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Or": [
+                                                                {
+                                                                    "Variable": "$.status",
+                                                                    "StringEquals": "NO_DATA"
+                                                                },
+                                                                {
+                                                                    "Variable": "$.status",
+                                                                    "StringEquals": "ERROR"
+                                                                }
+                                                            ],
+                                                            "Next": "No custom entity detected"
+                                                        },
+                                                        {
+                                                            "Variable": "$.status",
+                                                            "StringEquals": "COMPLETED",
+                                                            "Next": "Create custom entity track"
+                                                        }
+                                                    ],
+                                                    "Default": "Wait for custom entity status (3mins)"
+                                                },
+                                                "Create custom entity track": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "operation": "create-custom-entity-track",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Custom entity skipped": {
+                                                    "Type": "Succeed"
+                                                },
+                                                "No custom entity detected": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "Next": "Analysis completed"
+                                },
+                                "Analysis completed": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "job-completed",
+                                        "startTime.$": "$$.Execution.StartTime",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "stateName.$": "$$.State.Name",
+                                        "parallelStateOutputs.$": "$"
+                                    },
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    -
+                        {
+                            a0: !Ref AudioStateMachineFunction,
+                            x0: !GetAtt AudioStateMachineFunction.Arn
+                        }
+
+    # Analysis Video (nested state machine)
+    VideoStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    VideoStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-video"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt VideoStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:ListBucket"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}"
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                    - "s3:PutObjectAcl"
+                                    - "s3:SelectObjectContent"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:PutItem"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                # state machine lambda does have read/write/delete accesses to solution tables
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## Rekognition
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "rekognition:DescribeCollection"
+                                    - "rekognition:StartContentModeration"
+                                    - "rekognition:StartCelebrityRecognition"
+                                    - "rekognition:StartFaceDetection"
+                                    - "rekognition:StartFaceSearch"
+                                    - "rekognition:StartLabelDetection"
+                                    - "rekognition:StartPersonTracking"
+                                    - "rekognition:StartSegmentDetection"
+                                    - "rekognition:StartTextDetection"
+                                    - "rekognition:GetContentModeration"
+                                    - "rekognition:GetCelebrityRecognition"
+                                    - "rekognition:GetFaceDetection"
+                                    - "rekognition:GetFaceSearch"
+                                    - "rekognition:GetLabelDetection"
+                                    - "rekognition:GetPersonTracking"
+                                    - "rekognition:GetSegmentDetection"
+                                    - "rekognition:GetTextDetection"
+                                    - "rekognition:DetectFaces"
+                                    - "rekognition:DetectLabels"
+                                    - "rekognition:DetectModerationLabels"
+                                    - "rekognition:DetectText"
+                                    - "rekognition:RecognizeCelebrities"
+                                    - "rekognition:SearchFacesByImage"
+                                # Wildcards in the Rekognition resource ARNs are present
+                                # due to Rekognition needing access to collections that
+                                # have IDs based off of a UUID generator.
+                                # https://docs.aws.amazon.com/rekognition/latest/dg/api-permissions-reference.html
+                                Resource: !Join ["", ["*"]]
+                            ## IAM
+                            -
+                                Effect: "Allow"
+                                Action: "iam:PassRole"
+                                Resource: !Ref BacklogTopicRoleArn
+                            # EventBridge
+                            -
+                                Effect: "Allow"
+                                Action: "events:PutEvents"
+                                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:event-bus/${BacklogEBBus}"
+                            # Backlog Custom Labels state machine
+                            -
+                                Effect: "Allow"
+                                Action: "states:StartExecution"
+                                Resource: !Ref CustomLabelsStateMachineArn
+                            -
+                                Effect: "Allow"
+                                Action: "states:DescribeExecution"
+                                Resource: !Sub [
+                                    "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${x0}:*", {
+                                        x0: !Select [
+                                            6,
+                                            !Split [
+                                                ":",
+                                                !Ref CustomLabelsStateMachineArn
+                                            ]
+                                        ]
+                                    }
+                                ]
+                            # Rekognition Custom Labels
+                            -
+                                Effect: Allow
+                                Action: "rekognition:DescribeProjectVersions"
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/*"
+
+    VideoStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Video state machine lambda (2048MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 2048
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt VideoStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Video",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+                - !Ref CanvasLibLayer
+                - !Ref BacklogLibLayerArn
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !Ref BacklogEBBus
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopicArn
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !Ref BacklogTopicRoleArn
+                    ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
+
+    VideoStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Video",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Start video analysis",
+                            "States": {
+                                "Start video analysis": {
+                                    "Type": "Parallel",
+                                    "Branches": [
+                                        {
+                                            "StartAt": "Pass through",
+                                            "States": {
+                                                "Pass through": {
+                                                    "Type": "Pass",
+                                                    "End": true
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Frame-based detection iterators",
+                                            "States": {
+                                                "Frame-based detection iterators": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "operation": "prepare-frame-detection-iterators",
+                                                        "uuid.$": "$.uuid",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0
+                                                    },
+                                                    "Next": "Frame based analysis",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Frame based analysis": {
+                                                    "Type": "Map",
+                                                    "ItemsPath": "$.data.iterators",
+                                                    "MaxConcurrency": 10,
+                                                    "Iterator": {
+                                                        "StartAt": "Detect frame (Iterator)",
+                                                        "States": {
+                                                            "Detect frame (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "operation": "detect-frame-iterator",
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "More frames (Iterator)?",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "More frames (Iterator)?": {
+                                                                "Type": "Choice",
+                                                                "Choices": [
+                                                                    {
+                                                                        "Variable": "$.status",
+                                                                        "StringEquals": "COMPLETED",
+                                                                        "Next": "Detect frame completed"
+                                                                    }
+                                                                ],
+                                                                "Default": "Detect frame (Iterator)"
+                                                            },
+                                                            "Detect frame completed": {
+                                                                "Type": "Succeed"
+                                                            }
+                                                        }
+                                                    },
+                                                    "ResultPath": "$.data.iterators",
+                                                    "Next": "Frame-based track iterators"
+                                                },
+                                                "Frame-based track iterators": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "operation": "prepare-frame-track-iterators",
+                                                        "uuid.$": "$.uuid",
+                                                        "data.$": "$.data",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0
+                                                    },
+                                                    "Next": "Frame based track iterators",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Frame based track iterators": {
+                                                    "Type": "Map",
+                                                    "ItemsPath": "$.data.iterators",
+                                                    "MaxConcurrency": 10,
+                                                    "Iterator": {
+                                                        "StartAt": "Create frame-based track (Iterator)",
+                                                        "States": {
+                                                            "Create frame-based track (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "operation": "create-track-iterator",
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "More frame-based tracks (Iterator)?",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "More frame-based tracks (Iterator)?": {
+                                                                "Type": "Choice",
+                                                                "Choices": [
+                                                                    {
+                                                                        "Variable": "$.status",
+                                                                        "StringEquals": "COMPLETED",
+                                                                        "Next": "Frame-based track completed (Iterator)"
+                                                                    }
+                                                                ],
+                                                                "Default": "Create frame-based track (Iterator)"
+                                                            },
+                                                            "Frame-based track completed (Iterator)": {
+                                                                "Type": "Succeed"
+                                                            }
+                                                        }
+                                                    },
+                                                    "ResultPath": "$.data.iterators",
+                                                    "End": true
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Video-based detection iterators",
+                                            "States": {
+                                                "Video-based detection iterators": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "operation": "prepare-video-detection-iterators",
+                                                        "uuid.$": "$.uuid",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0
+                                                    },
+                                                    "Next": "Video based analysis",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Video based analysis": {
+                                                    "Type": "Map",
+                                                    "ItemsPath": "$.data.iterators",
+                                                    "MaxConcurrency": 10,
+                                                    "Iterator": {
+                                                        "StartAt": "Start detection and wait (Iterator)",
+                                                        "States": {
+                                                            "Start detection and wait (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                                                "Parameters": {
+                                                                    "FunctionName": "${a0}",
+                                                                    "Payload": {
+                                                                        "token.$":"$$.Task.Token",
+                                                                        "operation": "start-detection-iterator",
+                                                                        "uuid.$": "$.uuid",
+                                                                        "status": "NOT_STARTED",
+                                                                        "progress": 0,
+                                                                        "data.$": "$.data"
+                                                                    }
+                                                                },
+                                                                "TimeoutSeconds": 86400,
+                                                                "Next": "Collect detection results (Iterator)"
+                                                            },
+                                                            "Collect detection results (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "operation": "collect-results-iterator",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "Create video-based track (Iterator)",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "Create video-based track (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "operation": "create-track-iterator",
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "More video-based tracks (Iterator)?",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "More video-based tracks (Iterator)?": {
+                                                                "Type": "Choice",
+                                                                "Choices": [
+                                                                    {
+                                                                        "Variable": "$.status",
+                                                                        "StringEquals": "COMPLETED",
+                                                                        "Next": "Video-based track completed (Iterator)"
+                                                                    }
+                                                                ],
+                                                                "Default": "Create video-based track (Iterator)"
+                                                            },
+                                                            "Video-based track completed (Iterator)": {
+                                                                "Type": "Succeed"
+                                                            }
+                                                        }
+                                                    },
+                                                    "ResultPath": "$.data.iterators",
+                                                    "End": true
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Custom detection iterators",
+                                            "States": {
+                                                "Custom detection iterators": {
+                                                    "Type": "Task",
+                                                    "Resource": "${x0}",
+                                                    "Parameters": {
+                                                        "operation": "prepare-custom-detection-iterators",
+                                                        "uuid.$": "$.uuid",
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0
+                                                    },
+                                                    "Next": "Custom analysis",
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                },
+                                                "Custom analysis": {
+                                                    "Type": "Map",
+                                                    "ItemsPath": "$.data.iterators",
+                                                    "MaxConcurrency": 10,
+                                                    "Iterator": {
+                                                        "StartAt": "Start custom and wait (Iterator)",
+                                                        "States": {
+                                                            "Start custom and wait (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                                                "Parameters": {
+                                                                    "FunctionName": "${a0}",
+                                                                    "Payload": {
+                                                                        "token.$":"$$.Task.Token",
+                                                                        "operation": "start-detection-iterator",
+                                                                        "uuid.$": "$.uuid",
+                                                                        "status": "NOT_STARTED",
+                                                                        "progress": 0,
+                                                                        "data.$": "$.data"
+                                                                    }
+                                                                },
+                                                                "TimeoutSeconds": 86400,
+                                                                "Next": "Collect custom results (Iterator)"
+                                                            },
+                                                            "Collect custom results (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "operation": "collect-results-iterator",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "Create custom track (Iterator)",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "Create custom track (Iterator)": {
+                                                                "Type": "Task",
+                                                                "Resource": "${x0}",
+                                                                "Parameters": {
+                                                                    "operation": "create-track-iterator",
+                                                                    "uuid.$": "$.uuid",
+                                                                    "status.$": "$.status",
+                                                                    "progress.$": "$.progress",
+                                                                    "data.$": "$.data"
+                                                                },
+                                                                "Next": "More custom tracks (Iterator)?",
+                                                                "Retry": [
+                                                                    {
+                                                                        "ErrorEquals": [
+                                                                            "States.ALL"
+                                                                        ],
+                                                                        "IntervalSeconds": 1,
+                                                                        "MaxAttempts": 2,
+                                                                        "BackoffRate": 1.1
+                                                                    }
+                                                                ]
+                                                            },
+                                                            "More custom tracks (Iterator)?": {
+                                                                "Type": "Choice",
+                                                                "Choices": [
+                                                                    {
+                                                                        "Variable": "$.status",
+                                                                        "StringEquals": "COMPLETED",
+                                                                        "Next": "Custom track completed (Iterator)"
+                                                                    }
+                                                                ],
+                                                                "Default": "Create custom track (Iterator)"
+                                                            },
+                                                            "Custom track completed (Iterator)": {
+                                                                "Type": "Succeed"
+                                                            }
+                                                        }
+                                                    },
+                                                    "ResultPath": "$.data.iterators",
+                                                    "End": true
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "Next": "Video analysis completed"
+                                },
+                                "Video analysis completed": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "job-completed",
+                                        "startTime.$": "$$.Execution.StartTime",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "stateName.$": "$$.State.Name",
+                                        "parallelStateOutputs.$": "$"
+                                    },
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    -
+                        {
+                            a0: !Ref VideoStateMachineFunction,
+                            x0: !GetAtt VideoStateMachineFunction.Arn
+                        }
+
+    # Analysis Image (nested state machine)
+    ImageStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    ImageStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-image"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt ImageStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                    - "s3:PutObjectAcl"
+                                    - "s3:SelectObjectContent"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## Rekognition
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "rekognition:DetectFaces"
+                                    - "rekognition:DetectLabels"
+                                    - "rekognition:DetectModerationLabels"
+                                    - "rekognition:DetectText"
+                                    - "rekognition:RecognizeCelebrities"
+                                    - "rekognition:DescribeCollection"
+                                    - "rekognition:SearchFacesByImage"
+                                # Wildcards in the Rekognition resource ARNs are present
+                                # due to Rekognition needing access to collections that
+                                # have IDs based off of a UUID generator.
+                                # https://docs.aws.amazon.com/rekognition/latest/dg/api-permissions-reference.html
+                                Resource: !Join ["", ["*"]]
+
+    ImageStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Image state machine lambda (384MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 384
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt ImageStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Image",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+
+    ImageStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Image",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Start image analysis",
+                            "States": {
+                                "Start image analysis": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "start-image-analysis",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "startTime.$": "$$.Execution.StartTime",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "stateName.$": "$$.State.Name"
+                                    },
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt ImageStateMachineFunction.Arn
+                        }
+
+    # Analysis Document (nested state machine)
+    DocumentStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    DocumentStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-document"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt DocumentStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                    - "s3:PutObject"
+                                    - "s3:PutObjectAcl"
+                                    - "s3:SelectObjectContent"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## Textract
+                            -
+                                Effect: "Allow"
+                                Action: "textract:AnalyzeDocument"
+                                # Wildcards in the Textract resource ARNs are present
+                                # per permission reference, Resource must be wildcard
+                                # https://docs.aws.amazon.com/textract/latest/dg/api-permissions-reference.html
+                                Resource: !Join ["", ["*"]]
+
+    DocumentStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Document state machine lambda (384MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 384
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt DocumentStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Document",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+
+    DocumentStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Document",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Analyze document",
+                            "States": {
+                                "Analyze document": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "start-document-analysis",
+                                        "uuid.$": "$.uuid",
+                                        "status.$": "$.status",
+                                        "progress.$": "$.progress",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data",
+                                        "startTime.$": "$$.Execution.StartTime",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "stateName.$": "$$.State.Name"
+                                    },
+                                    "Next": "More pages?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "More pages?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "COMPLETED",
+                                            "Next": "Analyze document completed"
+                                        }
+                                    ],
+                                    "Default": "Analyze document"
+                                },
+                                "Analyze document completed": {
+                                    "Type": "Succeed"
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt DocumentStateMachineFunction.Arn
+                        }
+
+    # Analysis (Main) state machine
+    MainStateMachineFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    MainStateMachineFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-main"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt MainStateMachineFunctionLogGroup.Arn
+                            ## S3
+                            -
+                                Effect: "Allow"
+                                Action: "s3:GetObject"
+                                Resource: !Sub "arn:aws:s3:::${ProxyBucket}/*"
+                            ## DynamoDB
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:Scan"
+                                    - "dynamodb:UpdateItem"
+                                    - "dynamodb:Attributes"
+                                    - "dynamodb:LeadingKeys"
+                                    - "dynamodb:ReturnConsumedCapacity"
+                                    - "dynamodb:ReturnValues"
+                                    - "dynamodb:Select"
+                                # state machine lambda does have read/write/delete accesses to solution tables
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+                            ## SNS
+                            -
+                                Effect: "Allow"
+                                Action: "sns:Publish"
+                                Resource: !Ref SNSTopicArn
+                            ## Elasticsearch
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "es:ESHttpGet"
+                                    - "es:ESHttpPost"
+                                    - "es:ESHttpPut"
+                                    - "es:ESHttpPost"
+                                    - "es:ESHttpDelete"
+                                Resource:
+                                    # Wildcards on ElasticSearch domain resources are
+                                    # present because documents are indexed based off of
+                                    # the Step Function job ID, which is unique per
+                                    # invocation.
+                                    - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}"
+                                    - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ElasticsearchDomainName}/*"
+                            ## Rekognition
+                            -
+                                Effect: "Allow"
+                                Action: "rekognition:ListFaces"
+                                # Wildcards in the Rekognition resource ARNs are present
+                                # due to Rekognition needing access to collections
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*"
+                            -
+                                Effect: Allow
+                                Action: "rekognition:DescribeProjectVersions"
+                                Resource: !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/*"
+                            ## Comprehend
+                            -
+                                Effect: "Allow"
+                                Action: "comprehend:DescribeEntityRecognizer"
+                                Resource: !Sub "arn:aws:comprehend:${AWS::Region}:${AWS::AccountId}:entity-recognizer/*"
+                            ## Transcribe
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "transcribe:GetVocabulary"
+                                    - "transcribe:DescribeLanguageModel"
+                                # These actions require resource wildcards per the
+                                # Transcribe documentation.
+                                # https://docs.aws.amazon.com/transcribe/latest/dg/asc-api-permissions-ref.html
+                                Resource: !Join ["", ["*"]]
+
+    MainStateMachineFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Main state machine lambda (128MB)"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt MainStateMachineFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "Main",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ## Default AI/ML options ##
+                    ENV_DEFAULT_AI_OPTIONS: !Ref AIOptions
+                    ENV_DEFAULT_MINCONFIDENCE: !Ref MinConfidence
+                    ## Communication to downstream ##
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+                    ENV_ES_DOMAIN_ENDPOINT: !Ref ElasticsearchDomainEndpoint
+                    ENV_ES_INDEX_NAME: !Ref ElasticsearchDomainIndexName
+
+    MainStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "Main",
+                        "Name"
+                    ]
+                }
+            ]
+            RoleArn: !GetAtt StateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "StartAt": "Prepare analysis",
+                            "States": {
+                                "Prepare analysis": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "prepare-analysis",
+                                        "executionArn.$": "$$.Execution.Id",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input"
+                                    },
+                                    "Next": "Run parallel states",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Run parallel states": {
+                                    "Type": "Parallel",
+                                    "Branches": [
+                                        {
+                                            "StartAt": "Video analysis enabled?",
+                                            "States": {
+                                                "Video analysis enabled?": {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.input.video.enabled",
+                                                            "BooleanEquals": false,
+                                                            "Next": "Skip video analysis"
+                                                        }
+                                                    ],
+                                                    "Default": "Start video analysis and wait"
+                                                },
+                                                "Start video analysis and wait": {
+                                                    "Type": "Task",
+                                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                                    "Parameters": {
+                                                        "Input": {
+                                                            "uuid.$": "$.uuid",
+                                                            "status": "NOT_STARTED",
+                                                            "progress": 0,
+                                                            "input.$": "$.input",
+                                                            "data.$": "$.data"
+                                                        },
+                                                        "StateMachineArn": "${VideoStateMachine}"
+                                                    },
+                                                    "End": true
+                                                },
+                                                "Skip video analysis": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Audio analysis enabled?",
+                                            "States": {
+                                                "Audio analysis enabled?": {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.input.audio.enabled",
+                                                            "BooleanEquals": false,
+                                                            "Next": "Skip audio analysis"
+                                                        }
+                                                    ],
+                                                    "Default": "Start audio analysis and wait"
+                                                },
+                                                "Start audio analysis and wait": {
+                                                    "Type": "Task",
+                                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                                    "Parameters": {
+                                                        "Input": {
+                                                            "uuid.$": "$.uuid",
+                                                            "status": "NOT_STARTED",
+                                                            "progress": 0,
+                                                            "input.$": "$.input",
+                                                            "data.$": "$.data"
+                                                        },
+                                                        "StateMachineArn": "${AudioStateMachine}"
+                                                    },
+                                                    "End": true
+                                                },
+                                                "Skip audio analysis": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Image analysis enabled?",
+                                            "States": {
+                                                "Image analysis enabled?": {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.input.image.enabled",
+                                                            "BooleanEquals": false,
+                                                            "Next": "Skip image analysis"
+                                                        }
+                                                    ],
+                                                    "Default": "Start image analysis and wait"
+                                                },
+                                                "Start image analysis and wait": {
+                                                    "Type": "Task",
+                                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                                    "Parameters": {
+                                                        "Input": {
+                                                            "uuid.$": "$.uuid",
+                                                            "status": "NOT_STARTED",
+                                                            "progress": 0,
+                                                            "input.$": "$.input",
+                                                            "data.$": "$.data"
+                                                        },
+                                                        "StateMachineArn": "${ImageStateMachine}"
+                                                    },
+                                                    "End": true
+                                                },
+                                                "Skip image analysis": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Document analysis enabled?",
+                                            "States": {
+                                                "Document analysis enabled?": {
+                                                    "Type": "Choice",
+                                                    "Choices": [
+                                                        {
+                                                            "Variable": "$.input.document.enabled",
+                                                            "BooleanEquals": false,
+                                                            "Next": "Skip document analysis"
+                                                        }
+                                                    ],
+                                                    "Default": "Start document analysis and wait"
+                                                },
+                                                "Start document analysis and wait": {
+                                                    "Type": "Task",
+                                                    "Resource": "arn:aws:states:::states:startExecution.sync",
+                                                    "Parameters": {
+                                                        "Input": {
+                                                            "uuid.$": "$.uuid",
+                                                            "status": "NOT_STARTED",
+                                                            "progress": 0,
+                                                            "input.$": "$.input",
+                                                            "data.$": "$.data"
+                                                        },
+                                                        "StateMachineArn": "${DocumentStateMachine}"
+                                                    },
+                                                    "End": true
+                                                },
+                                                "Skip document analysis": {
+                                                    "Type": "Succeed"
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "Next": "Collect analysis results"
+                                },
+                                "Collect analysis results": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "collect-analysis-results",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "parallelStateOutputs.$": "$"
+                                    },
+                                    "Next": "Index analysis results",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Index analysis results": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "index-analysis-results",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Next": "Analysis completed",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 2,
+                                            "BackoffRate": 1.2
+                                        }
+                                    ]
+                                },
+                                "Analysis completed": {
+                                    "Type": "Task",
+                                    "Resource": "${x0}",
+                                    "Parameters": {
+                                        "operation": "job-completed",
+                                        "uuid.$": "$.uuid",
+                                        "status": "NOT_STARTED",
+                                        "progress": 0,
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "End": true
+                                }
+                            }
+                        }
+                    -
+                        {
+                            x0: !GetAtt MainStateMachineFunction.Arn
+                        }
+
+    ################################################################################
+    #
+    # Analysis Automation resource(s)
+    # * Status Updater (to report analysis execution results)
+    #
+    ################################################################################
+    StatusUpdaterFunctionLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: "Disable log encryption in Preview version"
+        Properties:
+            LogGroupName: !Sub [
+                "/aws/lambda/${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "StatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            RetentionInDays: 7
+
+    StatusUpdaterFunctionRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: "Wildcard character is prefixed with the solution and stack id"
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: "Allow"
+                        Action: "sts:AssumeRole"
+                        Principal:
+                            Service: "lambda.amazonaws.com"
+            Path: /
+            Policies:
+                -
+                    PolicyName: !Sub "${SolutionId}-${RootStackName}-analysis-status-updater"
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogGroup"
+                                    - "logs:CreateLogStream"
+                                    - "logs:PutLogEvents"
+                                Resource: !GetAtt StatusUpdaterFunctionLogGroup.Arn
+                            ## Step Functions - send task results
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "states:SendTaskSuccess"
+                                    - "states:SendTaskFailure"
+                                Resource:
+                                    - !Ref AudioStateMachine
+                                    - !Ref VideoStateMachine
+                            ## IoT
+                            -
+                                Effect: "Allow"
+                                Action: "iot:Publish"
+                                Resource: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}"
+                            ## SNS
+                            -
+                                Effect: "Allow"
+                                Action: "sns:Publish"
+                                Resource: !Ref SNSTopicArn
+                            ## DynamoDB - allow to fetch step functions state token
+                            -
+                                Effect: "Allow"
+                                Action:
+                                    - "dynamodb:DeleteItem"
+                                    - "dynamodb:DescribeTable"
+                                    - "dynamodb:Query"
+                                    - "dynamodb:UpdateItem"
+                                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SolutionId}-${RootStackName}-*"
+                            ## Transcribe - allow to get transcribe job status
+                            -
+                                Effect: "Allow"
+                                Action: "transcribe:GetTranscriptionJob"
+                                Resource: !Join ["", ["*"]]
+
+    StatusUpdaterFunction:
+        Type: AWS::Lambda::Function
+        Properties:
+            FunctionName: !Sub [
+                "${SolutionId}-${RootStackName}-${x0}", {
+                    x0: !FindInMap [
+                        "Workflow",
+                        "StatusUpdater",
+                        "Name"
+                    ]
+                }
+            ]
+            Description: !Sub "(${SolutionId}) Analysis Status Updater handles CloudWatch and SNS events"
+            Runtime: !FindInMap [
+                "Node",
+                "Runtime",
+                "Version"
+            ]
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt StatusUpdaterFunctionRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub [
+                    "${KeyPrefix}/${x0}", {
+                        x0: !FindInMap [
+                            "Workflow",
+                            "StatusUpdater",
+                            "Package"
+                        ]
+                    }
+                ]
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            Environment:
+                Variables:
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_STACKNAME: !Ref RootStackName
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_SNS_TOPIC_ARN: !Ref SNSTopicArn
+
+    ################################################################################
+    #
+    # Transcribe Status Change event (CloudWatch Event)
+    #
+    ################################################################################
+    TranscribeStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${SolutionId}-${RootStackName}-transcribe-status-rule
+            Description: !Sub "(${SolutionId}) transcribe status change event"
+            EventPattern:
+                source:
+                    - "aws.transcribe"
+                region:
+                    - !Sub "${AWS::Region}"
+                detail-type:
+                    - "Transcribe Job State Change"
+                detail:
+                    TranscriptionJobStatus:
+                        - COMPLETED
+                        - FAILED
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${StatusUpdaterFunction}"
+                    Arn: !GetAtt StatusUpdaterFunction.Arn
+
+    TranscribeStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref StatusUpdaterFunction
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt TranscribeStatusChangeEvent.Arn
+
+    ################################################################################
+    #
+    # Backlog Status Change event (CloudWatch Event)
+    # * Rekognition async operation status change (SUCCEEDED or FAILED)
+    # * Comprehend async operation status change (PROCESSING)
+    # * Custom Labels async operation status change (FAILED, ABORTED, TIMED_OUT, SUCCEEDED)
+    #
+    ################################################################################
+    RekognitionStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${SolutionId}-${RootStackName}-rekog-backlog-status-rule
+            Description: !Sub "(${SolutionId}) Backlog status change event (Rekognition)"
+            EventBusName: !Ref BacklogEBBus
+            EventPattern:
+                source:
+                    - "custom.servicebacklog"
+                region:
+                    - !Sub "${AWS::Region}"
+                detail-type:
+                    - "Service Backlog Status Change"
+                detail:
+                    status:
+                        - SUCCEEDED
+                        - FAILED
+                    serviceApi:
+                        - rekognition:startcontentmoderation
+                        - rekognition:startcelebrityrecognition
+                        - rekognition:startfacedetection
+                        - rekognition:startfacesearch
+                        - rekognition:startlabeldetection
+                        - rekognition:startpersontracking
+                        - rekognition:startsegmentdetection
+                        - rekognition:starttextdetection
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${StatusUpdaterFunction}"
+                    Arn: !GetAtt StatusUpdaterFunction.Arn
+
+    RekognitionStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref StatusUpdaterFunction
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt RekognitionStatusChangeEvent.Arn
+
+    ComprehendStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${SolutionId}-${RootStackName}-cmpd-backlog-status-rule
+            Description: !Sub "(${SolutionId}) Backlog status change event (Comprehend)"
+            EventBusName: !Ref BacklogEBBus
+            EventPattern:
+                source:
+                    - "custom.servicebacklog"
+                region:
+                    - !Sub "${AWS::Region}"
+                detail-type:
+                    - "Service Backlog Status Change"
+                detail:
+                    status:
+                        - PROCESSING
+                    serviceApi:
+                        - comprehend:startdocumentclassificationjob
+                        - comprehend:startdominantlanguagedetectionjob
+                        - comprehend:startentitiesdetectionjob
+                        - comprehend:startkeyphrasesdetectionjob
+                        - comprehend:startsentimentdetectionjob
+                        - comprehend:starttopicsdetectionjob
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${StatusUpdaterFunction}"
+                    Arn: !GetAtt StatusUpdaterFunction.Arn
+
+    ComprehendStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref StatusUpdaterFunction
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt ComprehendStatusChangeEvent.Arn
+
+    CustomLabelsStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${SolutionId}-${RootStackName}-custom-labels-status-rule
+            Description: !Sub "(${SolutionId}) Backlog status change event (Custom Labels State Machine)"
+            EventBusName: !Ref BacklogEBBus
+            EventPattern:
+                source:
+                    - "custom.servicebacklog"
+                region:
+                    - !Sub "${AWS::Region}"
+                detail-type:
+                    - "Service Backlog Status Change"
+                detail:
+                    status:
+                        - FAILED
+                        - ABORTED
+                        - TIMED_OUT
+                        - SUCCEEDED
+                    serviceApi:
+                        - custom:startcustomlabelsdetection
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub "Id-${StatusUpdaterFunction}"
+                    Arn: !GetAtt StatusUpdaterFunction.Arn
+
+    CustomLabelsStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref StatusUpdaterFunction
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt CustomLabelsStatusChangeEvent.Arn
+
+Outputs:
+    ServiceTokenTableName:
+        Value: !Ref ServiceTokenTable
+        Description: Table Name (Service Token)
+    ServiceTokenTableArn:
+        Value: !GetAtt ServiceTokenTable.Arn
+        Description: Table Arn (Service Token)
+    AIMLTableName:
+        Value: !Ref AIMLTable
+        Description: Table Name (AIML)
+    AIMLTableArn:
+        Value: !GetAtt AIMLTable.Arn
+        Description: Table Arn (AIML)
+    StatsTableName:
+        Value: !Ref StatsTable
+        Description: Table Name (Stats)
+    StatsTableArn:
+        Value: !GetAtt StatsTable.Arn
+        Description: Table Arn (Stats)
+    MainStateMachineArn:
+        Value: !Ref MainStateMachine
+        Description: State Machine Arn (Analysis Main)
+    MainStateMachineName:
+        Value: !GetAtt MainStateMachine.Name
+        Description: State Machine Name (Analysis Main)
+    ### Resources URLs ###
+    # Lambda Layers

@@ -1,0 +1,39 @@
+{
+  "CustomName": "frameCapture",
+  "Name": "File Group",
+  "Outputs": [
+    {
+      "ContainerSettings": {
+        "Container": "RAW"
+      },
+      "VideoDescription": {
+        "Width": 0,
+        "Height": 0,
+        "ScalingBehavior": "DEFAULT",
+        "TimecodeInsertion": "DISABLED",
+        "AntiAlias": "ENABLED",
+        "Sharpness": 50,
+        "CodecSettings": {
+          "Codec": "FRAME_CAPTURE",
+          "FrameCaptureSettings": {
+            "FramerateNumerator": 0,
+            "FramerateDenominator": 0,
+            "MaxCaptures": 10000000,
+            "Quality": 80
+          }
+        },
+        "AfdSignaling": "NONE",
+        "DropFrameTimecode": "ENABLED",
+        "RespondToAfd": "NONE",
+        "ColorMetadata": "INSERT"
+      },
+      "Extension": "jpg"
+    }
+  ],
+  "OutputGroupSettings": {
+    "Type": "FILE_GROUP_SETTINGS",
+    "FileGroupSettings": {
+      "Destination": "##PLACEHOLDER"
+    }
+  }
+}

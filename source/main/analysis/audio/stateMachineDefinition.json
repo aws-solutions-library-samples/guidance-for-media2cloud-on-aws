@@ -1,0 +1,437 @@
+{
+    "StartAt": "Start transcribe and wait",
+    "States": {
+        "Start transcribe and wait": {
+            "Type": "Task",
+            "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${a0}",
+                "Payload": {
+                    "token.$":"$$.Task.Token",
+                    "operation": "start-transcribe",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input"
+                }
+            },
+            "TimeoutSeconds": 86400,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 1,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "Got transcription data?"
+        },
+        "Got transcription data?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "NO_DATA",
+                    "Next": "Analysis completed"
+                }
+            ],
+            "Default": "Collect transcribe results"
+        },
+        "Collect transcribe results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "collect-transcribe-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "Start comprehend analysis",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Start comprehend analysis": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Start entity",
+                    "States": {
+                        "Start entity": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress.$": "$.progress",
+                                "operation": "start-entity",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "Next": "Got entity data?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 8,
+                                    "BackoffRate": 1.2
+                                }
+                            ]
+                        },
+                        "Got entity data?" : {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "NO_DATA",
+                                    "Next": "Entity skipped"
+                                }
+                            ],
+                            "Default": "Create entity track"
+                        },
+                        "Create entity track": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "create-entity-track",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Entity skipped": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Start keyphrase",
+                    "States": {
+                        "Start keyphrase": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress.$": "$.progress",
+                                "operation": "start-keyphrase",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "Next": "Got keyphrase data?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 8,
+                                    "BackoffRate": 1.2
+                                }
+                            ]
+                        },
+                        "Got keyphrase data?" : {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "NO_DATA",
+                                    "Next": "Keyphrase skipped"
+                                }
+                            ],
+                            "Default": "Create keyphrase track"
+                        },
+                        "Create keyphrase track": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "create-keyphrase-track",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Keyphrase skipped": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Start sentiment",
+                    "States": {
+                        "Start sentiment": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress.$": "$.progress",
+                                "operation": "start-sentiment",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "Next": "Got sentiment data?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 8,
+                                    "BackoffRate": 1.2
+                                }
+                            ]
+                        },
+                        "Got sentiment data?" : {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "NO_DATA",
+                                    "Next": "Sentiment skipped"
+                                }
+                            ],
+                            "Default": "Create sentiment track"
+                        },
+                        "Create sentiment track": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "create-sentiment-track",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Sentiment skipped": {
+                            "Type": "Succeed"
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Check custom entity criteria",
+                    "States": {
+                        "Check custom entity criteria": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress.$": "$.progress",
+                                "operation": "check-custom-entity-criteria",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "Next": "Can start custom entity?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 1,
+                                    "BackoffRate": 1.2
+                                }
+                            ]
+                        },
+                        "Can start custom entity?" : {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "NO_DATA",
+                                    "Next": "Custom entity skipped"
+                                }
+                            ],
+                            "Default": "Start custom entity"
+                        },
+                        "Start custom entity": {
+                            "Type": "Task",
+                            "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                            "Parameters": {
+                                "FunctionName": "${a0}",
+                                "Payload": {
+                                    "token.$":"$$.Task.Token",
+                                    "uuid.$": "$.uuid",
+                                    "status": "NOT_STARTED",
+                                    "progress.$": "$.progress",
+                                    "operation": "start-custom-entity",
+                                    "input.$": "$.input",
+                                    "data.$": "$.data"
+                                }
+                            },
+                            "TimeoutSeconds": 86400,
+                            "Next": "Wait for custom entity status (3mins)",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Wait for custom entity status (3mins)": {
+                            "Type": "Wait",
+                            "Seconds": 180,
+                            "Next": "Check custom entity status"
+                        },
+                        "Check custom entity status": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "check-custom-entity-status",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "Next": "Custom entity completed?",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 1,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Custom entity completed?": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Or": [
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "NO_DATA"
+                                        },
+                                        {
+                                            "Variable": "$.status",
+                                            "StringEquals": "ERROR"
+                                        }
+                                    ],
+                                    "Next": "No custom entity detected"
+                                },
+                                {
+                                    "Variable": "$.status",
+                                    "StringEquals": "COMPLETED",
+                                    "Next": "Create custom entity track"
+                                }
+                            ],
+                            "Default": "Wait for custom entity status (3mins)"
+                        },
+                        "Create custom entity track": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "create-custom-entity-track",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Custom entity skipped": {
+                            "Type": "Succeed"
+                        },
+                        "No custom entity detected": {
+                            "Type": "Succeed"
+                        }
+                    }
+                }
+            ],
+            "Next": "Analysis completed"
+        },
+        "Analysis completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "startTime.$": "$$.Execution.StartTime",
+                "executionArn.$": "$$.Execution.Id",
+                "stateName.$": "$$.State.Name",
+                "parallelStateOutputs.$": "$"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        }
+    }
+}

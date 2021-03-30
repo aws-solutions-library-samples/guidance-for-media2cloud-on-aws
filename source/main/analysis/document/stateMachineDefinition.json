@@ -1,0 +1,45 @@
+{
+    "StartAt": "Analyze document",
+    "States": {
+        "Analyze document": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "start-document-analysis",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.input",
+                "data.$": "$.data",
+                "startTime.$": "$$.Execution.StartTime",
+                "executionArn.$": "$$.Execution.Id",
+                "stateName.$": "$$.State.Name"
+            },
+            "Next": "More pages?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "More pages?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Analyze document completed"
+                }
+            ],
+            "Default": "Analyze document"
+        },
+        "Analyze document completed": {
+            "Type": "Succeed"
+        }
+    }
+}

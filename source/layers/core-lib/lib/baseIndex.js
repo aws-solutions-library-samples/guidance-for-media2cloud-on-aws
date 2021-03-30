@@ -3,34 +3,22 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
 const AWS = require('aws-sdk');
 const AmazonConnection = require('aws-elasticsearch-connector');
-
 const {
   Client,
 } = require('@elastic/elasticsearch');
-
 const {
   IndexError,
 } = require('./error');
+const Environment = require('./environment');
 
-const {
-  StateData,
-} = require('./stateData');
-
-const {
-  Environment,
-} = require('./index');
-
-class MyAmazonConnection extends AmazonConnection {
-  request(params, callback) {
-    return super.request(params, callback);
-  }
-}
+const NUMBER_FIELDS = [
+  'timestamp',
+  'fileSize',
+  'duration',
+  'lastModified',
+];
 
 /**
  * @class BaseIndex
@@ -45,13 +33,11 @@ class BaseIndex {
     this.$indexName = name || BaseIndex.Constants.Index.Name;
     this.$docType = type || BaseIndex.Constants.Index.Type;
 
-    const credentials = new AWS.EnvironmentCredentials('AWS');
     this.$client = new Client({
       node: `https://${host}`,
-      Connection: MyAmazonConnection,
-      awsConfig: {
-        credentials,
-      },
+      ...AmazonConnection(new AWS.Config({
+        ...(new AWS.EnvironmentCredentials('AWS')),
+      })),
     });
   }
 
@@ -165,8 +151,7 @@ class BaseIndex {
     const size = Number.parseInt(params.pageSize || BaseIndex.Constants.DefaultPageSize, 10);
     const from = Number.parseInt(params.token || 0, 10);
     const operator = params.exact ? 'AND' : 'OR';
-
-    const response = await this.client.search({
+    const searchParams = {
       index: this.indexName,
       body: {
         from,
@@ -188,9 +173,8 @@ class BaseIndex {
           },
         },
       },
-    });
-
-    // eslint-disable-next-line
+    };
+    const response = await this.client.search(searchParams);
     const uuids = response.body.hits.hits.map(x => x._id);
     return {
       uuids,
@@ -229,6 +213,13 @@ class BaseIndex {
     return response.body._source; // eslint-disable-line
   }
 
+  async query(params) {
+    return this.client.search({
+      ...params,
+      index: this.indexName,
+    });
+  }
+
   /**
    * @function sanitize
    * @description force all values to be 'string' type to avoid mapper_parsing_exception
@@ -237,8 +228,10 @@ class BaseIndex {
   static sanitize(doc) {
     const parsed = Object.assign(doc);
     BaseIndex.tranverse(parsed, (k, v, obj) => {
-      if (BaseIndex.primitive(v) && k !== 'timestamp') {
-        obj[k] = v.toString(); // eslint-disable-line
+      if (BaseIndex.primitive(v)) {
+        obj[k] = (NUMBER_FIELDS.indexOf(k) >= 0)
+          ? Number.parseInt(v, 10)
+          : v.toString();
       }
     });
     return parsed;
@@ -261,13 +254,11 @@ class BaseIndex {
     // eslint-disable-next-line
     for (let i in o) {
       fn(i, o[i], o);
-      if (o[i] !== undefined && o[i] !== null && typeof o[i] === 'object') {
+      if (typeof o[i] === 'object' && o[i] !== null) {
         BaseIndex.tranverse(o[i], fn);
       }
     }
   }
 }
 
-module.exports = {
-  BaseIndex,
-};
+module.exports = BaseIndex;

@@ -8,24 +8,11 @@
  * @author MediaEnt Solutions
  */
 
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable import/no-extraneous-dependencies */
 const AWS = require('aws-sdk');
-
 const {
   ServiceAvailability,
-} = require('m2c-core-lib');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+} = require('core-lib');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @class Vocabulary
@@ -34,28 +21,28 @@ const {
 class Vocabulary extends mxBaseResponse(class {}) {
   constructor(event, context) {
     super(event, context);
-    const Props = (event || {}).ResourceProperties || {};
+    /* sanity check */
+    const data = event.ResourceProperties.Data;
+    this.sanityCheck(data);
+    this.$data = data;
 
-    const missing = Vocabulary.MandatoryProperties.filter(x => Props[x] === undefined);
-    if (missing.length) {
-      throw new Error(`event.ResourceProperties missing ${missing.join(', ')}`);
-    }
-
-    this.$languageCode = Props.LanguageCode;
-    this.$prefix = Props.Prefix;
     this.$instance = new AWS.TranscribeService({
       apiVersion: '2017-10-26',
     });
   }
 
-  static get MandatoryProperties() {
-    /* sanity check */
-    return [
-      'ServiceToken',
-      'FunctionName',
+  sanityCheck(data) {
+    const missing = [
       'LanguageCode',
       'Prefix',
-    ];
+    ].filter(x => data[x] === undefined);
+    if (missing.length) {
+      throw new Error(`missing ${missing.join(', ')}`);
+    }
+  }
+
+  get data() {
+    return this.$data;
   }
 
   static get DefaultPhrase() {
@@ -84,11 +71,11 @@ class Vocabulary extends mxBaseResponse(class {}) {
   }
 
   get languageCode() {
-    return this.$languageCode;
+    return this.data.LanguageCode;
   }
 
   get prefix() {
-    return this.$prefix;
+    return this.data.Prefix;
   }
 
   get instance() {
@@ -214,6 +201,4 @@ class Vocabulary extends mxBaseResponse(class {}) {
   }
 }
 
-module.exports = {
-  Vocabulary,
-};
+module.exports = Vocabulary;

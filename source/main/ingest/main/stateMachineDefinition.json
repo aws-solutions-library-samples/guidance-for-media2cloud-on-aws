@@ -1,0 +1,209 @@
+{
+    "Comment": "ingest state machine to create record, to extract media technical metadata, and to index results to elasticsearch",
+    "StartAt": "Create record",
+    "States": {
+        "Create record": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "create-record",
+                "executionArn.$": "$$.Execution.Id",
+                "input.$": "$.input"
+            },
+            "Next": "Start fixity (nested)",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Start fixity (nested)": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "Input": {
+                    "operation": "check-restore-status",
+                    "uuid.$": "$.uuid",
+                    "status.$": "$.status",
+                    "progress.$": "$.progress",
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                },
+                "StateMachineArn": "${FixityStateMachine}"
+            },
+            "Next": "Fixity completed"
+        },
+        "Fixity completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "fixity-completed",
+                "nestedStateOutput.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ],
+            "Next": "Choose by media type"
+        },
+        "Choose by media type": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable":  "$.input.type",
+                    "StringEquals": "image",
+                    "Next": "Start image ingest (nested)"
+                },
+                {
+                    "Variable":  "$.input.type",
+                    "StringEquals": "video",
+                    "Next": "Start video ingest (nested)"
+                },
+                {
+                    "Variable":  "$.input.type",
+                    "StringEquals": "audio",
+                    "Next": "Start audio ingest (nested)"
+                },
+                {
+                    "Variable":  "$.input.type",
+                    "StringEquals": "document",
+                    "Next": "Start document ingest (nested)"
+                }
+            ],
+            "Default": "Media type not supported"
+        },
+        "Start image ingest (nested)": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "Input": {
+                    "operation": "run-imageinfo",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                },
+                "StateMachineArn": "${ImageStateMachine}"
+            },
+            "Next": "Update record"
+        },
+        "Start video ingest (nested)": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "Input": {
+                    "operation": "run-mediainfo",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                },
+                "StateMachineArn": "${VideoStateMachine}"
+            },
+            "Next": "Update record"
+        },
+        "Start audio ingest (nested)": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "Input": {
+                    "operation": "run-mediainfo",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                },
+                "StateMachineArn": "${AudioStateMachine}"
+            },
+            "Next": "Update record"
+        },
+        "Start document ingest (nested)": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Parameters": {
+                "Input": {
+                    "operation": "run-docinfo",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                },
+                "StateMachineArn": "${DocumentStateMachine}"
+            },
+            "Next": "Update record"
+        },
+        "Media type not supported": {
+            "Type": "Fail"
+        },
+        "Update record": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "update-record",
+                "nestedStateOutput.$": "$"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "Index ingest results"
+        },
+        "Index ingest results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "index-ingest-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "Completed"
+        },
+        "Completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "End": true
+        }
+    }
+}

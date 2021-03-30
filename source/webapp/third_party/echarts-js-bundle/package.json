@@ -1,0 +1,18 @@
+{
+  "name": "echarts-js-bundle",
+  "version": "5.0.0",
+  "description": "package echarts from https://github.com/apache/incubator-echarts",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist temp && mkdir -p dist/js dist/css temp",
+    "build:download": "cd temp && wget -q --no-check-certificate https://github.com/apache/incubator-echarts/archive/5.0.0.zip -O echarts.zip",
+    "build:unpack": "cd temp && unzip -q echarts.zip",
+    "build:copy": "cp -v temp/echarts-5.0.0/dist/echarts.min.js ./dist/js",
+    "build:postbuild": "rm -rf temp",
+    "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
+  },
+  "author": "",
+  "license": "Apache 2.0",
+  "devDependencies": {}
+}

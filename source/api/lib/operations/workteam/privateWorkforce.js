@@ -3,28 +3,11 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable no-plusplus */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable class-methods-use-this */
-
 const AWS = require('aws-sdk');
 
-/**
- * @class PrivateWorkforce
- * @description manage Ground Truth private workteam members
- */
 class PrivateWorkforce {
   constructor(teamName) {
-    this.$teamName = teamName || process.env.ENV_WORKTEAM_NAME;
+    this.$teamName = teamName;
 
     this.$userGroup = undefined;
     this.$userPool = undefined;
@@ -285,6 +268,4 @@ class PrivateWorkforce {
   }
 }
 
-module.exports = {
-  PrivateWorkforce,
-};
+module.exports = PrivateWorkforce;

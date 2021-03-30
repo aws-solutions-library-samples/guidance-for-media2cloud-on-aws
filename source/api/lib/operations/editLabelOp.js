@@ -3,35 +3,15 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-continue */
-/* eslint-disable no-nested-ternary */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-// const AWS = require('aws-sdk');
 const PATH = require('path');
-
 const {
   BaseIndex,
   CommonUtils,
   Environment,
   DB,
   WebVttTrack,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
 /**
  * @class EditLabelOp
@@ -57,7 +37,7 @@ class EditLabelOp extends BaseOp {
     }
 
     if ([
-      'transcript',
+      'transcribe',
       'comprehend',
       'rekognition',
       'rekog-image',
@@ -587,6 +567,4 @@ class EditLabelOp extends BaseOp {
   }
 }
 
-module.exports = {
-  EditLabelOp,
-};
+module.exports = EditLabelOp;

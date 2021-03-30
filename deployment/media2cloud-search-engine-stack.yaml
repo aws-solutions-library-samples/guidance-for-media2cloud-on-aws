@@ -2,31 +2,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 
 Description: (SO0050-search-engine) Media2Cloud - create elasticsearch cluster for search feature
 
-#
-# Mappings to store fixed value of the solution
-#
 Mappings:
-    ESCluster:
-        Global:
-            Version: 6.0
-            IndexName: media-analysis
+    Elasticsearch:
+        Domain:
+            Version: 7.9
+        EBSOptions:
+            VolumeType: gp2
         Index:
             Name: media-analysis
-        Small:
-            InstanceCount: 2
-            VolumeSize: 25
-            MasterSize: "t2.small.elasticsearch"
-            WorkerSize: "m4.large.elasticsearch"
-        Medium:
-            InstanceCount: 4
-            VolumeSize: 25
-            MasterSize: "t2.medium.elasticsearch"
-            WorkerSize: "m4.large.elasticsearch"
-        Large:
-            InstanceCount: 8
-            VolumeSize: 25
-            MasterSize: "t2.medium.elasticsearch"
-            WorkerSize: "m4.large.elasticsearch"
 
 Parameters:
     SolutionId:
@@ -54,21 +37,17 @@ Parameters:
     CustomResourceArn:
         Type: String
         Description: for post-processing
-    ClusterSize:
+    ElasticsearchCluster:
         Type: String
-        Description: Elasticsearch cluster size
-        Default: Small
+        Description: "configure Amazon Elasticsearch cluster"
         AllowedValues:
-            - Small
-            - Medium
-            - Large
+            - Development and Testing (t3.small=0,m5.large=1,volume=10,az=1)
+            - Suitable for Production Workload (t3.small=3,m5.large=2,volume=20,az=2)
+            - Recommended for Production Workload (t3.small=3,m5.large=4,volume=20,az=2)
+            - Recommended for Large Production Workload (t3.small=3,m5.large=6,volume=40,az=3)
+        Default: Development and Testing (t3.small=0,m5.large=1,volume=10,az=1)
 
 Metadata:
-    cfn-lint:
-        config:
-            ignore_checks:
-                # ignore S3Bucket, KeyPrefix not being used
-                - W2001
     AWS::CloudFormation::Interface:
         ParameterGroups:
             -
@@ -86,7 +65,7 @@ Metadata:
                 Label:
                     default: "Elasticsearch Configuration"
                 Parameters:
-                    - ClusterSize
+                    - ElasticsearchCluster
             -
                 Label:
                     default: "Other resources"
@@ -103,8 +82,8 @@ Metadata:
                 default: "Solution KeyPrefix"
             CustomResourceArn:
                 default: "Custom Resource Arn"
-            ClusterSize:
-                default: "Cluster Size"
+            ElasticsearchCluster:
+                default: "Elasticsearch cluster"
             SolutionUuid:
                 default: "Solution Uuid"
             Version:
@@ -112,20 +91,100 @@ Metadata:
             AnonymousUsage:
                 default: "Anonymous Usage"
 
+Conditions:
+    bDedicatedNodes: !Not [
+        !Equals [
+            "0",
+            !Select [1,
+                !Split ["=",
+                    !Select [0,
+                        !Split [",",
+                            !Select [0,
+                                !Split [")",
+                                    !Select [1,
+                                        !Split ["(",
+                                            !Ref ElasticsearchCluster
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+    bSingleAZ: !Equals [
+        "1",
+        !Select [1,
+            !Split ["=",
+                !Select [3,
+                    !Split [",",
+                        !Select [0,
+                            !Split [")",
+                                !Select [1,
+                                    !Split ["(",
+                                        !Ref ElasticsearchCluster
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+    bTwoAZs: !Equals [
+        "2",
+        !Select [1,
+            !Split ["=",
+                !Select [3,
+                    !Split [",",
+                        !Select [0,
+                            !Split [")",
+                                !Select [1,
+                                    !Split ["(",
+                                        !Ref ElasticsearchCluster
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+    bThreeAZs: !Equals [
+        "3",
+        !Select [1,
+            !Split ["=",
+                !Select [3,
+                    !Split [",",
+                        !Select [0,
+                            !Split [")",
+                                !Select [1,
+                                    !Split ["(",
+                                        !Ref ElasticsearchCluster
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+
 Resources:
-    # ES domain name must be lowercase
     LowerCaseDomainName:
-        Type: Custom::LowerCaseDomainName
+        Type: Custom::StringManipulation
         Properties:
             ServiceToken: !Ref CustomResourceArn
-            FunctionName: StringManipulation
-            InputString: !Sub "${SolutionId}-${RootStackName}-storage"
-            Operations: "lower,maxlen=28,minlen=3,dash"
-            OutputReference: ElasticsearchDomainName
+            Data:
+                InputString: !Sub "${SolutionId}-${RootStackName}-storage"
+                Operations: "lower,maxlen=28,minlen=3,dash"
+                OutputReference: ElasticsearchDomainName
 
-    #
-    # Elasticsearch engine for media analysis
-    #
     Elasticsearch:
         Type: AWS::Elasticsearch::Domain
         Metadata:
@@ -133,60 +192,13 @@ Resources:
                 rules_to_suppress:
                     -
                         id: W28
-                        reason: "Elasticsearch domain name needs to remain the same to maintain the indexed documents."
-                    -
-                        id: W54
-                        reason: "EncryptionAtRestOptions not supported for t2 instance, https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/aes-supported-instance-types.html"
-            cfn-lint:
-                config:
-                    ignore_checks:
-                        # ignore !FindInMap with !Ref ClusterSize warning 
-                        - W1011
+                        reason: "Elasticsearch engine is explicitly assigned with predefined name"
         Properties:
-            ElasticsearchVersion: !FindInMap [
-                "ESCluster",
-                "Global",
-                "Version"
-            ]
-            DomainName: !GetAtt LowerCaseDomainName.OutputString
-            ElasticsearchClusterConfig:
-                DedicatedMasterEnabled: true
-                DedicatedMasterCount: 3
-                DedicatedMasterType: !FindInMap [
-                    "ESCluster",
-                    !Ref ClusterSize,
-                    "MasterSize"
-                ]
-                InstanceCount: !FindInMap [
-                    "ESCluster",
-                    !Ref ClusterSize,
-                    "InstanceCount"
-                ]
-                ZoneAwarenessEnabled: true
-                InstanceType: !FindInMap [
-                    "ESCluster",
-                    !Ref ClusterSize,
-                    "WorkerSize"
-                ]
-            EBSOptions:
-                EBSEnabled: true
-                Iops: 0
-                VolumeSize: !FindInMap [
-                    "ESCluster",
-                    !Ref ClusterSize,
-                    "VolumeSize"
-                ]
-                VolumeType: "gp2"
-            AdvancedOptions:
-                rest.action.multi.allow_explicit_index: "true"
-            # t2 instances don't support Encryption at rest
-            # EncryptionAtRestOptions:
-            #    Enabled: true
             AccessPolicies:
                 Version: "2012-10-17"
                 Statement:
                     -
-                        Effect: "Allow"
+                        Effect: Allow
                         Principal:
                             AWS: !Sub "${AWS::AccountId}"
                         Action:
@@ -195,60 +207,198 @@ Resources:
                             - es:ESHttpHead
                             - es:ESHttpPost
                             - es:ESHttpPut
-                        Resource:
-                            - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${LowerCaseDomainName.OutputString}/*"
+                        Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${LowerCaseDomainName.OutputString}/*"
+            AdvancedOptions:
+                rest.action.multi.allow_explicit_index: "true"
+            DomainEndpointOptions:
+                EnforceHTTPS: true
+                TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+            DomainName: !GetAtt LowerCaseDomainName.OutputString
+            EBSOptions:
+                EBSEnabled: true
+                Iops: 0
+                VolumeSize: !Select [1,
+                    !Split ["=",
+                        !Select [2,
+                            !Split [",",
+                                !Select [0,
+                                    !Split [")",
+                                        !Select [1,
+                                            !Split ["(",
+                                                !Ref ElasticsearchCluster
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+                VolumeType: !FindInMap [
+                    "Elasticsearch",
+                    "EBSOptions",
+                    "VolumeType"
+                ]
+            ElasticsearchClusterConfig:
+                DedicatedMasterEnabled: !If [
+                    bDedicatedNodes,
+                    true,
+                    false
+                ]
+                DedicatedMasterCount: !If [
+                    bDedicatedNodes,
+                    !Select [1,
+                        !Split ["=",
+                            !Select [0,
+                                !Split [",",
+                                    !Select [0,
+                                        !Split [")",
+                                            !Select [1,
+                                                !Split ["(",
+                                                    !Ref ElasticsearchCluster
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ],
+                    !Ref "AWS::NoValue"
+                ]
+                DedicatedMasterType: !If [
+                    bDedicatedNodes,
+                    !Sub [
+                        "${x0}.elasticsearch", {
+                            x0: !Select [0,
+                                !Split ["=",
+                                    !Select [0,
+                                        !Split [",",
+                                            !Select [0,
+                                                !Split [")",
+                                                    !Select [1,
+                                                        !Split ["(",
+                                                            !Ref ElasticsearchCluster
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        }
+                    ],
+                    !Ref "AWS::NoValue"
+                ]
+                InstanceCount: !Select [1,
+                    !Split ["=",
+                        !Select [1,
+                            !Split [",",
+                                !Select [0,
+                                    !Split [")",
+                                        !Select [1,
+                                            !Split ["(",
+                                                !Ref ElasticsearchCluster
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+                InstanceType: !Sub [
+                    "${x0}.elasticsearch", {
+                        x0: !Select [0,
+                            !Split ["=",
+                                !Select [1,
+                                    !Split [",",
+                                        !Select [0,
+                                            !Split [")",
+                                                !Select [1,
+                                                    !Split ["(",
+                                                        !Ref ElasticsearchCluster
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    }
+                ]
+                ZoneAwarenessEnabled: !If [
+                    bSingleAZ,
+                    false,
+                    true
+                ]
+                ZoneAwarenessConfig: !If [
+                    bSingleAZ,
+                    !Ref "AWS::NoValue",
+                    AvailabilityZoneCount: !If [
+                        bThreeAZs,
+                        3,
+                        2
+                    ]
+                ]
+            ElasticsearchVersion: !FindInMap [
+                "Elasticsearch",
+                "Domain",
+                "Version"
+            ]
+            EncryptionAtRestOptions:
+                Enabled: true
+            NodeToNodeEncryptionOptions:
+                Enabled: true
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
 
-    #
-    # custom resource to create index on es cluster
-    #
     CreateIndex:
         Type: Custom::CreateIndex
         Properties:
             ServiceToken: !Ref CustomResourceArn
-            FunctionName: CreateIndex
-            DomainEndpoint: !GetAtt Elasticsearch.DomainEndpoint
-            IndexName: !FindInMap [
-                "ESCluster",
-                "Global",
-                "IndexName"
-            ]
+            Data:
+                DomainEndpoint: !GetAtt Elasticsearch.DomainEndpoint
+                IndexName: !FindInMap [
+                    "Elasticsearch",
+                    "Index",
+                    "Name"
+                ]
 
-    #
-    # Send anonymous data
-    #
     SendConfig:
         DependsOn: CreateIndex
         Type: Custom::SendConfig
         Properties:
             ServiceToken: !Ref CustomResourceArn
-            FunctionName: SendConfig
-            SolutionId: !Ref SolutionId
-            SolutionUuid: !Ref SolutionUuid
-            Version: !Ref Version
-            AnonymousUsage: !Ref AnonymousUsage
-            ClusterSize: !Ref ClusterSize
+            Data:
+                SolutionId: !Ref SolutionId
+                SolutionUuid: !Ref SolutionUuid
+                Version: !Ref Version
+                AnonymousUsage: !Ref AnonymousUsage
+                ElasticsearchCluster: !Ref ElasticsearchCluster
 
 Outputs:
     DomainName:
         Value: !Ref Elasticsearch
         Description: "Elasticsearch Domain Name"
-
     DomainEndpoint:
         Value: !GetAtt Elasticsearch.DomainEndpoint
         Description: "Elasticsearch Domain Endpoint"
-
     IndexName:
         Value: !FindInMap [
-            "ESCluster",
-            "Global",
-            "IndexName"
+            "Elasticsearch",
+            "Index",
+            "Name"
         ]
-        Description: "Elasticsearch Index Document Name"
-
+        Description: "Elasticsearch Index Name"
     Version:
         Value: !FindInMap [
-            "ESCluster",
-            "Global",
+            "Elasticsearch",
+            "Domain",
             "Version"
         ]
         Description: "Elasticsearch Version"

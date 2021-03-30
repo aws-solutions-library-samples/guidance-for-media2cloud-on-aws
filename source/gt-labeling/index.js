@@ -7,19 +7,11 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-
 const {
   Environment,
   StateData,
   IotStatus,
-} = require('m2c-core-lib');
+} = require('core-lib');
 
 const {
   GroundTruth,
@@ -67,11 +59,11 @@ exports.onLabeling = async (event, context) => {
         break;
     }
 
-    await IotStatus.publish(stateData.responseData);
+    await IotStatus.publish(stateData.miniJSON());
 
-    return stateData.toNextState();
+    return stateData.toJSON();
   } catch (e) {
-    process.env.ENV_QUIET || console.error(e);
+    console.error(e);
     throw e;
   }
 };

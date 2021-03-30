@@ -10,7 +10,7 @@ Mappings:
         Package:
             WebApp: "%PKG_WEBAPP%"
         Website:
-            MainPage: "demo.html"
+            MainPage: "index.html"
 
 Parameters:
     SolutionId:
@@ -29,6 +29,10 @@ Parameters:
     CustomResourceArn:
         Type: String
         Description: for post-processing
+    LogsBucket:
+        Type: String
+        Description: "store CloudFront access logs"
+        AllowedPattern: "[a-z][a-z0-9-_]*"
     WebBucket:
         Type: String
         Description: "store website content"
@@ -37,10 +41,10 @@ Parameters:
         Type: String
         Description: "Specify the price class of the edge location from which CloudFront serves your requests. For more information, see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html"
         AllowedValues:
-            - "Use Only U.S., Canada and Europe"
-            - "Use U.S., Canada, Europe, Asia and Africa"
-            - "Use All Edge Locations (Best Performance)"
-        Default: "Use Only U.S., Canada and Europe"
+            - PriceClass_100
+            - PriceClass_200
+            - PriceClass_All
+        Default: PriceClass_100
 
 Metadata:
     cfn-lint:
@@ -62,6 +66,7 @@ Metadata:
                 Label:
                     default: "CloudFront Configuration"
                 Parameters:
+                    - LogsBucket
                     - WebBucket
                     - PriceClass
             -
@@ -80,6 +85,8 @@ Metadata:
                 default: "Solution KeyPrefix"
             PriceClass:
                 default: "Price Class"
+            LogsBucket:
+                default: "Logs Bucket"
             WebBucket:
                 default: "Website Bucket"
             CustomResourceArn:
@@ -87,9 +94,6 @@ Metadata:
 
 Conditions:
     bUSEast1: !Equals [!Ref "AWS::Region", "us-east-1"]
-    # CloudFront Price class selection
-    SelectPriceClass100: !Equals [ !Ref PriceClass, "Use Only U.S., Canada and Europe" ]
-    SelectPriceClass200: !Equals [ !Ref PriceClass, "Use U.S., Canada, Europe, Asia and Africa" ]
 
 Resources:
     #
@@ -140,18 +144,33 @@ Resources:
         Type: Custom::CopyWebContent
         Properties:
             ServiceToken: !Ref CustomResourceArn
-            FunctionName: CopyWebContent
-            SolutionId: !Ref SolutionId
-            # web zip package to be extracted adn copied to media analysis bucket
-            SourceBucket: !Ref S3Bucket
-            SourceKey: !Sub ["${KeyPrefix}/${x0}", {x0: !FindInMap ["Solution", "Package", "WebApp"]}]
-            ContentBucket: !Ref WebBucket
+            Data:
+                SolutionId: !Ref SolutionId
+                Source:
+                    Bucket: !Ref S3Bucket
+                    Key: !Sub [
+                        "${KeyPrefix}/${x0}", {
+                            x0: !FindInMap [
+                                "Solution",
+                                "Package",
+                                "WebApp"
+                            ]
+                        }
+                    ]
+                Destination:
+                    Bucket: !Ref WebBucket
 
     #
     # CloudFront distribution
     #
     Distribution:
         Type: AWS::CloudFront::Distribution
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W70
+                        reason: "Will revisit to enable MinimumProtocolVersion to TLS1.2"
         Properties:
             DistributionConfig:
                 Comment: "Website distribution for Media2Cloud solution"
@@ -199,14 +218,10 @@ Resources:
                     CloudFrontDefaultCertificate: true
                 Enabled: true
                 HttpVersion: "http2"
-                PriceClass: !If [
-                    SelectPriceClass100, "PriceClass_100", !If [
-                        SelectPriceClass200, "PriceClass_200", "PriceClass_All"
-                    ]
-                ]
+                PriceClass: !Ref PriceClass
                 Logging:
-                    Bucket: !Sub "${WebBucket}.s3.amazonaws.com"
-                    Prefix: cf_logs/
+                    Bucket: !Sub "${LogsBucket}.s3.amazonaws.com"
+                    Prefix: access_logs_cloudfront/
                     IncludeCookies: true
 
 Outputs:
@@ -221,3 +236,7 @@ Outputs:
     WebsiteUrl:
         Value: !Sub https://${Distribution.DomainName}
         Description: "Website URL"
+
+    LastUpdated:
+        Value: !GetAtt CopyWebContent.LastUpdated
+        Description: "Last Updated"

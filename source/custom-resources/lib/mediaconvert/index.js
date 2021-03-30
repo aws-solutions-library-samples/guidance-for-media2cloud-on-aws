@@ -7,20 +7,8 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-const {
-  MediaConvert,
-} = require('aws-sdk');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+const AWS = require('aws-sdk');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @function MediaConvertEndpoint
@@ -38,7 +26,7 @@ exports.MediaConvertEndpoint = async (event, context) => {
       return x0.responseData;
     }
 
-    const instance = new MediaConvert({
+    const instance = new AWS.MediaConvert({
       apiVersion: '2017-08-29',
     });
 

@@ -7,15 +7,6 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-
 const AWS = require('aws-sdk');
 const FS = require('fs');
 const URL = require('url');
@@ -28,7 +19,9 @@ const {
   FaceCollection,
   CommonUtils,
   SNS,
-} = require('m2c-core-lib');
+  GroundTruthError,
+  ServiceToken,
+} = require('core-lib');
 
 const LOG_GROUP_NAME = '/aws/sagemaker/LabelingJobs';
 
@@ -39,17 +32,6 @@ const JobStatusMapping = {
   Completed: StateData.Statuses.Completed,
   Failed: StateData.Statuses.Error,
 };
-
-/**
- * @class GroundTruth
- */
-class GroundTruthError extends Error {
-  constructor(...args) {
-    super(...args);
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, GroundTruthError);
-  }
-}
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
@@ -109,6 +91,14 @@ class GroundTruth {
     };
   }
 
+  static get ServiceType() {
+    return 'groundtruth';
+  }
+
+  static get Keyword() {
+    return 'labeling';
+  }
+
   get [Symbol.toStringTag]() {
     return 'GroundTruth';
   }
@@ -154,6 +144,7 @@ class GroundTruth {
     console.log(`postLabeling = ${JSON.stringify(event, null, 2)}`);
 
     const {
+      labelingJobArn,
       labelAttributeName,
     } = event;
 
@@ -179,6 +170,8 @@ class GroundTruth {
       });
       return acc;
     }, []);
+
+    await GroundTruth.SendTask(labelingJobArn);
 
     console.log(`postLabeling.annotation: ${JSON.stringify(annotation, null, 2)}`);
     return annotation;
@@ -250,12 +243,38 @@ class GroundTruth {
     /* update dynamodb status */
     await this.updateQueuedItemsStatus();
 
+    /* update executions record */
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+
+    const {
+      executions,
+    } = await db.fetch(this.stateData.uuid, undefined, 'executions');
+
+    await db.update(this.stateData.uuid, undefined, {
+      executions: Array.from(new Set([
+        ...(executions || []),
+        Environment.StateMachines.GroundTruth,
+      ])),
+    }, false);
+
     this.stateData.setData('labeling', {
       name: request.LabelingJobName,
       arn: LabelingJobArn,
+      startTime: (new Date()).getTime(),
     });
 
-    return this.stateData.toJSON();
+    this.stateData.setProgress(1);
+
+    return ServiceToken.register(
+      LabelingJobArn,
+      this.stateData.event.token,
+      GroundTruth.ServiceType,
+      GroundTruth.Keyword,
+      this.stateData.toJSON()
+    );
   }
 
   /**
@@ -277,7 +296,7 @@ class GroundTruth {
    * @description update queued items' status to in_progress
    */
   async updateQueuedItemsStatus() {
-    const data = (this.stateData.input || {}).dataset || {};
+    const data = (this.stateData.data || {}).dataset || {};
 
     return Promise.all((data.items || []).map(x =>
       this.db.update(x, undefined, {
@@ -329,7 +348,7 @@ class GroundTruth {
    * @description prepare a labeling job request parameters
    */
   makeJobRequest() {
-    const data = (this.stateData.input || {}).dataset || {};
+    const data = (this.stateData.data || {}).dataset || {};
     const uuid = this.stateData.uuid;
     const template = data.templateUri;
     const manifest = data.manifestUri;
@@ -550,7 +569,7 @@ class GroundTruth {
    * * poll and parse cloudwatch logs for task status
    */
   async checkLabelingStatus() {
-    const labeling = (this.stateData.input || {}).labeling || {};
+    const labeling = (this.stateData.data || {}).labeling || {};
 
     if (!labeling.name) {
       throw new GroundTruthError('missing labeling.name');
@@ -580,6 +599,7 @@ class GroundTruth {
     this.stateData.setData('labeling', {
       outputUri: (jobResponse.LabelingJobOutput || {}).OutputDatasetS3Uri,
       taskStatus: logResponse.taskStatus || GroundTruth.Task.Unknown,
+      endTime: (new Date()).getTime(),
     });
 
     /* special handling: if task is canceled, throw an error to stop the state machine */
@@ -595,7 +615,7 @@ class GroundTruth {
    * @description download and parse output dataset from s3
    */
   async downloadOutputDataset() {
-    const labeling = (this.stateData.input || {}).labeling || {};
+    const labeling = (this.stateData.data || {}).labeling || {};
 
     if (!labeling.outputUri) {
       throw new GroundTruthError('missing labeling.outputUri');
@@ -642,7 +662,6 @@ class GroundTruth {
 
     record.name = `${firstName} ${lastName}`;
     record.workerId = workerId;
-
     const collection = new FaceCollection(record.collectionId, record);
     const responses = await collection.indexNow();
 
@@ -657,12 +676,11 @@ class GroundTruth {
    */
   async indexResults() {
     const dataset = await this.downloadOutputDataset();
-
     const responses = await Promise.all(dataset.map(x =>
       this.processEach(x)));
 
     this.stateData.setData('labeling', {
-      faceIds: responses.map(x => x.faceId),
+      faceIds: responses.filter(x => x).map(x => x.faceId),
     });
 
     this.stateData.setCompleted();
@@ -676,7 +694,53 @@ class GroundTruth {
    * @description on completed, send sns notification
    */
   async onCompleted() {
+    /* update executions record */
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+
+    const {
+      executions,
+    } = await db.fetch(this.stateData.uuid, undefined, 'executions');
+
+    await db.update(this.stateData.uuid, undefined, {
+      executions: (executions || []).filter(x =>
+        x !== Environment.StateMachines.GroundTruth),
+    }, false);
+
+    this.stateData.setCompleted();
     return SNS.send(`labeling: ${this.stateData.uuid}`, this.stateData.toJSON()).catch(() => false);
+  }
+
+  /**
+   * @static
+   * @function SendTask
+   * @description send success task to Step Functions when labeling job is completed
+   * @param {string} id - labeling arn string
+   */
+  static async SendTask(id) {
+    const {
+      token,
+      data,
+    } = await ServiceToken.getData(id).catch(() => ({}));
+
+    /* this could happen as another post labeling event has already sent status */
+    if (!token || !data) {
+      return undefined;
+    }
+
+    data.status = StateData.Statuses.InProgress;
+    data.progress = 90;
+
+    await (new AWS.StepFunctions({
+      apiVersion: '2016-11-23',
+    })).sendTaskSuccess({
+      taskToken: token,
+      output: JSON.stringify(data),
+    }).promise();
+
+    return ServiceToken.unregister(id).catch(() => undefined);
   }
 }
 

@@ -3,19 +3,7 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable global-require */
-const {
-  ApiRequest,
-} = require('./lib/apiRequest');
+const ApiRequest = require('./lib/apiRequest');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
@@ -23,15 +11,9 @@ const REQUIRED_ENVS = [
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_IOT_THING_POLICY_NAME',
-  'ENV_WORKTEAM_NAME',
-  'ENV_GSI_INDEX_NAME',
 ];
 
-/**
- * @function onRequest
- * @description start or get state machine
- */
-exports.onRequest = async (event, context) => {
+exports.handler = async (event, context) => {
   try {
     console.log(`
       event = ${JSON.stringify(event, null, 2)}

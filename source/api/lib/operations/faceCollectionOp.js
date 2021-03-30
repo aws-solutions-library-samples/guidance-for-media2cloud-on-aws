@@ -3,31 +3,14 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const {
   ApiOps,
   DB,
   Environment,
   FaceCollection,
   CommonUtils,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
-
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
 class FaceCollectionOp extends BaseOp {
   async onGET() {
@@ -35,9 +18,11 @@ class FaceCollectionOp extends BaseOp {
 
     if (operation === ApiOps.FaceColection) {
       return this.onGetFaceCollection();
-    } else if (operation === ApiOps.IndexFace) {
+    }
+    if (operation === ApiOps.IndexFace) {
       return this.onGetIndexedFaces();
-    } else if (operation === ApiOps.QueueFace) {
+    }
+    if (operation === ApiOps.QueueFace) {
       return this.onGetQueuedFaces();
     }
     throw new Error('GET invalid operation');
@@ -48,9 +33,11 @@ class FaceCollectionOp extends BaseOp {
 
     if (operation === ApiOps.FaceColection) {
       return this.onPostFaceCollection();
-    } else if (operation === ApiOps.IndexFace) {
+    }
+    if (operation === ApiOps.IndexFace) {
       return this.onPostIndexedFaces();
-    } else if (operation === ApiOps.QueueFace) {
+    }
+    if (operation === ApiOps.QueueFace) {
       return this.onPostQueuedFaces();
     }
     throw new Error('POST invalid operation');
@@ -61,9 +48,11 @@ class FaceCollectionOp extends BaseOp {
 
     if (operation === ApiOps.FaceColection) {
       return this.onDeleteFaceCollection();
-    } else if (operation === ApiOps.IndexFace) {
+    }
+    if (operation === ApiOps.IndexFace) {
       return this.onDeleteIndexedFaces();
-    } else if (operation === ApiOps.QueueFace) {
+    }
+    if (operation === ApiOps.QueueFace) {
       return this.onDeleteQueuedFaces();
     }
     throw new Error('DELETE invalid operation');
@@ -158,8 +147,7 @@ class FaceCollectionOp extends BaseOp {
     }
 
     const id = (this.request.pathParameters || {}).uuid
-      || data.collectionId
-      || Environment.Rekognition.CollectionId;
+      || data.collectionId;
 
     if (!id || !CommonUtils.validateFaceCollectionId(id)) {
       throw new Error('invalid collection id');
@@ -197,8 +185,7 @@ class FaceCollectionOp extends BaseOp {
     }
 
     const id = (this.request.pathParameters || {}).uuid
-      || data.collectionId
-      || Environment.Rekognition.CollectionId;
+      || data.collectionId;
 
     if (!id || !CommonUtils.validateFaceCollectionId(id)) {
       throw new Error('invalid collection id');
@@ -232,8 +219,7 @@ class FaceCollectionOp extends BaseOp {
     }
 
     const id = (this.request.pathParameters || {}).uuid
-      || faceCollectionId
-      || Environment.Rekognition.CollectionId;
+      || faceCollectionId;
 
     if (!id || !CommonUtils.validateFaceCollectionId(id)) {
       throw new Error('invalid collection id');
@@ -254,6 +240,4 @@ class FaceCollectionOp extends BaseOp {
   }
 }
 
-module.exports = {
-  FaceCollectionOp,
-};
+module.exports = FaceCollectionOp;

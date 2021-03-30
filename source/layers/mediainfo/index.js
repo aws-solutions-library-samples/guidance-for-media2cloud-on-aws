@@ -64,6 +64,7 @@ class MediaInfoCommand {
         Options: [
           '--Full',
           '--Output=XML',
+          '--Cover_Data=base64',
         ],
       },
       /* minimum key set to return */
@@ -94,6 +95,7 @@ class MediaInfoCommand {
           'scanType',
           'scanOrder',
           'timeCodeFirstFrame',
+          'iD',
         ],
         Audio: [
           'streamOrder',
@@ -110,6 +112,7 @@ class MediaInfoCommand {
           'samplesPerFrame',
           'samplingRate',
           'language',
+          'iD',
         ],
       },
     };
@@ -223,17 +226,10 @@ class MediaInfoCommand {
    */
   static escapeS3Character(path) {
     const url = URL.parse(path, true);
-
-    const {
-      AWSAccessKeyId,
-      Signature,
-    } = url.query || {};
-
-    /* if is signed url, nothing to do */
-    if (AWSAccessKeyId && Signature) {
+    /* if is a signed url, nothing to do */
+    if (url.query['X-Amz-Algorithm'] === 'AWS4-HMAC-SHA256') {
       return path;
     }
-
     /* replacing '+' with space character */
     url.pathname = encodeURI(decodeURI(url.pathname).replace(/\s/g, '+'));
     return URL.format(url);
@@ -363,11 +359,18 @@ class MediaInfoCommand {
     const modified = Object.assign({}, data);
     modified.mediaInfo.media.$.ref = ref;
 
-    const container = modified.mediaInfo.media.track.find(x =>
-      x.$.type.toLowerCase() === 'general');
-    container.completeName = ref;
-    container.fileNameExtension = ext;
-
+    for (let i = 0; i < modified.mediaInfo.media.track.length; i++) {
+      const track = modified.mediaInfo.media.track[i];
+      if (track.completeName !== undefined) {
+        track.completeName = ref;
+      }
+      if (track.fileNameExtension !== undefined) {
+        track.fileNameExtension = ext;
+      }
+      if (track.fileExtension !== undefined) {
+        track.fileExtension = ext;
+      }
+    }
     return modified;
   }
 

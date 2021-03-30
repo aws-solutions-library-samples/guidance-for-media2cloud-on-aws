@@ -7,20 +7,11 @@
 /**
  * @author MediaEnt Solutions
  */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
 const Jimp = require('jimp');
-
-const {
-  Exiftool,
-} = require('./exiftool');
+const Exiftool = require('./exiftool');
 
 module.exports = {
   Jimp,
   Exiftool,
+  ExiftoolConfig: Exiftool.GetConfiguration(),
 };

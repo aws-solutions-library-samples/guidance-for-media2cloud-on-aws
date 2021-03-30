@@ -1,0 +1,29 @@
+{
+    "Comment": "image ingest state machine to run exiftool and extract thumbnail image",
+    "StartAt": "Run imageinfo",
+    "States": {
+        "Run imageinfo": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "run-imageinfo",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        }
+    }
+}

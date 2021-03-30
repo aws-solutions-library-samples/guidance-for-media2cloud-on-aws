@@ -1,0 +1,18 @@
+{
+  "name": "videojs-markers-bundle",
+  "version": "2.0.0",
+  "description": "videojs-markers plugins for videojs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist temp && mkdir -p dist/js dist/css temp",
+    "build:download": "cd temp && wget -q --no-check-certificate https://codeload.github.com/spchuang/videojs-markers/zip/master -O videojs-markers.zip",
+    "build:unpack": "cd temp && unzip -q videojs-markers.zip",
+    "build:copy": "cp -v temp/videojs-markers*/dist/*.min.js ./dist/js && cp -v temp/videojs-markers*/dist/*.min.css ./dist/css",
+    "build:postbuild": "rm -rf temp",
+    "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
+  },
+  "author": "",
+  "license": "Apache 2.0",
+  "devDependencies": {}
+}

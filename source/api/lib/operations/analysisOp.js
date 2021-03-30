@@ -3,73 +3,64 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const AWS = require('aws-sdk');
 const PATH = require('path');
-
 const {
   BaseIndex,
   CommonUtils,
   DB,
   Environment,
   StateData,
-} = require('m2c-core-lib');
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
-const {
-  BaseOp,
-} = require('./baseOp');
+const MEDIATYPE_VIDEO = 'video';
+const MEDIATYPE_AUDIO = 'audio';
+const MEDIATYPE_IMAGE = 'image';
+const MEDIATYPE_DOCUMENT = 'document';
+const TRACK_METADATA = 'metadata';
+const TRACK_TIMESERIES = 'timeseries';
+const TRACK_VTT = 'vtt';
+const CATEGORY_REKOGNITION = 'rekognition';
+const CATEGORY_TEXTRACT = 'textract';
+const CATEGORY_COMPREHEND = 'comprehend';
+const CATEGORY_TRANSCRIBE = 'transcribe';
 
 class AnalysisOp extends BaseOp {
   async onGET() {
     const uuid = (this.request.pathParameters || {}).uuid;
-
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
       throw new Error('invalid uuid');
     }
-
     /* #1: check types of analysis */
     let db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
-    const types = await db.fetch(uuid, undefined, 'analysis');
-
+    const types = await db.fetch(uuid, undefined, 'analysis')
+      .catch(() => ({
+        analysis: [],
+      }));
     /* #2: query all types of analysis */
     db = new DB({
       Table: Environment.DynamoDB.AIML.Table,
       PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
       SortKey: Environment.DynamoDB.AIML.SortKey,
     });
-    let responses = await Promise.all(((types || {}).analysis || []).map(x =>
+    let responses = await Promise.all(types.analysis.map(x =>
       db.fetch(uuid, x)));
-
     /* #3: load vtt and metadata tracks */
-    responses = await Promise.all(responses.map((x) => {
-      switch (x.type) {
-        case 'video':
-          return this.loadVideoTracks(x);
-        case 'audio':
-          return this.loadAudioTracks(x);
-        case 'image':
-          return this.loadImageTracks(x);
-        case 'document':
-          return this.loadDocumentTracks(x);
-        default:
-          return undefined;
-      }
-    }));
+    responses = await Promise.all((responses || []).map(x => (
+      (x.type === MEDIATYPE_VIDEO)
+        ? this.loadVideoTracks(x)
+        : (x.type === MEDIATYPE_AUDIO)
+          ? this.loadAudioTracks(x)
+          : (x.type === MEDIATYPE_IMAGE)
+            ? this.loadImageTracks(x)
+            : (x.type === MEDIATYPE_DOCUMENT)
+              ? this.loadDocumentTracks(x)
+              : undefined
+    )));
     return super.onGET(responses.filter(x => x));
   }
 
@@ -78,6 +69,10 @@ class AnalysisOp extends BaseOp {
 
     if (!params.uuid || !CommonUtils.validateUuid(params.uuid)) {
       throw new Error('invalid uuid');
+    }
+
+    if (!params.input) {
+      params.input = {};
     }
 
     const arn = [
@@ -97,10 +92,11 @@ class AnalysisOp extends BaseOp {
       stateMachineArn: arn,
     }).promise();
 
-    return super.onPOST(Object.assign({
+    return super.onPOST({
       uuid: params.uuid,
       status: StateData.Statuses.Started,
-    }, response));
+      ...response,
+    });
   }
 
   async onDELETE() {
@@ -153,78 +149,59 @@ class AnalysisOp extends BaseOp {
 
     await Promise.all(promises);
 
-    return super.onDELETE(Object.assign({
+    return super.onDELETE({
       uuid,
       status: StateData.Statuses.Removed,
-    }, fetched));
+      ...fetched,
+    });
   }
 
   async loadTrackBasenames(bucket, prefix) {
-    if (!bucket || !prefix) {
+    if (!bucket || !prefix || PATH.parse(prefix).ext.length > 0) {
       return undefined;
     }
-    const responses = await CommonUtils.listObjects(bucket, prefix);
-    return responses.map(x =>
-      PATH.parse(x.Key).name);
+    return CommonUtils.listObjects(bucket, PATH.join(prefix, '/'))
+      .then(data => data.map(x => PATH.parse(x.Key).name));
   }
 
-  async loadTracks(data) {
-    const keys = Object.keys(data || {});
-    let results;
-
+  async loadTracks(data, category) {
+    const bucket = Environment.Proxy.Bucket;
+    const keys = Object.keys(data[category] || {});
     while (keys.length) {
       const key = keys.shift();
-      const responses = await Promise.all([
-        data[key].metadata,
-        data[key].vtt,
-      ].map((x) => {
-        if (!x || PATH.parse(x).ext.length > 0) {
-          return undefined;
-        }
-        return this.loadTrackBasenames(Environment.Proxy.Bucket, x);
-      }));
-
-      results = Object.assign({
-        [key]: {
-          trackBasenames: {
-            metadata: responses[0],
-            vtt: responses[1],
-          },
-        },
-      }, results);
+      const datasets = [].concat(data[category][key]);
+      for (let i = 0; i < datasets.length; i++) {
+        const dataset = datasets[i];
+        const tracks = await Promise.all([
+          TRACK_METADATA,
+          TRACK_TIMESERIES,
+          TRACK_VTT,
+        ].map(x => this.loadTrackBasenames(bucket, dataset[x])));
+        dataset.trackBasenames = {
+          [TRACK_METADATA]: tracks[0],
+          [TRACK_TIMESERIES]: tracks[1],
+          [TRACK_VTT]: tracks[2],
+        };
+      }
     }
-    return results;
-  }
-
-  async loadVideoTracks(data) {
-    const results = await this.loadTracks(data.rekognition);
-    Object.keys(data.rekognition || {}).forEach((x) => {
-      data.rekognition[x] = Object.assign(data.rekognition[x], results[x]);
-    });
     return data;
   }
 
+  async loadVideoTracks(data) {
+    return this.loadTracks(data, CATEGORY_REKOGNITION);
+  }
+
   async loadAudioTracks(data) {
-    const results = await this.loadTracks(data.comprehend);
-    Object.keys(data.comprehend || {}).forEach((x) => {
-      data.comprehend[x] = Object.assign(data.comprehend[x], results[x]);
-    });
+    return this.loadTracks(data, CATEGORY_COMPREHEND);
+  }
+
+  async loadDocumentTracks(data) {
     return data;
   }
 
   async loadImageTracks(data) {
     return data;
   }
-
-  async loadDocumentTracks(data) {
-    const results = await this.loadTracks(data.texttract);
-    Object.keys(data.texttract || {}).forEach((x) => {
-      data.texttract[x] = Object.assign(data.texttract[x], results[x]);
-    });
-    return data;
-  }
 }
 
-module.exports = {
-  AnalysisOp,
-};
+module.exports = AnalysisOp;

@@ -261,7 +261,7 @@ function getMedia2CloudEndpoint() {
 
 /**
  * TODO#2: Parse the bucket name from S3 Event payload
- * Tips: https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html 
+ * Tips: https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html
  */
 function getBucketNameFromS3Event(event) {
   return '#deconstruct S3 Event JSON object to return bucket name';
@@ -269,7 +269,7 @@ function getBucketNameFromS3Event(event) {
 
 /**
  * TODO#3: Parse the object key from S3 Event payload
- * Tips: https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html 
+ * Tips: https://docs.aws.amazon.com/AmazonS3/latest/dev/notification-content-structure.html
  */
 function getObjectKeyFromS3Event(event) {
   return '#deconstruct S3 Event JSON object to return the object key';
@@ -309,19 +309,19 @@ function getAnalysisHttpPath() {
 
 function getUuidFromSnsEvent(event) {
   const message = JSON.parse(event.Records[0].Sns.Message);
-  return  (message.operation === 'job-completed' && message.stateMachine.indexOf('-ingest') > 0)
+  return (message.operation === 'job-completed' && message.stateMachine.indexOf('-ingest') > 0)
     ? message.uuid
     : undefined;
 }
 
 
 exports.handler = async (event, context) => {
-  let body = {};
+  const body = {};
   let method;
   let path;
 
   if (ignoreAccessLogFiles(event)) {
-    return;
+    return undefined;
   }
 
   if (isS3Event(event)) {
@@ -331,10 +331,9 @@ exports.handler = async (event, context) => {
     method = getIngestHttpMethod();
     path = getIngestHttpPath();
   } else if (isSNSEvent(event)) {
-
     const uuid = getUuidFromSnsEvent(event);
     if (!uuid) {
-      return;
+      return undefined;
     }
     body.uuid = uuid;
 

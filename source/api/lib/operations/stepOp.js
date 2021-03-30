@@ -3,27 +3,11 @@
  * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
  * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
  */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const AWS = require('aws-sdk');
 const {
   CommonUtils,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
 class StepOp extends BaseOp {
   async onPOST() {
@@ -55,6 +39,4 @@ class StepOp extends BaseOp {
   }
 }
 
-module.exports = {
-  StepOp,
-};
+module.exports = StepOp;

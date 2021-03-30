@@ -1,0 +1,47 @@
+{
+    "Comment": "video ingest state machine to run mediainfo and start mediaconvert job to create proxy",
+    "StartAt": "Run mediainfo",
+    "States": {
+        "Run mediainfo": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "run-mediainfo",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "Start and wait for mediaconvert job",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "Start and wait for mediaconvert job": {
+            "Type": "Task",
+            "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${a0}",
+                "Payload": {
+                    "token.$":"$$.Task.Token",
+                    "operation": "start-transcode",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
+            },
+            "TimeoutSeconds": 86400,
+            "End": true
+        }
+    }
+}
