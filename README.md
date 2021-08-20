@@ -90,23 +90,59 @@ Click on _Create stack_ will start the stack creation process. It takes approxim
 
 __
 
+## Build Environment
+The sample code is written in ```NodeJS v14.x```. Before you start, please make sure NodeJS has been installed. You would also need to create an Amazon Simple Storage Service (Amazon S3) bucket to store the build artifacts. 
+
+_
+
+### ## NodeJS
+
+For MAC user, download and install from [nodejs.org](https://nodejs.org/en/download/). Alternatively, you can also use [Homebrew](https://brew.sh/).
+
+For Linux or Amazon EC2 user, follow [Tutorial: Setting Up Node.js on an Amazon EC2 Instance](https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/setting-up-node-on-ec2-instance.html)
+
+For Windows 10 user, make sure to install [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) before installing ```NodeJS```. The build and deploy scripts are written in Bash script.
+
+_
+
+### ## AWS CLI
+
+```deploy-s3-dist.sh``` shell script uploads the build artifacts to your S3 bucket; thus, it requires [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) to be installed and configured.
+
+```shell
+# after AWS CLI is installed, run the command and follow the instruction to configure your profile
+
+aws configure
+
+```
+
+_
+
+### ## JQ, a command line JSON processor 
+
+```deploy-s3-dist.sh``` also uses [jq](https://stedolan.github.io/jq/) to parse JSON file. Download and install [jq](https://stedolan.github.io/jq/) on your build system.
+
+__
+
 ## Building and customizing the solution
 
-* Create a bucket in the AWS region you would like to deploy the solution. For example, **my-bucket** in us-east-1 region.
-* Make sure to specify **--single-region** in the command line
 
-    ```
-    bash ./build-s3-dist.sh --bucket my-bucket --single-region
-    ```
+1) Create a bucket in the AWS region you would like to deploy the solution. For example, **my-bucket** in us-east-1 region.
+2) Make sure to specify ```--single-region``` in the command line
 
-* Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
+  ```shell
+  bash ./build-s3-dist.sh --bucket my-bucket --single-region
+  ```
 
-    ```
-    bash ./deploy-s3-dist.sh --bucket my-bucket --single-region
-    ```
+3) Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
 
-* Get the HTTPS URL link of **media2cloud.template** after you have uploaded to your Amazon S3 bucket.
-* Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the **media2cloud.template**.
+  ```shell
+  bash ./deploy-s3-dist.sh --bucket my-bucket --single-region
+  ```
+
+4) Get the HTTPS URL link of ```media2cloud.template``` after you have uploaded to your Amazon S3 bucket.
+
+5) Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the ```media2cloud.template```.
 
 __
 
@@ -156,7 +192,7 @@ __
 
 ## License
 
-Copyright 2019 Amazon.com, Inc. and its affiliates. All Rights Reserved.
+Copyright 2021 Amazon.com, Inc. and its affiliates. All Rights Reserved.
 
 SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
