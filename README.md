@@ -213,6 +213,14 @@ node execution-summary.js --arn arn:aws:states:eu-west-1:1234:execution:SO0050-m
 ```
 ----
 
+## Anonymous Metrics
+
+This solution collects anonymous operational metrics to help AWS improve the
+quality of features of the solution. For more information, including how to disable
+this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/media2cloud/appendix-i.html).
+
+
+
 ## License
 
 Copyright 2019 Amazon.com, Inc. and its affiliates. All Rights Reserved.
