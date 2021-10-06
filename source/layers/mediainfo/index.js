@@ -409,7 +409,10 @@ class MediaInfoCommand {
       } else if (/^false$/i.test(v1)) {
         v1 = false;
       } else if (/^[-|+]{0,1}\d+$/.test(v1) || /^[-|+]{0,1}\d+\.\d+$/.test(v1)) {
-        v1 = Number.parseFloat(v1);
+        const num = Number.parseFloat(v1);
+        if (num >= Number.MIN_SAFE_INTEGER && num <= Number.MAX_SAFE_INTEGER) {
+          v1 = num;
+        }
       }
       return v1;
     }
