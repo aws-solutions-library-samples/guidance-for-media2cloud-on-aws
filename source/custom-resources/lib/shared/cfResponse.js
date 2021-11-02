@@ -1,14 +1,15 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
+const HTTPS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureHTTPs(require('https'));
+  } catch (e) {
+    return require('https');
+  }
+})();
 const URL = require('url');
-const HTTPS = require('https');
 
 const SUCCESS = 'SUCCESS';
 const FAILED = 'FAILED';

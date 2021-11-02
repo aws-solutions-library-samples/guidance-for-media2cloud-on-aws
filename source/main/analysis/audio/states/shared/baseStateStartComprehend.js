@@ -1,25 +1,22 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   StateData,
   AnalysisError,
   CommonUtils,
   Retry,
+  Indexer,
 } = require('core-lib');
-const {
-  CueLineQ,
-} = require('./cueLine');
 
+const INDEX_TRANSCRIBE = 'transcribe';
 const PREV_STATE = 'transcribe';
 const CATEGORY = 'comprehend';
 const OUTPUT_JSON = 'output.json';
-const OUTPUT_TEXTLISTS = 'textlists.txt';
-const MIN_WORD_COUNTS = 2;
-const SLICES_PER_PROCESS = 25;
+const OUTPUT_MANIFEST = 'output.manifest';
+const MIN_CHARACTERS = 3;
+const DOCUMENTS_PER_BATCH = 25;
 const SUPPORTED_LANGUAGE_CODES = [
   'en',
   'es',
@@ -34,7 +31,6 @@ const SUPPORTED_LANGUAGE_CODES = [
   'zh',
   'zh-TW',
 ];
-const FILLER = '   ';
 
 class BaseStateStartComprehend {
   constructor(stateData, detection = {}) {
@@ -80,56 +76,76 @@ class BaseStateStartComprehend {
     if (!this.checkCriteria()) {
       return this.dataLessThenThreshold();
     }
-
+    /* download indexed transcription */
+    const indexer = new Indexer();
+    const doc = await indexer.getDocument(INDEX_TRANSCRIBE, this.stateData.uuid)
+      .catch((e) =>
+        console.error(`[ERR]: indexer.getDocument: ${this.stateData.uuid} ${JSON.stringify(e.body, null, 2)}`));
+    if (!doc || doc.data.length === 0) {
+      return this.dataLessThenThreshold();
+    }
     const bucket = this.stateData.input.destination.bucket;
-
-    /* download cuelines */
-    const cuelines = await this.downloadCuelineResult();
-
-    /* batch process */
-    const textLists = [];
-    const promises = [];
     const languageCode = this.getComprehendLanguageCode();
-    while (cuelines.length) {
-      const textList = [];
-      const slices = cuelines.splice(0, SLICES_PER_PROCESS);
-      while (slices.length) {
-        const queue = CueLineQ.createFromJson(slices.shift());
-        if (queue.wordCounts > MIN_WORD_COUNTS) {
-          textList.push(queue.reduceAll().content);
-        } else {
-          /* filler to keep the line indices aliged */
-          textList.push(FILLER);
+    const responses = [];
+    const metadata = [];
+    while (doc.data.length) {
+      const documents = await this.prepareDocuments(doc.data);
+      if (documents.length > 0) {
+        const response = await this.batchProcess(documents, languageCode);
+        responses.push(response);
+        const parsed = this.parseJobResults(response, documents);
+        if (parsed && parsed.length) {
+          metadata.splice(metadata.length, 0, ...parsed);
         }
       }
-      promises.push(this.startDetection({
-        ...this.paramOptions,
-        LanguageCode: languageCode,
-        TextList: textList,
-      }));
-      textLists.push(textList);
     }
-    /* parse job results */
-    let responses = await Promise.all(promises);
-    responses = this.parseJobResults(responses);
-
+    /* ensure there is metadata */
+    if (!metadata.length) {
+      return this.dataLessThenThreshold();
+    }
+    /* upload comprehend results */
     const prefix = this.makeOutputPrefix();
-    /* upload json output */
-    await CommonUtils.uploadFile(bucket, prefix, OUTPUT_JSON, responses);
-    /* upload list of sliced text */
-    await CommonUtils.uploadFile(bucket, prefix, OUTPUT_TEXTLISTS, textLists);
+    const manifest = responses.map((x) =>
+      JSON.stringify(x)).join('\n');
+    await CommonUtils.uploadFile(bucket, prefix, OUTPUT_MANIFEST, manifest);
+    /* upload metadata */
+    const metadataPrefix = this.makeMetadataPrefix();
+    await CommonUtils.uploadFile(bucket, metadataPrefix, OUTPUT_JSON, metadata);
+    return this.setJobCompleted({
+      output: PATH.join(prefix, OUTPUT_MANIFEST),
+      metadata: PATH.join(metadataPrefix, OUTPUT_JSON),
+    });
+  }
 
-    return this.setJobCompleted(PATH.join(prefix, OUTPUT_JSON));
+  async prepareDocuments(datasets) {
+    const documents = [];
+    while (datasets.length) {
+      const data = datasets.shift();
+      if (Buffer.from(data.name) <= MIN_CHARACTERS) {
+        continue;
+      }
+      documents.push(data);
+      if (documents.length === DOCUMENTS_PER_BATCH) {
+        return documents;
+      }
+    }
+    return documents;
+  }
+
+  async batchProcess(batch, languageCode) {
+    const textList = batch.map((x) =>
+      x.name);
+    return this.startDetection({
+      ...this.paramOptions,
+      LanguageCode: languageCode,
+      TextList: textList,
+    });
   }
 
   checkCriteria() {
-    const prevState = this.stateData.data[PREV_STATE];
     const enabled = this.stateData.input.aiOptions[this.subCategory] === true;
     const languageCode = this.getComprehendLanguageCode();
-    return enabled
-      && languageCode
-      && prevState.cuelines !== undefined
-      && prevState.totalWordCounts > MIN_WORD_COUNTS;
+    return enabled && languageCode;
   }
 
   getComprehendLanguageCode() {
@@ -153,7 +169,7 @@ class BaseStateStartComprehend {
     return Retry.run(this.func, params);
   }
 
-  parseJobResults(responses) {
+  parseJobResults(responses, reference) {
     throw new AnalysisError('subclass to implement');
   }
 
@@ -169,11 +185,13 @@ class BaseStateStartComprehend {
     );
   }
 
-  async downloadCuelineResult() {
-    const bucket = this.stateData.input.destination.bucket;
-    const key = this.stateData.data[PREV_STATE].cuelines;
-    return CommonUtils.download(bucket, key)
-      .then(data => JSON.parse(data));
+  makeMetadataPrefix() {
+    return PATH.join(
+      this.stateData.input.destination.prefix,
+      'metadata',
+      this.subCategory,
+      '/'
+    );
   }
 
   setJobCompleted(output) {
@@ -181,7 +199,7 @@ class BaseStateStartComprehend {
       ...(this.stateData.data[CATEGORY] || {})[this.subCategory],
       startTime: this.t0.getTime(),
       endTime: new Date().getTime(),
-      output,
+      ...output,
     };
     this.stateData.setData(CATEGORY, {
       [this.subCategory]: data,

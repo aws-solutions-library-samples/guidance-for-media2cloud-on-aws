@@ -1,25 +1,23 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   ApiOps,
   CommonUtils,
 } = require('core-lib');
 const AnalysisOp = require('./operations/analysisOp');
 const AssetOp = require('./operations/assetOp');
-const LabelingOp = require('./operations/labelingOp');
 const IotOp = require('./operations/iotOp');
 const SearchOp = require('./operations/searchOp');
 const StepOp = require('./operations/stepOp');
-const WorkteamOp = require('./operations/workteamOp');
-const FaceCollectionOp = require('./operations/faceCollectionOp');
-const EditLabelOp = require('./operations/editLabelOp');
 const RekognitionOp = require('./operations/rekognitionOp');
 const TranscribeOp = require('./operations/transcribeOp');
 const ComprehendOp = require('./operations/comprehendOp');
 const StatsOp = require('./operations/statsOp');
+
+const OP_REKOGNITION = 'rekognition';
+const OP_TRANSCRIBE = 'transcribe';
+const OP_COMPREHEND = 'comprehend';
 
 class ApiRequest {
   constructor(event, context) {
@@ -104,31 +102,16 @@ class ApiRequest {
     if (op === ApiOps.Search) {
       return new SearchOp(this);
     }
-    if (op === ApiOps.Labeling) {
-      return new LabelingOp(this);
-    }
     if (op === ApiOps.Execution) {
       return new StepOp(this);
     }
-    if (op === ApiOps.Workteam) {
-      return new WorkteamOp(this);
-    }
-    if (op === ApiOps.IndexFace || op === ApiOps.QueueFace || op === ApiOps.FaceColection) {
-      return new FaceCollectionOp(this);
-    }
-    if (op === ApiOps.EditLabel) {
-      return new EditLabelOp(this);
-    }
-    if (op === ApiOps.FaceCollections.split('/').shift() || op === ApiOps.CustomLabelModels.split('/').shift()) {
+    if (op === OP_REKOGNITION) {
       return new RekognitionOp(this);
     }
-    if (op === ApiOps.CustomVocabularies.split('/').shift()) {
+    if (op === OP_TRANSCRIBE) {
       return new TranscribeOp(this);
     }
-    if (op === ApiOps.CustomLanguageModels.split('/').shift()) {
-      return new TranscribeOp(this);
-    }
-    if (op === ApiOps.CustomEntityRecognizers.split('/').shift()) {
+    if (op === OP_COMPREHEND) {
       return new ComprehendOp(this);
     }
     if (op === ApiOps.Stats) {

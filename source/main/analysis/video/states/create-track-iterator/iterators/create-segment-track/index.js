@@ -1,28 +1,32 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   AnalysisTypes,
   CommonUtils,
   WebVttTrack,
   EDLComposer,
+  AdmZip,
 } = require('core-lib');
 const BaseCreateTrackIterator = require('../shared/baseCreateTrackIterator');
 
 const SUBCATEGORY = AnalysisTypes.Rekognition.Segment;
-const TYPE_TECHNICAL_CUE = 'TECHNICAL_CUE';
 const TYPE_SHOT = 'SHOT';
-const SHOT_SEGMENT_BASENAME = 'shot_segments';
-const TECHNICAL_CUE_BASENAME = 'technical_cues';
+const CUE_ALIGNMENT_START = {
+  line: 0,
+  position: 0,
+  align: 'start',
+};
+const CUE_ALIGNMENT_END = {
+  line: 0,
+  position: 100,
+  align: 'end',
+};
 
 class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
   constructor(stateData) {
     super(stateData, SUBCATEGORY);
-    this.$shots = [];
-    this.$cues = [];
   }
 
   get [Symbol.toStringTag]() {
@@ -37,44 +41,25 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
     return true;
   }
 
-  get shots() {
-    return this.$shots;
-  }
-
-  get cues() {
-    return this.$cues;
-  }
-
   async process() {
     const data = this.stateData.data[SUBCATEGORY];
+    const detections = {};
     while (data.cursor < data.numOutputs) {
-      const t0 = new Date();
-      await this.processTrack(data.cursor);
+      const processed = await this.processTrack(data.cursor);
+      Object.keys(processed).map((x) => {
+        if (detections[x] === undefined) {
+          detections[x] = [];
+        }
+        return detections[x].splice(detections[x].length, 0, ...processed[x]);
+      });
       data.cursor++;
-      /* make sure we allocate enough time for the next iteration */
-      const remained = this.stateData.getRemainingTime();
-      const consumed = new Date() - t0;
-      console.log(`COMPLETED: : '${data.cursor - 1}' [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
-      if (this.stateData.quitNow() || (remained - (consumed * 1.2) <= 0)) {
-        break;
-      }
     }
-    const promises = [];
-    if (this.shots.length) {
-      promises.splice(promises.length, 0, ...[
-        this.createShotSegmentTrack(),
-        this.createShotSegmentMetadata(),
-        this.createShotSegmentEDLFile(),
-      ]);
-    }
-    if (this.cues.length) {
-      promises.splice(promises.length, 0, ...[
-        this.createTechnicalCueTrack(),
-        this.createTechnicalCueMetadata(),
-        this.createTechnicalCueEDLFile(),
-      ]);
-    }
-    await Promise.all(promises);
+    /* create webvtt track */
+    await this.createWebVttFiles(detections);
+    /* create metadata files */
+    await this.createMetadataFiles(detections);
+    /* create EDL zip package */
+    await this.createEdlZipFile(detections);
     return (data.cursor < data.numOutputs)
       ? this.setProgress(Math.round((data.cursor / data.numOutputs) * 100))
       : this.setCompleted();
@@ -84,27 +69,36 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
     const data = this.stateData.data[SUBCATEGORY];
     const prefix = this.makeRawDataPrefix(SUBCATEGORY);
     const name = CreateSegmentTrackIterator.makeSequenceFileName(idx);
+    const detections = {};
     const segments = await CommonUtils.download(data.bucket, PATH.join(prefix, name), false)
-      .then(x =>
+      .then((x) =>
         JSON.parse(x.Body.toString()).Segments.Segments)
       .catch(e => console.error(e));
-    const shots = [];
-    const cues = [];
     while (segments && segments.length) {
       const segment = segments.shift();
-      if (segment.Type === TYPE_TECHNICAL_CUE) {
-        cues.push({
-          name: segment.TechnicalCueSegment.Type,
-          confidence: segment.TechnicalCueSegment.Confidence,
+      if (segment.Type === TYPE_SHOT) {
+        const typed = segment.Type.toLowerCase();
+        if (detections[typed] === undefined) {
+          detections[typed] = [];
+        }
+        detections.shot.push({
+          type: segment.Type,
+          name: `Shot ${segment.ShotSegment.Index.toString().padStart(3, '0')}`,
+          confidence: Number(Number(segment.ShotSegment.Confidence).toFixed(2)),
           begin: segment.StartTimestampMillis,
           end: segment.EndTimestampMillis,
           smpteBegin: segment.StartTimecodeSMPTE,
           smpteEnd: segment.EndTimecodeSMPTE,
         });
-      } else if (segment.Type === TYPE_SHOT) {
-        shots.push({
-          name: `Shot #${segment.ShotSegment.Index}`,
-          confidence: segment.ShotSegment.Confidence,
+      } else {
+        const typed = segment.TechnicalCueSegment.Type.toLowerCase();
+        if (detections[typed] === undefined) {
+          detections[typed] = [];
+        }
+        detections[typed].push({
+          type: segment.TechnicalCueSegment.Type,
+          name: `${segment.TechnicalCueSegment.Type.substring(0, 5)}${String(detections[typed].length).padStart(3, '0')}`,
+          confidence: segment.TechnicalCueSegment.Confidence,
           begin: segment.StartTimestampMillis,
           end: segment.EndTimestampMillis,
           smpteBegin: segment.StartTimecodeSMPTE,
@@ -112,66 +106,69 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
         });
       }
     }
-    this.shots.splice(this.shots.length, 0, ...shots);
-    this.cues.splice(this.cues.length, 0, ...cues);
-    return [
-      this.shots,
-      this.cues,
-    ];
+    return detections;
   }
 
-  async createShotSegmentTrack() {
+  async createWebVttFiles(detections) {
     const bucket = this.stateData.data[SUBCATEGORY].bucket;
     const prefix = this.makeVttPrefix();
-    const name = `${SHOT_SEGMENT_BASENAME}.vtt`;
-    const body = this.createWebVtt(this.shots, {
-      line: 0,
-      position: 0,
-      align: 'start',
+    const promises = Object.values(detections).map((data) => {
+      if (!data || data.length === 0) {
+        return undefined;
+      }
+      const type = data[0].type;
+      const name = `${type.toLowerCase()}.vtt`;
+      const alignment = (type === TYPE_SHOT)
+        ? CUE_ALIGNMENT_START
+        : CUE_ALIGNMENT_END;
+      const body = this.createWebVtt(data, alignment);
+      return CommonUtils.uploadFile(bucket, prefix, name, body);
     });
-    return CommonUtils.uploadFile(bucket, prefix, name, body);
+    return Promise.all(promises);
   }
 
-  async createShotSegmentMetadata() {
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeMetadataPrefix();
-    const name = `${SHOT_SEGMENT_BASENAME}.json`;
-    return CommonUtils.uploadFile(bucket, prefix, name, this.shots);
-  }
+  async createEdlZipFile(detections) {
+    const zip = new AdmZip();
+    const parsed = PATH.parse(this.stateData.data[SUBCATEGORY].key);
+    const title = parsed.name.replace(/[\W_]+/g, ' ');
 
-  async createShotSegmentEDLFile() {
+    Object.values(detections).forEach((data) => {
+      if (data.length === 0) {
+        return;
+      }
+      const type = data[0].type.toLowerCase();
+      const events = data.map((item, idx) => ({
+        id: idx + 1,
+        reelName: item.name,
+        clipName: parsed.base,
+        startTime: item.smpteBegin,
+        endTime: item.smpteEnd,
+      }));
+      const edl = new EDLComposer({
+        title,
+        events,
+      });
+      const buf = Buffer.from(edl.compose(), 'utf8');
+      zip.addFile(`${type}.edl`, buf, type);
+    });
     const bucket = this.stateData.data[SUBCATEGORY].bucket;
     const prefix = this.makeEdlPrefix();
-    const name = `${SHOT_SEGMENT_BASENAME}.edl`;
-    const body = this.convertJsonToEDL(this.shots);
-    return CommonUtils.uploadFile(bucket, prefix, name, body);
+    const name = `${SUBCATEGORY}.zip`;
+    return CommonUtils.uploadFile(bucket, prefix, name, zip.toBuffer());
   }
 
-  async createTechnicalCueTrack() {
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeVttPrefix();
-    const name = `${TECHNICAL_CUE_BASENAME}.vtt`;
-    const body = this.createWebVtt(this.cues, {
-      line: 0,
-      position: 100,
-      align: 'end',
-    });
-    return CommonUtils.uploadFile(bucket, prefix, name, body);
-  }
-
-  async createTechnicalCueMetadata() {
+  async createMetadataFiles(detections) {
     const bucket = this.stateData.data[SUBCATEGORY].bucket;
     const prefix = this.makeMetadataPrefix();
-    const name = `${TECHNICAL_CUE_BASENAME}.json`;
-    return CommonUtils.uploadFile(bucket, prefix, name, this.cues);
-  }
-
-  async createTechnicalCueEDLFile() {
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeEdlPrefix();
-    const name = `${TECHNICAL_CUE_BASENAME}.edl`;
-    const body = this.convertJsonToEDL(this.cues);
-    return CommonUtils.uploadFile(bucket, prefix, name, body);
+    const promises = Object.values(detections).map((data) => {
+      if (!data || data.length === 0) {
+        return undefined;
+      }
+      const type = data[0].type;
+      const name = `${type.toLowerCase()}.json`;
+      return CommonUtils.uploadFile(bucket, prefix, name, data);
+    });
+    return Promise.all(promises);
   }
 
   createWebVtt(items, placement) {
@@ -179,7 +176,7 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
     items.forEach((x) => {
       const cueText = [
         x.name,
-        `<c.confidence>(${Number.parseFloat(x.confidence).toFixed(2)})</c>`,
+        `<c.confidence>(${x.confidence})</c>`,
       ].join(' ');
       const cueAlignment = [
         `align:${placement.align}`,
@@ -190,26 +187,6 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
       track.addCue(x.begin, x.end, cueText, cueAlignment);
     });
     return track.toString();
-  }
-
-  convertJsonToEDL(dataset) {
-    const data = this.stateData.data[SUBCATEGORY];
-    const parsed = PATH.parse(data.key);
-    const events = [];
-    for (let i = 0; i < dataset.length; i++) {
-      events.push({
-        id: i + 1,
-        reelName: dataset[i].name,
-        startTime: dataset[i].smpteBegin,
-        endTime: dataset[i].smpteEnd,
-        clipName: parsed.base,
-      });
-    }
-    const edl = new EDLComposer({
-      title: parsed.name.replace(/[\W_]+/g, ' '),
-      events,
-    });
-    return edl.compose();
   }
 
   static makeSequenceFileName(idx) {

@@ -1,21 +1,10 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/* eslint-disable import/no-unresolved */
-
-/**
- * @author MediaEnt Solutions
- */
+/* eslint-disable no-undef */
 const AWS = require('aws-sdk');
-
 const AWSIoTData = require('aws-iot-device-sdk');
 
-/**
- * This file is to wrap AWSIoTData and AWS into browserify package
- */
 module.exports.AWS = AWS;
 global.AWS = AWS;
 

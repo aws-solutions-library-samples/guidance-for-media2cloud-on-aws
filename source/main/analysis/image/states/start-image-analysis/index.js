@@ -1,9 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
   StateData,
@@ -11,6 +16,7 @@ const {
   AnalysisError,
   CommonUtils,
   Retry,
+  Environment,
 } = require('core-lib');
 
 const ANALYSIS_TYPE = 'image';
@@ -30,6 +36,13 @@ class StateStartImageAnalysis {
       throw new AnalysisError('stateData not StateData object');
     }
     this.$stateData = stateData;
+  }
+
+  static createInstance() {
+    return new AWS.Rekognition({
+      apiVersion: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
+    });
   }
 
   get [Symbol.toStringTag]() {
@@ -55,11 +68,12 @@ class StateStartImageAnalysis {
       ...cur,
     }), {});
 
+    const stateExecution = this.stateData.event.stateExecution;
     this.stateData.setData(ANALYSIS_TYPE, {
       status: StateData.Statuses.Completed,
-      startTime: new Date(this.stateData.event.startTime).getTime(),
+      startTime: new Date(stateExecution.StartTime).getTime(),
       endTime: new Date().getTime(),
-      executionArn: this.stateData.event.executionArn,
+      executionArn: stateExecution.Id,
       [CATEGORY]: results,
     });
     this.stateData.setCompleted();
@@ -70,9 +84,7 @@ class StateStartImageAnalysis {
     if (!aiOptions.celeb) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     const fn = rekog.recognizeCelebrities.bind(rekog);
     const params = this.makeParams();
     return this.startFn(SUB_CATEGORY_CELEB, fn, params);
@@ -82,9 +94,7 @@ class StateStartImageAnalysis {
     if (!aiOptions.face) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     const fn = rekog.detectFaces.bind(rekog);
     const params = {
       ...this.makeParams(),
@@ -99,9 +109,7 @@ class StateStartImageAnalysis {
     if (!aiOptions[AnalysisTypes.Rekognition.FaceMatch] || !aiOptions.faceCollectionId) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     /* ensure face collection exists and has faces */
     const collectionReady = await rekog.describeCollection({
       CollectionId: aiOptions.faceCollectionId,
@@ -125,9 +133,7 @@ class StateStartImageAnalysis {
     if (!aiOptions.label) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     const fn = rekog.detectLabels.bind(rekog);
     const params = {
       ...this.makeParams(),
@@ -140,9 +146,7 @@ class StateStartImageAnalysis {
     if (!aiOptions.moderation) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     const fn = rekog.detectModerationLabels.bind(rekog);
     const params = {
       ...this.makeParams(),
@@ -155,9 +159,7 @@ class StateStartImageAnalysis {
     if (!aiOptions.text) {
       return undefined;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-    });
+    const rekog = StateStartImageAnalysis.createInstance();
     const fn = rekog.detectText.bind(rekog);
     const params = this.makeParams();
     return this.startFn(SUB_CATEGORY_TEXT, fn, params);

@@ -105,7 +105,11 @@ function copy_deployment_folder() {
   # copy tutorials folder
   cp -rv "$DEPLOYMENT_DIR"/tutorials "$OPENSRC_DIST_DIR"/deployment/tutorials
   # copy .github PULL_REQUEST_TEMPLATE file
-  cp -rv "$DEPLOYMENT_DIR"/../.github "$OPENSRC_DIST_DIR/"
+  cp -rv \
+  "$DEPLOYMENT_DIR"/../.github \
+  "$DEPLOYMENT_DIR"/../.gitignore \
+  "$DEPLOYMENT_DIR"/../.eslintrc.js \
+  "$OPENSRC_DIST_DIR/"
 }
 
 function copy_standard_documents() {
@@ -149,7 +153,7 @@ function create_github_zip() {
   echo "------------------------------------------------------------------------------"
   cd "$OPENSRC_DIST_DIR" || exit
   # zip -q -r9 ../${SOLUTION}.zip * .github .gitignore .tool-versions
-  zip -q -r9 ../${SOLUTION}.zip * .github
+  zip -q -r9 ../${SOLUTION}.zip * .github .gitignore .eslintrc.js
   cd "$DEPLOYMENT_DIR" || exit
   rm -rf "$OPENSRC_DIST_DIR"
 }

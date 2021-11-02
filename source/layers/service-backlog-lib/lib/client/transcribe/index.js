@@ -1,8 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   DataAccess,
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
 } = require('../../shared/defs');
 
 const BacklogJob = require('../backlogJob');
@@ -38,6 +51,7 @@ class TranscribeBacklogJob extends BacklogJob {
   getTranscribeInstance() {
     return new AWS.TranscribeService({
       apiVersion: '2017-10-26',
+      customUserAgent: CustomUserAgent,
     });
   }
 

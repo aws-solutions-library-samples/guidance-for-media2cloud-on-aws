@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   SNS,
 } = require('core-lib');
@@ -10,7 +8,7 @@ const CloudWatchStatus = require('./lib/cloudwatch');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',

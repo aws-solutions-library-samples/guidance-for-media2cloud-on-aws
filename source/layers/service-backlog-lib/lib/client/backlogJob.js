@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const BacklogTable = require('../backlog-table');
 const EBHelper = require('../shared/ebHelper');
 const Retry = require('../shared/retry');

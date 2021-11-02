@@ -1,12 +1,9 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment,
   StateData,
-  IotStatus,
   JobStatusError,
   ServiceToken,
 } = require('core-lib');
@@ -186,7 +183,7 @@ class MediaConvertStatusChangeEvent {
 
   async onProgress() {
     this.stateData.setProgress(this.jobPercentComplete);
-    return IotStatus.publish(this.stateData.miniJSON());
+    return undefined;
   }
 }
 

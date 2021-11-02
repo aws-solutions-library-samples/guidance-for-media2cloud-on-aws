@@ -1,18 +1,29 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const [
+  AWS,
+  HTTPS,
+] = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return [
+      AWSXRay.captureAWS(require('aws-sdk')),
+      AWSXRay.captureHTTPs(require('https')),
+    ];
+  } catch (e) {
+    return [
+      require('aws-sdk'),
+      require('https'),
+    ];
+  }
+})();
 const URL = require('url');
-const HTTPS = require('https');
 const ZIP = require('adm-zip');
 const MIME = require('mime');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+const ExpectedBucketOwner = process.env.ENV_EXPECTED_BUCKET_OWNER;
 
 class WebContent extends mxBaseResponse(class {}) {
   constructor(event, context) {
@@ -92,6 +103,7 @@ class WebContent extends mxBaseResponse(class {}) {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
 
     const response = await s3.getObject({
@@ -115,6 +127,7 @@ class WebContent extends mxBaseResponse(class {}) {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
     const responses = await Promise.all(unzip.getEntries().filter(x => !x.isDirectory)
       .map((entry) => {
@@ -125,6 +138,7 @@ class WebContent extends mxBaseResponse(class {}) {
           ContentType: MIME.getType(entry.entryName),
           ServerSideEncryption: 'AES256',
           Body: unzip.readFile(entry.entryName),
+          ExpectedBucketOwner,
         }).promise();
       }));
 

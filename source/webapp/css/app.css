@@ -848,6 +848,14 @@ a.member-anchor:hover {
   opacity: 0.7;
 }
 
+.category .media-action {
+  display: none;
+}
+
+.category:hover .media-action {
+  display: inline-block;
+}
+
 .img-12rem {
   max-height: 12rem;
   object-fit: contain;
@@ -1011,6 +1019,11 @@ dt {
 
 .min-h24r {
   min-height: 24rem;
+}
+
+.max-h36r {
+  max-height: 36rem;
+  overflow-y: scroll;
 }
 
 .custom-bg {
@@ -1274,4 +1287,45 @@ div[data-media-type="video"] .cropper-container {
 .canvas-type-cell {
   border-color: #6610f2;
   background-color: #6610f234;
+}
+
+.face-thumbnail {
+  width: 100%;
+  height: 48px;
+  font-size: 2em;
+  background-color: #c8c8c8;
+  text-align: center;
+  object-fit: cover;
+}
+
+.face-thumbnail > i {
+  vertical-align: middle;
+}
+
+.maxh-600 {
+  max-height: 600px;
+}
+
+.search-thumbnail {
+  object-fit: cover;
+  height: 96px;
+  width: 100% !important;
+  min-width: 96px;
+  aspect-ratio: 16/9;
+}
+
+.b-300 {
+  font-weight: 300;
+}
+
+.no-border {
+  border: none !important;
+  padding-top: 0 !important;
+  padding-left: 0 !important;
+}
+
+.search-layer {
+  position: absolute;
+  top: 1em;
+  left: 1em;
 }

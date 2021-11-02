@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment: {
     StateMachines: {
@@ -16,7 +14,7 @@ const StateDetectCustomLabels = require('./states/detect-custom-labels');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_BACKLOG_EB_BUS',
   'ENV_BACKLOG_TABLE',
   'ENV_ATOMICLOCK_TABLE',

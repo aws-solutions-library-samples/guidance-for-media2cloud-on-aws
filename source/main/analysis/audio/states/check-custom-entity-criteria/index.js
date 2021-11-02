@@ -1,25 +1,30 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
-const AWS = require('aws-sdk');
 const {
+  Environment,
+  AnalysisTypes,
   CommonUtils,
+  Indexer,
 } = require('core-lib');
-const {
-  CueLineQ,
-} = require('../shared/cueLine');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
-const PREV_STATE = 'transcribe';
+const INDEX_TRANSCRIBE = 'transcribe';
 const CATEGORY = 'comprehend';
-const SUB_CATEGORY = 'custom-entity';
-const MIN_WORD_COUNTS = 2;
-const SLICES_PER_PROCESS = 25;
+const SUB_CATEGORY = AnalysisTypes.Comprehend.CustomEntity;
 const DOC_BASENAME = 'document';
 const FILLER = '   ';
+const MIN_CHARACTERS = 3;
+const DOCUMENTS_PER_BATCH = 25;
 
 class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
   constructor(stateData) {
@@ -34,31 +39,26 @@ class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
   }
 
   async process() {
-    if (!await this.checkCriteria()) {
+    if (!this.checkCriteria()) {
       return this.dataLessThenThreshold();
     }
-    /* download cuelines */
-    const bucket = this.stateData.input.destination.bucket;
-    const cuelines = await this.downloadCuelineResult();
+    if (!(await this.getCustomEntityRecognizer())) {
+      return this.dataLessThenThreshold();
+    }
+    /* download indexed transcription */
+    const indexer = new Indexer();
+    const doc = await indexer.getDocument(INDEX_TRANSCRIBE, this.stateData.uuid)
+      .catch((e) =>
+        console.error(`[ERR]: indexer.getDocument: ${this.stateData.uuid} ${JSON.stringify(e.body, null, 2)}`));
+    if (!doc || doc.data.length === 0) {
+      return this.dataLessThenThreshold();
+    }
     /* preparing the document for analysis. */
     /* At most 25 lines per document. Each line is less than 5KB */
+    const bucket = this.stateData.input.destination.bucket;
     const documents = [];
-    while (cuelines.length) {
-      const linesPerDocument = [];
-      const slices = cuelines.splice(0, SLICES_PER_PROCESS);
-      while (slices.length) {
-        const queue = CueLineQ.createFromJson(slices.shift());
-        if (queue.wordCounts > MIN_WORD_COUNTS) {
-          linesPerDocument.push(queue.reduceAll().content);
-        } else {
-          /* filler to keep the line indices aliged */
-          linesPerDocument.push(FILLER);
-        }
-      }
-      documents.push(linesPerDocument);
-    }
-    if (!documents.length) {
-      return this.dataLessThenThreshold();
+    while (doc.data.length) {
+      documents.push(this.prepareDocument(doc.data));
     }
     /* upload input documents */
     const numOutputs = documents.length;
@@ -79,32 +79,32 @@ class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
     return this.stateData.toJSON();
   }
 
-  async checkCriteria() {
-    const prevState = this.stateData.data[PREV_STATE];
-    if (!prevState.cuelines || prevState.totalWordCounts <= MIN_WORD_COUNTS) {
-      return false;
+  prepareDocument(datasets) {
+    const document = [];
+    while (datasets.length) {
+      const data = datasets.shift();
+      document.push((Buffer.from(data.name) <= MIN_CHARACTERS)
+        ? FILLER
+        : data.name);
+      if (document.length === DOCUMENTS_PER_BATCH) {
+        return document;
+      }
     }
-    const name = this.stateData.input.aiOptions.customEntityRecognizer;
-    if (!name) {
-      return false;
-    }
-    const languageCode = this.getComprehendLanguageCode();
-    const recognizer = await this.getCustomEntityRecognizer(name);
-    if (!recognizer.canUse || recognizer.languageCode !== languageCode) {
-      return false;
-    }
-    return true;
+    return document;
   }
 
-  async getCustomEntityRecognizer(name) {
+  async getCustomEntityRecognizer() {
+    const name = this.stateData.input.aiOptions.customEntityRecognizer;
     if (!name) {
       return undefined;
     }
+    const languageCode = this.getComprehendLanguageCode();
     const arn = `arn:aws:comprehend:${process.env.AWS_REGION}:${this.stateData.accountId}:entity-recognizer/${name}`;
     const comprehend = new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
-    return comprehend.describeEntityRecognizer({
+    const recognizer = await comprehend.describeEntityRecognizer({
       EntityRecognizerArn: arn,
     }).promise()
       .then(data => ({
@@ -114,6 +114,12 @@ class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
           || data.EntityRecognizerProperties.Status === 'STOPPED',
       }))
       .catch(() => undefined);
+
+    return (recognizer
+      && recognizer.canUse
+      && recognizer.languageCode === languageCode)
+      ? recognizer
+      : undefined;
   }
 
   makeRawDocumentPrefix() {

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import mxReadable from '../../../../../../mixins/mxReadable.js';
 import AppUtils from '../../../../../../shared/appUtils.js';
 
@@ -86,12 +89,20 @@ export default class ScatterGraph extends mxReadable(class {}) {
         show: true,
         trigger: 'item',
         formatter: ((data) => {
-          const found = (datasets.find(x => x.label === data.name) || {}).data || [];
-          const startAt = AppUtils.readableDuration((found[0] || {}).x || 0);
-          const endAt = AppUtils.readableDuration((found[found.length - 1] || {}).x || 0);
+          const dataset = datasets.find((x) => x.label === data.name) || {};
+          const found = dataset.data || [];
+          const startAt = AppUtils.readableDuration((found[0] || {}).x || 0, true);
+          const endAt = AppUtils.readableDuration((found[found.length - 1] || {}).x || 0, true);
+          let appearance = '';
+          if (dataset.duration && dataset.appearance) {
+            const percentage = Number((dataset.appearance / dataset.duration) * 100).toFixed(2);
+            const duration = AppUtils.readableDuration(dataset.appearance, true);
+            const total = AppUtils.readableDuration(dataset.duration, true);
+            appearance = `Show rate <strong>${percentage}%</strong> (${duration} of ${total})`;
+          }
           return (!found.length)
             ? `<span>${data.name}</span>`
-            : `<span>Total <strong>${found.length}</strong> data points</span><br/>Starting at <strong>${startAt}</strong><br/>Ended at <strong>${endAt}</strong>`;
+            : `<span>Total <strong>${found.length}</strong> data points</span><br/>Starting at <strong>${startAt}</strong><br/>Ended at <strong>${endAt}</strong><br/>${appearance}`;
         }),
       },
     };
@@ -104,7 +115,7 @@ export default class ScatterGraph extends mxReadable(class {}) {
       scale: false,
       minInterval: 1000,
       axisLabel: {
-        formatter: (x) => AppUtils.readableDuration(x),
+        formatter: (x) => AppUtils.readableDuration(x, true),
         rotate: 45,
       },
       splitLine: {
@@ -131,14 +142,14 @@ export default class ScatterGraph extends mxReadable(class {}) {
         start: 0,
         end: 10,
         minValueSpan: 2 * 1000,
-        labelFormatter: (x) => AppUtils.readableDuration(x),
+        labelFormatter: (x) => AppUtils.readableDuration(x, true),
       },
     ];
     const tooltip = {
       show: true,
       trigger: 'item',
       formatter: ((x) =>
-        `<span style="color:${x.color}">${x.seriesName}</span> (x${x.data[1]})<br/>at ${AppUtils.readableDuration(x.data[0])}`),
+        `<span style="color:${x.color}">${x.seriesName}</span> (x${x.data[1]})<br/>at ${AppUtils.readableDuration(x.data[0], true)}`),
     };
     return {
       legend,
@@ -178,7 +189,6 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   onLegendSelectChangedEvent(datasets, event) {
-    console.log(JSON.stringify(event, null, 2));
     const found = datasets.find(x => x.label === event.name);
     const selected = [{
       name: event.name,
@@ -189,7 +199,6 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   onInverseLegendsEvent(datasets, event) {
-    console.log(JSON.stringify(event, null, 2));
     const selected = [];
     datasets.forEach((dataset, idx) => {
       if (event.selected[dataset.label] !== undefined) {
@@ -204,7 +213,6 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   onRenderedEvent(graph) {
-    console.log(`graph wxh = ${graph.getWidth()}x${graph.getHeight()}`);
     if (graph.getWidth() <= 0 || graph.getHeight() <= 0) {
       setTimeout(() => graph.resize(), 200);
     } else {

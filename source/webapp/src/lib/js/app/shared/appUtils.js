@@ -1,15 +1,12 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 import mxReadable from '../mixins/mxReadable.js';
 import mxZero from '../mixins/mxZero.js';
 import SigV4Client from './signer.js';
+
+const THUMBNAIL_W = 72;
+const THUMBNAIL_H = THUMBNAIL_W;
 
 class MimeWrapper {
   constructor() {
@@ -127,10 +124,10 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
   static async authHttpRequest(method, endpoint, query = {}, body = '') {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
-
+      const qs = JSON.parse(JSON.stringify(query));
       const {
         url, headers,
-      } = AppUtils.signRequest(method, endpoint, '', query, body);
+      } = AppUtils.signRequest(method, endpoint, '', qs, body);
 
       request.open(method, url, true);
 
@@ -147,11 +144,22 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
       request.onreadystatechange = () => {
         if (request.readyState === XMLHttpRequest.DONE) {
           if (request.status === 200) {
-            resolve(JSON.parse(request.responseText));
-          } else if (request.status >= 400) {
-            reject(new Error(`${request.status} - ${request.responseURL}`));
+            if (request.responseText === undefined
+              || !request.responseText.length) {
+              return resolve(undefined);
+            }
+            const parsed = JSON.parse(request.responseText);
+            if (parsed.errorCode) {
+              console.error(`[ERR]: ${parsed.errorCode} - ${encodeURIComponent(parsed.errorMessage)}`);
+              return reject(new Error(`${parsed.errorCode} - ${parsed.errorMessage}`));
+            }
+            return resolve(JSON.parse(request.responseText));
+          }
+          if (request.status >= 400) {
+            return reject(new Error(`${request.status} - ${request.responseURL}`));
           }
         }
+        return undefined;
       };
 
       request.send((typeof body === 'string')
@@ -265,5 +273,44 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
     return (!path || path[path.length - 1] === '/')
       ? path
       : path.substring(0, path.lastIndexOf('/'));
+  }
+
+  static toFriendlyName(name) {
+    return (name || '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) =>
+        c.toUpperCase());
+  }
+
+  static async downscale(url, width = THUMBNAIL_W, height = THUMBNAIL_H) {
+    return new Promise((resolve, reject) => {
+      if (!url) {
+        return reject(new Error('missing url'));
+      }
+      const img = new Image();
+      img.onload = () => {
+        const scaleW = width / img.width;
+        const scaleH = height / img.height;
+        const scale = Math.max(scaleW, scaleH);
+        let canvasW = Math.floor(img.width * scale);
+        canvasW -= canvasW % 2;
+        let canvasH = Math.floor(img.height * scale);
+        canvasH -= canvasH % 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW;
+        canvas.height = canvasH;
+        const context = canvas.getContext('2d');
+        context.drawImage(
+          img,
+          0, 0, img.width, img.height,
+          0, 0, canvasW, canvasH
+        );
+        const dataUrl = canvas.toDataURL('image/png');
+        return resolve(dataUrl);
+      };
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      return img;
+    });
   }
 }

@@ -1,15 +1,22 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
+
 const PATH = require('path');
 const {
   StateData,
   AnalysisError,
   CommonUtils,
   Retry,
+  Environment,
 } = require('core-lib');
 
 const ANALYSIS_TYPE = 'document';
@@ -27,6 +34,7 @@ class StateStartDocumentAnalysis {
     this.$dataset = [];
     this.$textract = new AWS.Textract({
       apiVersion: '2018-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
   }
 
@@ -161,15 +169,15 @@ class StateStartDocumentAnalysis {
   }
 
   setCompleted() {
-    const event = this.stateData.event;
     const prefix = this.makeRawDataPrefix();
     const numOutputs = this.stateData.data.numOutputs;
+    const stateExecution = this.stateData.event.stateExecution;
     this.stateData.data = undefined;
     this.stateData.data = {
       [ANALYSIS_TYPE]: {
         status: StateData.Statuses.Completed,
-        executionArn: event.executionArn,
-        startTime: new Date(event.startTime).getTime(),
+        executionArn: stateExecution.Id,
+        startTime: new Date(stateExecution.StartTime).getTime(),
         endTime: Date.now(),
         [CATEGORY]: {
           output: prefix,

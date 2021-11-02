@@ -1,242 +1,1223 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (SO0050-cloudfront) Media2Cloud - create CloudFront distribution and website bucket.
+Description: (%%SOLUTION_ID%%) Media2Cloud WebApp Stack - create frontend resources such as Amazon API Gateway, Amazon Cognito User Pool, demo portal, and etc. Version %%VERSION%%
 
-#
-# Mappings to store fixed value of the solution
-#
 Mappings:
-    Solution:
-        Package:
-            WebApp: "%PKG_WEBAPP%"
-        Website:
-            MainPage: "index.html"
+    Workflow:
+        WebApp:
+            Package: "%%PKG_WEBAPP%%"
+        Api:
+            Name: api
+            Package: "%%PKG_API%%"
+    APIGW:
+        Stage:
+            Name: demo
+    Node:
+        Runtime:
+            Version: nodejs14.x
 
 Parameters:
-    SolutionId:
-        Type: String
-        Description: "part of the resource naming"
-    RootStackName:
-        Type: String
-        Description: "part of the resource naming"
     S3Bucket:
         Type: String
-        Description: solution bucket
-        AllowedPattern: "[a-z][a-z0-9-_]*"
+        Description: S3Bucket
     KeyPrefix:
         Type: String
-        Description: solution key prefix
-    CustomResourceArn:
+        Description: KeyPrefix
+    SolutionId:
         Type: String
-        Description: for post-processing
-    LogsBucket:
+        Description: SolutionId
+    SolutionLowerCaseId:
         Type: String
-        Description: "store CloudFront access logs"
-        AllowedPattern: "[a-z][a-z0-9-_]*"
+        Description: SolutionLowerCaseId
+    ResourcePrefix:
+        Type: String
+        Description: ResourcePrefix
+    CustomUserAgent:
+        Type: String
+        Description: CustomUserAgent
+    AnonymousUsage:
+        Type: String
+        Description: AnonymousUsage
+    CustomResourcesLambdaArn:
+        Type: String
+        Description: CustomResourcesLambdaArn
+    CustomResourcesRoleName:
+        Type: String
+        Description: CustomResourcesRoleName
+    AwsSdkLayer:
+        Type: String
+        Description: AwsSdkLayer
+    CoreLibLayer:
+        Type: String
+        Description: CoreLibLayer
+    SolutionUuid:
+        Type: String
+        Description: SolutionUuid
+    IotHost:
+        Type: String
+        Description: IotHost
+    IotTopic:
+        Type: String
+        Description: IotTopic
+    IotThingPolicy:
+        Type: String
+        Description: IotThingPolicy
+    IngestBucket:
+        Type: String
+        Description: IngestBucket
+    ProxyBucket:
+        Type: String
+        Description: ProxyBucket
     WebBucket:
         Type: String
-        Description: "store website content"
-        AllowedPattern: "[a-z][a-z0-9-_]*"
-    PriceClass:
+        Description: WebBucket
+    CloudFrontDistributionId:
         Type: String
-        Description: "Specify the price class of the edge location from which CloudFront serves your requests. For more information, see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html"
-        AllowedValues:
-            - PriceClass_100
-            - PriceClass_200
-            - PriceClass_All
-        Default: PriceClass_100
-
-Metadata:
-    cfn-lint:
-        config:
-            ignore_checks:
-                # ignore RootStackName not being used
-                - W2001
-    AWS::CloudFormation::Interface:
-        ParameterGroups:
-            -
-                Label:
-                    default: "Solution Configuration"
-                Parameters:
-                    - SolutionId
-                    - RootStackName
-                    - S3Bucket
-                    - KeyPrefix
-            -
-                Label:
-                    default: "CloudFront Configuration"
-                Parameters:
-                    - LogsBucket
-                    - WebBucket
-                    - PriceClass
-            -
-                Label:
-                    default: "Other resources"
-                Parameters:
-                    - CustomResourceArn
-        ParameterLabels:
-            SolutionId:
-                default: "Solution Id"
-            RootStackName:
-                default: "Top Stack Name"
-            S3Bucket:
-                default: "Solution Bucket"
-            KeyPrefix:
-                default: "Solution KeyPrefix"
-            PriceClass:
-                default: "Price Class"
-            LogsBucket:
-                default: "Logs Bucket"
-            WebBucket:
-                default: "Website Bucket"
-            CustomResourceArn:
-                default: "Custom Resource Arn"
-
-Conditions:
-    bUSEast1: !Equals [!Ref "AWS::Region", "us-east-1"]
+        Description: CloudFrontDistributionId
+    CloudFrontDistributionDomainName:
+        Type: String
+        Description: CloudFrontDistributionDomainName
+    OpenSearchDomainName:
+        Type: String
+        Description: OpenSearchDomainName
+    OpenSearchDomainEndpoint:
+        Type: String
+        Description: OpenSearchDomainEndpoint
+    DefaultAIOptions:
+        Type: String
+        Description: DefaultAIOptions
+    DefaultMinConfidence:
+        Type: String
+        Description: DefaultMinConfidence
 
 Resources:
+    ################################################################################
     #
-    # OAID
+    # APIGW CloudWatch Logs
     #
-    OriginAccessIdentity:
-        Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    ################################################################################
+    APIGWLogRole:
+        Type: AWS::IAM::Role
         Properties:
-            CloudFrontOriginAccessIdentityConfig:
-                Comment: !Sub "access-identity-${WebBucket}"
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            Service: apigateway.amazonaws.com
+                        Action: sts:AssumeRole
+            Path: /
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
 
+    APIGWAccount:
+        Type: AWS::ApiGateway::Account
+        Properties:
+            CloudWatchRoleArn: !GetAtt APIGWLogRole.Arn
+
+    ################################################################################
     #
-    # Bucket Policy
+    # REST API resources
     #
-    BucketPolicy:
-        Type: AWS::S3::BucketPolicy
+    ################################################################################
+    ApiLogGroup:
         Metadata:
             cfn_nag:
                 rules_to_suppress:
                     -
-                        id: F16
-                        reason: "website bucket policy requires a wildcard principal"
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Type: AWS::Logs::LogGroup
         Properties:
-            Bucket: !Ref WebBucket
-            PolicyDocument:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - Api
+                    - Name
+            RetentionInDays: 7
+
+    ApiRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Resources require wildcard
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
                 Statement:
                     -
-                        Effect: Deny
-                        Principal: "*"
-                        Action: "*"
-                        Resource: !Sub "arn:aws:s3:::${WebBucket}/*"
-                        Condition:
-                            Bool:
-                                "aws:SecureTransport": false
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-api-logs
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt ApiLogGroup.Arn
+                            # IoT - allows API to attach policy to IoT core
+                            -
+                                Effect: Allow
+                                Action: iot:AttachPolicy
+                                # Attaching Cognito Identity Id requires wildcard character
+                                # cert/* and thinggroup/* resources won't work.
+                                # See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
+                                Resource: "*"
+                            # Rekognition - allows access to Face Collection
+                            -
+                                Effect: Allow
+                                Action:
+                                    - rekognition:ListCollections
+                                    - rekognition:DescribeCollection
+                                    - rekognition:CreateCollection
+                                    - rekognition:DeleteCollection
+                                    - rekognition:ListFaces
+                                    - rekognition:IndexFaces
+                                    - rekognition:DeleteFaces
+                                Resource: !Sub arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*
+                            # Rekognition - allows access to Custom Labels projects
+                            -
+                                Effect: Allow
+                                Action: rekognition:DescribeProjects
+                                Resource: "*"
+                            -
+                                Effect: Allow
+                                Action: rekognition:DescribeProjectVersions
+                                Resource: !Sub arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:project/*/*
+                            # Comprehend - list custom entity recognizers
+                            -
+                                Effect: Allow
+                                Action: comprehend:ListEntityRecognizers
+                                Resource: "*"
+                            # Transcribe - list custom language models and vocabularies
+                            -
+                                Effect: Allow
+                                Action:
+                                    - transcribe:ListLanguageModels
+                                    - transcribe:ListVocabularies
+                                Resource: "*"
+                            # S3 - check object exists on ingest bucket
+                            -
+                                Effect: Allow
+                                Action: s3:GetObject
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                            # S3 - list object on proxy bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                            # S3 - read/write/delete on proxy bucket
+                            -
+                                Effect: Allow
+                                Action:
+                                    - s3:GetObject
+                                    - s3:PutObject
+                                    - s3:DeleteObject
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+                            # OpenSearch
+                            -
+                                Effect: Allow
+                                Action:
+                                    - es:ESHttpGet
+                                    - es:ESHttpHead
+                                    - es:ESHttpPost
+                                    - es:ESHttpPut
+                                    - es:ESHttpDelete
+                                Resource:
+                                    - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}
+                                    - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*
+                            # Note: Attach Backend resources such as Step Functions and DynamoDB in the main stack
+
+    ApiLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - Api
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Handle GET, POST, OPTIONS requests
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 128
+            Timeout: 300
+            Handler: index.handler
+            Role: !GetAtt ApiRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - Api
+                        - Package
+            Layers:
+                - !Ref AwsSdkLayer
+                - !Ref CoreLibLayer
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_IOT_HOST: !Ref IotHost
+                    ENV_IOT_TOPIC: !Ref IotTopic
+                    ENV_IOT_THING_POLICY_NAME: !Ref IotThingPolicy
+                    ENV_INGEST_BUCKET: !Ref IngestBucket
+                    ENV_PROXY_BUCKET: !Ref ProxyBucket
+                    ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
+                    ENV_DEFAULT_AI_OPTIONS: !Ref DefaultAIOptions
+                    ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+
+    RestApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: !Sub (${SolutionLowerCaseId}) Rest API for webapp
+            Body:
+                swagger: 2.0
+                info:
+                    version: "2018-08-03T20:13:00Z"
+                    title: !Sub ${ResourcePrefix}-api
+                basePath: !Sub
+                    - /${stageName}
+                    - stageName: !FindInMap
+                        - APIGW
+                        - Stage
+                        - Name
+                schemes:
+                    - https
+                paths:
+                    /{operation}:
+                        get:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        delete:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        post:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        options:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                                    headers:
+                                        Access-Control-Allow-Origin:
+                                            type: string
+                                        Access-Control-Allow-Methods:
+                                            type: string
+                                        Access-Control-Allow-Headers:
+                                            type: string
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                    /{operation}/{uuid+}:
+                        get:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: uuid
+                                    in: path
+                                    required: true
+                                    type: string
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        delete:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: uuid
+                                    in: path
+                                    required: true
+                                    type: string
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        post:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: uuid
+                                    in: path
+                                    required: true
+                                    type: string
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                            security:
+                                - sigv4: []
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        options:
+                            produces:
+                                - application/json
+                            parameters:
+                                -
+                                    name: uuid
+                                    in: path
+                                    required: true
+                                    type: string
+                                -
+                                    name: operation
+                                    in: path
+                                    required: true
+                                    type: string
+                            response:
+                                "200":
+                                    description: 200 response
+                                    schema:
+                                        $ref: "#/definitions/Empty"
+                                    headers:
+                                        Access-Control-Allow-Origin:
+                                            type: string
+                                        Access-Control-Allow-Methods:
+                                            type: string
+                                        Access-Control-Allow-Headers:
+                                            type: string
+                            x-amazon-apigateway-integration:
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_match
+                                httpMethod: POST
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                securityDefinitions:
+                    sigv4:
+                        type: apiKey
+                        name: Authorization
+                        in: header
+                        x-amazon-apigateway-authtype: awsSigv4
+                definitions:
+                    Empty:
+                        type: object
+                        title: Empty Schema
+
+    APIGWLogGroup:
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub /apigateway/media2cloud/${ResourcePrefix}
+            RetentionInDays: 7
+
+    Deployment:
+        Type: AWS::ApiGateway::Deployment
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W68
+                        reason: Supress UsagePlan requirement
+        Properties:
+            Description: !Sub (${SolutionLowerCaseId}) created by ${ResourcePrefix}
+            RestApiId: !Ref RestApi
+            StageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+            StageDescription:
+                Description: !Sub (${SolutionLowerCaseId}) created by ${ResourcePrefix}
+                LoggingLevel: ERROR
+                AccessLogSetting:
+                    DestinationArn: !GetAtt APIGWLogGroup.Arn
+                    Format: $context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId
+                MethodSettings:
+                    -
+                        ResourcePath: /~1{operation}
+                        HttpMethod: GET
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+                    -
+                        ResourcePath: /~1{operation}
+                        HttpMethod: POST
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+                    -
+                        ResourcePath: /~1{operation}
+                        HttpMethod: DELETE
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+                    -
+                        ResourcePath: /~1{operation}~1{uuid+}
+                        HttpMethod: GET
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+                    -
+                        ResourcePath: /~1{operation}~1{uuid+}
+                        HttpMethod: POST
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+                    -
+                        ResourcePath: /~1{operation}~1{uuid+}
+                        HttpMethod: DELETE
+                        DataTraceEnabled: false
+                        LoggingLevel: ERROR
+
+    DELETEOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/DELETE/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    GETOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/GET/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    OPTIONSOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/OPTIONS/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    POSTOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/POST/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    DELETEUuid:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/DELETE/*/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    GETUuid:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/GET/*/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    OPTIONSUuid:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/OPTIONS/*/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    POSTUuid:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/POST/*/*
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    ################################################################################
+    #
+    # Cognito resources
+    #
+    ################################################################################
+    CognitoUserPool:
+        Type: AWS::Cognito::UserPool
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: F78
+                        reason: Disable MFA check
+        Properties:
+            AdminCreateUserConfig:
+                AllowAdminCreateUserOnly: true
+                InviteMessageTemplate:
+                  EmailSubject: You are invited to AWS Media2Cloud demo portal
+                  EmailMessage:
+                    !Sub
+                        - |-
+                            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schema=s-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
+                            <head>
+                            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+                            <meta name="Generator" content="Microsoft Word 15 (filtered medium)">
+                            <style>
+                                @font-face {
+                                font-family: "Cambria Math"; panose-1: 2 4 5 3 5 4 6 3 2 4;
+                                }
+                                @font-face {
+                                font-family: DengXian; panose-1: 2 1 6 0 3 1 1 1 1 1;
+                                }
+                                @font-face {
+                                font-family: Calibri; panose-1: 2 15 5 2 2 2 4 3 2 4;
+                                }
+                                @font-face {
+                                font-family: "@DengXian"; panose-1: 2 1 6 0 3 1 1 1 1 1;
+                                }
+                                @font-face {
+                                font-family: "Amazon Ember"; panose-1: 2 11 6 3 2 2 4 2 2 4;
+                                }
+
+                                p.MsoNormal, li.MsoNormal, div.MsoNormal {
+                                margin: 0in;
+                                margin-bottom: .0001pt;
+                                font-size: 12.0pt;
+                                font-family: "Calibri", sans-serif;
+                                }
+
+                                h2 {
+                                mso-style-priority: 9;
+                                mso-style-link: "Heading 2 Char";
+                                mso-margin-top-alt: auto;
+                                margin-right: 0in;
+                                mso-margin-bottom-alt: auto;
+                                margin-left: 0in;
+                                font-size: 18.0pt;
+                                font-family: "Calibri", sans-serif;
+                                font-weight: bold;
+                                }
+
+                                a, span.MsoHyperlink {
+                                mso-style-priority: 99;
+                                color: #0563C1;
+                                }
+
+                                span.EmailStyle17 {
+                                mso-style-type: personal-compose;
+                                font-family: "Calibri", sans-serif;
+                                color: windowtext;
+                                }
+
+                                span.Heading2Char {
+                                mso-style-name: "Heading 2 Char";
+                                mso-style-priority: 9;
+                                mso-style-link: "Heading 2";
+                                font-family: "Calibri", sans-serif;
+                                font-weight: bold;
+                                }
+
+                                .MsoChpDefault {
+                                mso-style-type: export-only;
+                                font-family: "Calibri", sans-serif;
+                                }
+
+                                @page WordSection1 {
+                                size: 8.5in 11.0in;
+                                margin: 1.0in 1.0in 1.0in 1.0in;
+                                }
+
+                                div.WordSection1 {
+                                page: WordSection1;
+                                }
+
+                                .MainContent {
+                                font-variant-ligatures: normal;
+                                font-variant-caps: normal;
+                                orphans:2;
+                                text-align:start;
+                                widows:2;
+                                -webkit-text-stroke-width: 0px;
+                                text-decoration-style:initial;
+                                text-decoration-color:initial;
+                                word-spacing:0px;
+                                font-size:13.5pt;
+                                }
+
+                                .SubContent {
+                                font-family:'Amazon Ember',sans-serif;
+                                color:#333333"
+                                }
+                            </style>
+                            </head>
+
+                            <body lang="EN-US" link="#0563C1" vlink="#954F72">
+                            <div class="WordSection1">
+                                <h2>
+                                <span class="SubContent">
+                                    Welcome to AWS Media2Cloud demo portal<o:p></o:p>
+                                </span>
+                                </h2>
+
+                                <p class="MainContent" style="padding-bottom:30px;">
+                                <span class="SubContent">
+                                    You will need this user name and temporary password to log in the first time.<o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MainContent">
+                                <span class="SubContent">
+                                    User name: <b>{username}</b><o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MainContent">
+                                <span class="SubContent">
+                                    Temporary password: <b>{####}</b><o:p></o:p>
+                                </span>
+                                <br/>
+                                <span class="SubContent" style="font-size:10pt;">
+                                    (After you log in with your temporary password, you will be prompted to create a new one.)<o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MainContent" style="padding-bottom:30px;">
+                                <span class="SubContent">
+                                    Open the link to log in:<o:p></o:p>
+                                    <br/>
+                                    <span style="color:#007DBC">
+                                        <a href="${url}" target="_blank">${url}</a><o:p></o:p>
+                                    </span>
+                                </span>
+                                </p>
+
+                                <h2>
+                                <span class="SubContent">
+                                    Information you need to know<o:p></o:p>
+                                </span>
+                                </h2>
+
+                                <p class="MainContent">
+                                <span class="SubContent">
+                                    S3 Bucket where content is ingested:<o:p></o:p>
+                                    <br/>
+                                    <b>${ingest}</b><o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MainContent">
+                                <span class="SubContent">
+                                    S3 Bucket where proxies and metadata are stored:<o:p></o:p>
+                                    <br/>
+                                    <b>${proxy}</b><o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MainContent" style="padding-top: 30pt;">
+                                <span class="SubContent" style="font-size:12pt;">
+                                    <i>Team AWS Media2Cloud</i><o:p></o:p>
+                                </span>
+                                </p>
+
+                                <p class="MsoNormal">
+                                <span style="font-size:11.0pt">
+                                    <o:p>&nbsp;</o:p>
+                                </span>
+                                </p>
+                            </div>
+                            </body>
+                            </html>
+                        - {
+                            url: !Sub "https://${CloudFrontDistributionDomainName}",
+                            ingest: !Ref IngestBucket,
+                            proxy: !Ref ProxyBucket
+                        }
+            AliasAttributes:
+                - email
+            AutoVerifiedAttributes:
+                - email
+            MfaConfiguration: 'OFF'
+            Policies:
+                PasswordPolicy:
+                    MinimumLength: 8
+                    RequireLowercase: true
+                    RequireNumbers: true
+                    RequireSymbols: true
+                    RequireUppercase: true
+            UserPoolName: !Sub ${ResourcePrefix}-userpool
+
+    CognitoAppClient:
+        Type: AWS::Cognito::UserPoolClient
+        Properties:
+            ClientName: !Sub ${ResourcePrefix}-app
+            RefreshTokenValidity: 30
+            UserPoolId: !Ref CognitoUserPool
+
+    CognitoIdentityPool:
+        Type: AWS::Cognito::IdentityPool
+        Properties:
+            IdentityPoolName: !Sub ${ResourcePrefix}-identity
+            AllowUnauthenticatedIdentities: false
+            CognitoIdentityProviders:
+                -
+                  ClientId: !Ref CognitoAppClient
+                  ProviderName: !GetAtt CognitoUserPool.ProviderName
+                  ServerSideTokenCheck: false
+
+    CognitoAuthenticatedRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: This wildcard is present as the authenticated cognito role needs to be able to access contents within the bucket!
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
                     -
                         Effect: Allow
-                        Action:
-                            - "s3:GetObject"
-                        Resource:
-                            - !Sub "arn:aws:s3:::${WebBucket}/*"
                         Principal:
-                            CanonicalUser: !GetAtt OriginAccessIdentity.S3CanonicalUserId
+                            Federated: cognito-identity.amazonaws.com
+                        Action: sts:AssumeRoleWithWebIdentity
+                        Condition:
+                            StringEquals:
+                                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
+                            ForAnyValue:StringLike:
+                                cognito-identity.amazonaws.com:amr: authenticated
+            Path: !Sub /${ResourcePrefix}/
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-CognitoAuthUser
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # Cognito - allow to get identity id
+                            -
+                                Effect: Allow
+                                Action: cognito-identity:GetId
+                                Resource: !Sub arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${CognitoIdentityPool}
+                            # S3 - Read/Write/List on ingest bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}
+                            -
+                                Effect: Allow
+                                Action:
+                                    - s3:GetObject
+                                    - s3:PutObject
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                            # S3 - Read/Write/List on proxy bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                            -
+                                Effect: Allow
+                                Action:
+                                    - s3:GetObject
+                                    - s3:PutObject
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+                            # API Gateway
+                            -
+                                Effect: Allow
+                                Action: execute-api:Invoke
+                                Resource: !Sub
+                                    - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/*/*
+                                    - stageName: !FindInMap
+                                        - APIGW
+                                        - Stage
+                                        - Name
+                            # IoT
+                            -
+                                Effect: Allow
+                                Action: iot:Connect
+                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*
+                            -
+                                Effect: Allow
+                                Action: iot:Subscribe
+                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${IotTopic}
+                            -
+                                Effect: Allow
+                                Action: iot:Receive
+                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
+    CognitoIdentityPoolRoleAttachment:
+        Type: AWS::Cognito::IdentityPoolRoleAttachment
+        Properties:
+            IdentityPoolId: !Ref CognitoIdentityPool
+            Roles:
+                authenticated: !GetAtt CognitoAuthenticatedRole.Arn
+
+    ################################################################################
     #
-    # copy web content to web bucket
+    # PostProcess (Custom Resources)
+    # * Copy web content to web bucket
+    # * Invalidate CloudFront distribution cache when updating stack
+    # * Update CORS rules on both ingest and proxy buckets
     #
+    ################################################################################
+    CustomResourcesPolicyWebapp:
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !Ref CustomResourcesRoleName
+            PolicyName: !Sub ${ResourcePrefix}-custom-resources-webapp-stack
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # CloudFront - Invalidate Cache
+                    -
+                        Effect: Allow
+                        Action: cloudfront:CreateInvalidation
+                        Resource: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/*
+                    # S3 - GetObject from S3Bucket
+                    -
+                        Effect: Allow
+                        Action: s3:GetObject
+                        Resource: !Sub
+                            - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                            - package: !FindInMap
+                                - Workflow
+                                - WebApp
+                                - Package
+                    # S3 - PutObject to WebBucket
+                    -
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${WebBucket}/*
+                    # S3 - PutBucketCORS for Ingest and Proxy buckets
+                    -
+                        Effect: Allow
+                        Action: s3:PutBucketCORS
+                        Resource:
+                            - !Sub arn:aws:s3:::${IngestBucket}
+                            - !Sub arn:aws:s3:::${ProxyBucket}
+
     CopyWebContent:
+        DependsOn: CustomResourcesPolicyWebapp
         Type: Custom::CopyWebContent
         Properties:
-            ServiceToken: !Ref CustomResourceArn
+            ServiceToken: !Ref CustomResourcesLambdaArn
             Data:
                 SolutionId: !Ref SolutionId
                 Source:
                     Bucket: !Ref S3Bucket
-                    Key: !Sub [
-                        "${KeyPrefix}/${x0}", {
-                            x0: !FindInMap [
-                                "Solution",
-                                "Package",
-                                "WebApp"
-                            ]
-                        }
-                    ]
+                    Key: !Sub
+                        - ${KeyPrefix}/${package}
+                        - package: !FindInMap
+                            - Workflow
+                            - WebApp
+                            - Package
                 Destination:
                     Bucket: !Ref WebBucket
 
-    #
-    # CloudFront distribution
-    #
-    Distribution:
-        Type: AWS::CloudFront::Distribution
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W70
-                        reason: "Will revisit to enable MinimumProtocolVersion to TLS1.2"
+    InvalidateCache:
+        DependsOn: CustomResourcesPolicyWebapp
+        Type: Custom::InvalidateCache
         Properties:
-            DistributionConfig:
-                Comment: "Website distribution for Media2Cloud solution"
-                Origins:
-                    -
-                        Id: !Sub "S3-${WebBucket}"
-                        DomainName: !If [
-                            bUSEast1,
-                            !Sub "${WebBucket}.s3.amazonaws.com",
-                            !Sub "${WebBucket}.s3.${AWS::Region}.amazonaws.com"
-                        ]
-                        S3OriginConfig:
-                            OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OriginAccessIdentity}"
-                DefaultCacheBehavior:
-                    TargetOriginId: !Sub "S3-${WebBucket}"
-                    AllowedMethods: [
-                        GET,
-                        HEAD,
-                        OPTIONS,
-                        PUT,
-                        POST,
-                        DELETE,
-                        PATCH
-                    ]
-                    CachedMethods: [
-                        GET,
-                        HEAD,
-                        OPTIONS
-                    ]
-                    ForwardedValues:
-                        QueryString: false
-                    ViewerProtocolPolicy: redirect-to-https
-                DefaultRootObject: !FindInMap ["Solution", "Website", "MainPage"]
-                CustomErrorResponses:
-                    -
-                        ErrorCode: 403
-                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
-                        ResponseCode: 200
-                    -
-                        ErrorCode: 404
-                        ResponsePagePath: !Sub ["/${x0}", {x0: !FindInMap ["Solution", "Website", "MainPage"]}]
-                        ResponseCode: 200
-                IPV6Enabled: true
-                ViewerCertificate:
-                    CloudFrontDefaultCertificate: true
-                Enabled: true
-                HttpVersion: "http2"
-                PriceClass: !Ref PriceClass
-                Logging:
-                    Bucket: !Sub "${LogsBucket}.s3.amazonaws.com"
-                    Prefix: access_logs_cloudfront/
-                    IncludeCookies: true
+            ServiceToken: !Ref CustomResourcesLambdaArn
+            Data:
+                DistributionId: !Ref CloudFrontDistributionId
+                Paths:
+                    - /app.min.js
+                    - /solution-manifest.js
+                    - /css/app.css
+                    - /src/lib/js/*
+                    - /third_party*
+                    - /*.html
+                LastUpdated: !GetAtt CopyWebContent.LastUpdated
+
+    UpdateIngestCorsRule:
+        DependsOn: CustomResourcesPolicyWebapp
+        Type: Custom::SetCORS
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+            Data:
+                Bucket: !Ref IngestBucket
+                AllowedOrigins:
+                    - !Sub https://${CloudFrontDistributionDomainName}
+                AllowedMethods:
+                    - HEAD
+                    - GET
+                    - PUT
+                    - POST
+                AllowedHeaders:
+                    - "*"
+                ExposeHeaders:
+                    - Content-Length
+                    - ETag
+                    - x-amz-meta-uuid
+                    - x-amz-meta-md5
+                MaxAgeSeconds: 3000
+
+    UpdateProxyCorsRule:
+        DependsOn: CustomResourcesPolicyWebapp
+        Type: Custom::SetCORS
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+            Data:
+                Bucket: !Ref ProxyBucket
+                AllowedOrigins:
+                    - !Sub https://${CloudFrontDistributionDomainName}
+                AllowedMethods:
+                    - HEAD
+                    - GET
+                    - PUT
+                    - POST
+                    - DELETE
+                AllowedHeaders:
+                    - "*"
+                ExposeHeaders:
+                    - Content-Length
+                    - ETag
+                    - x-amz-meta-uuid
+                    - x-amz-meta-md5
+                MaxAgeSeconds: 3000
 
 Outputs:
-    BucketName:
-        Value: !Ref WebBucket
-        Description: Bucket Name (Website)
-
-    DistributionId:
-        Value: !Ref Distribution
-        Description: "Distribution Id"
-
-    WebsiteUrl:
-        Value: !Sub https://${Distribution.DomainName}
-        Description: "Website URL"
-
+    RestApi:
+        Value: !Ref RestApi
+        Description: RestApi
+    ApiEndpoint:
+        Value: !Sub
+            - https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${stageName}
+            - stageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+        Description: ApiEndpoint
+    ApiRole:
+        Value: !Ref ApiRole
+        Description: ApiRole
+    ApiRoleArn:
+        Value: !GetAtt ApiRole.Arn
+        Description: ApiRoleArn
+    CognitoUserPool:
+        Value: !Ref CognitoUserPool
+        Description: CognitoUserPool
+    CognitoUserPoolArn:
+        Value: !GetAtt CognitoUserPool.Arn
+        Description: CognitoUserPoolArn
+    CognitoUserPoolProviderName:
+        Value: !GetAtt CognitoUserPool.ProviderName
+        Description: CognitoUserPoolProviderName
+    CognitoUserPoolProviderURL:
+        Value: !GetAtt CognitoUserPool.ProviderURL
+        Description: CognitoUserPoolProviderURL
+    CognitoAppClient:
+        Value: !Ref CognitoAppClient
+        Description: CognitoAppClient
+    CognitoIdentityPool:
+        Value: !Ref CognitoIdentityPool
+        Description: CognitoIdentityPool
+    CognitoIdentityPoolName:
+        Value: !GetAtt CognitoIdentityPool.Name
+        Description: CognitoIdentityPoolName
     LastUpdated:
         Value: !GetAtt CopyWebContent.LastUpdated
-        Description: "Last Updated"
+        Description: LastUpdated
+    HomePage:
+        Value: !Sub https://${CloudFrontDistributionDomainName}
+        Description: HomePage

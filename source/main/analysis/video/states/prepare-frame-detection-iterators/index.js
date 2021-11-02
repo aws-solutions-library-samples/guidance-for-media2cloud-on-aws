@@ -1,15 +1,21 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
   StateData,
   AnalysisError,
   AnalysisTypes,
   FrameCaptureModeHelper,
+  Environment,
 } = require('core-lib');
 
 const SUBCATEGORY_CELEB = AnalysisTypes.Rekognition.Celeb;
@@ -180,6 +186,7 @@ class StatePrepareFrameDetectionIterators {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     do {
       response = await s3.listObjectsV2({
@@ -187,6 +194,7 @@ class StatePrepareFrameDetectionIterators {
         Prefix: prefix,
         MaxKeys: 1000,
         ContinuationToken: (response || {}).NextContinuationToken,
+        ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
       }).promise();
       numFrames += response.Contents.filter(x =>
         PATH.parse(x.Key).ext === '.jpg').length;

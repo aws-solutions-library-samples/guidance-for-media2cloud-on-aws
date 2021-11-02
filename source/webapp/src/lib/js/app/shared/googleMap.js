@@ -1,27 +1,18 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-
-/**
- * @author MediaEnt Solutions
- */
-import Storage from './storage.js';
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
 export default class GoogleMap {
-  static async getSingleton() {
+  static async getSingleton(mapApiKey) {
     return new Promise((resolve) => {
       if (GoogleMap.singleton) {
         resolve(GoogleMap.singleton);
         return;
       }
-      GoogleMap.loadMap(resolve);
+      GoogleMap.loadMap(resolve, mapApiKey);
     });
   }
 
-  static loadMap(resolve) {
-    const apiKey = Storage.getOption('mapApiKey', '');
+  static loadMap(resolve, apiKey = '') {
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
 

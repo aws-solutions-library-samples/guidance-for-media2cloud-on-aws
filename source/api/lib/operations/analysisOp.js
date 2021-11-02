@@ -1,12 +1,16 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
-  BaseIndex,
   CommonUtils,
   DB,
   Environment,
@@ -22,9 +26,7 @@ const TRACK_METADATA = 'metadata';
 const TRACK_TIMESERIES = 'timeseries';
 const TRACK_VTT = 'vtt';
 const CATEGORY_REKOGNITION = 'rekognition';
-const CATEGORY_TEXTRACT = 'textract';
 const CATEGORY_COMPREHEND = 'comprehend';
-const CATEGORY_TRANSCRIBE = 'transcribe';
 
 class AnalysisOp extends BaseOp {
   async onGET() {
@@ -65,32 +67,66 @@ class AnalysisOp extends BaseOp {
   }
 
   async onPOST() {
-    const params = this.request.body;
-
-    if (!params.uuid || !CommonUtils.validateUuid(params.uuid)) {
+    const input = (this.request.body || {}).input || {};
+    const uuid = input.uuid || (this.request.pathParameters || {}).uuid;
+    if (!uuid || !CommonUtils.validateUuid(uuid)) {
       throw new Error('invalid uuid');
     }
+    /* get original settings from db table */
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+    const fieldsToGet = [
+      'bucket',
+      'key',
+      'destination',
+      'attributes',
+      'aiOptions',
+    ];
+    const original = await db.fetch(uuid, undefined, fieldsToGet);
+    /* drop analysis field to trigger clean up logic */
+    await db.dropColumns(uuid, undefined, 'analysis')
+      .catch(() =>
+        undefined);
 
-    if (!params.input) {
-      params.input = {};
+    /* determine if we need to re-run ingest workflow */
+    /* if framebased or customlabel is enabled OR frameCaptureMode has changed */
+    if (input.aiOptions === undefined) {
+      input.aiOptions = original.aiOptions;
     }
-
+    const ingestRequired = this.enableIngest(original.aiOptions, input.aiOptions);
+    const stateMachine = (ingestRequired)
+      ? Environment.StateMachines.Main
+      : Environment.StateMachines.Analysis;
     const arn = [
       'arn:aws:states',
       process.env.AWS_REGION,
       this.request.accountId,
       'stateMachine',
-      Environment.StateMachines.Analysis,
+      stateMachine,
     ].join(':');
-
+    const params = {
+      input: {
+        uuid,
+        ...original,
+        aiOptions: input.aiOptions,
+      },
+      uuid,
+    };
     const step = new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
-
     const response = await step.startExecution({
       input: JSON.stringify(params),
       stateMachineArn: arn,
     }).promise();
+
+    /* update aiOptions field */
+    await db.update(uuid, undefined, {
+      aiOptions: input.aiOptions,
+    }, false);
 
     return super.onPOST({
       uuid: params.uuid,
@@ -101,67 +137,57 @@ class AnalysisOp extends BaseOp {
 
   async onDELETE() {
     const uuid = (this.request.pathParameters || {}).uuid;
-
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
       throw new Error('invalid uuid');
     }
-
-    let db = new DB({
+    /* drop analysis column */
+    const db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
-    const fetched = await db.fetch(uuid, undefined, [
-      'analysis',
-      'key',
-    ]);
-
-    if (!((fetched || {}).analysis || []).length) {
-      return super.onDELETE({
-        uuid,
-        status: StateData.Statuses.NoData,
-      });
-    }
-
-    let promises = [];
-    /* #1: drop analysis attribute */
-    promises.push(db.dropColumns(uuid, undefined, 'analysis').catch(() => undefined));
-
-    /* #2: delete all aiml rows */
-    db = new DB({
-      Table: Environment.DynamoDB.AIML.Table,
-      PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
-      SortKey: Environment.DynamoDB.AIML.SortKey,
-    });
-    promises = promises.concat(fetched.analysis.map(x =>
-      db.purge(uuid, x).catch(() => undefined)));
-
-    /* #3: remove all analysis results */
-    let prefix = PATH.parse(fetched.key).dir;
-    prefix = PATH.join(uuid, prefix, 'analysis');
-
-    const files =
-      await CommonUtils.listObjects(Environment.Proxy.Bucket, prefix).catch(() => []);
-    promises = promises.concat(files.map(x =>
-      CommonUtils.deleteObject(Environment.Proxy.Bucket, x.Key).catch(() => undefined)));
-
-    /* #4: remove index from search engine */
-    promises.push((new BaseIndex()).deleteDocument(uuid).catch(() => undefined));
-
-    await Promise.all(promises);
-
+    await db.dropColumns(uuid, undefined, 'analysis')
+      .catch(() =>
+        undefined);
     return super.onDELETE({
       uuid,
       status: StateData.Statuses.Removed,
-      ...fetched,
     });
   }
 
+  enableIngest(original, requested) {
+    if (!original.framebased && requested.framebased) {
+      return true;
+    }
+    if (!original.customlabel && requested.customlabel) {
+      return true;
+    }
+    if ((requested.framebased || requested.customlabel)
+      && original.frameCaptureMode !== requested.frameCaptureMode) {
+      return true;
+    }
+    return false;
+  }
+
   async loadTrackBasenames(bucket, prefix) {
+    const names = [];
     if (!bucket || !prefix || PATH.parse(prefix).ext.length > 0) {
       return undefined;
     }
-    return CommonUtils.listObjects(bucket, PATH.join(prefix, '/'))
-      .then(data => data.map(x => PATH.parse(x.Key).name));
+    let response;
+    do {
+      response = await CommonUtils.listObjects(bucket, prefix, {
+        ContinuationToken: (response || {}).NextContinuationToken,
+        MaxKeys: 300,
+      }).catch((e) =>
+        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+      if (response && response.Contents) {
+        names.splice(names.length, 0, ...response.Contents.map((x) =>
+          PATH.parse(x.Key).name));
+      }
+    } while ((response || {}).NextContinuationToken);
+    return names.length > 0
+      ? names
+      : undefined;
   }
 
   async loadTracks(data, category) {

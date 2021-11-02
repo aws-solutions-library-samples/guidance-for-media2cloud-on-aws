@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 module.exports = {
   /**
    * @description manage asset
@@ -20,40 +18,6 @@ module.exports = {
    * method: GET, POST, DELETE
    */
   Analysis: 'analysis',
-
-  /**
-   * @description start labeling job
-   * /labeling
-   * method: POST
-   */
-  Labeling: 'labeling',
-
-  /**
-   * @description manage workteam members
-   * /workteam/{teamName}?member={string}
-   * method: GET, POST, DELETE
-   */
-  Workteam: 'workteam',
-
-  /**
-   * @deprecated
-   * @description manage face collection
-   * /face-collection/{collectionId}?token={token}&pageSize={number}
-   * method: GET, POST, DELETE
-   */
-  FaceCollection: 'face-collection',
-
-  /**
-   * @description manage index faces
-   * /index-face/{collectionId+} (GET)
-   */
-  IndexFace: 'index-face',
-
-  /**
-   * @description manage index faces
-   * /queue-face/{collectionId+} (GET)
-   */
-  QueueFace: 'queue-face',
 
   /**
    * @description search results on Elasticsearch
@@ -77,13 +41,6 @@ module.exports = {
   AttachPolicy: 'attach-policy',
 
   /**
-   * @description edit specific label
-   * /edit-label
-   * method: POST
-   */
-  EditLabel: 'edit-label',
-
-  /**
    * @description get a list of rekognition face collections
    * /rekognition/face-collections
    * method: GET
@@ -91,11 +48,32 @@ module.exports = {
   FaceCollections: 'rekognition/face-collections',
 
   /**
+    * @description get a list of rekognition face collections
+    * /rekognition/face-collection?collectionId=<Name>&maxResults=<Number>
+    * method: GET, POST, DELETE
+    */
+  FaceCollection: 'rekognition/face-collection',
+
+  /**
+   * @description get a list of rekognition face collections
+   * /rekognition/faces
+   * method: GET
+   */
+  Faces: 'rekognition/faces',
+
+  /**
+    * @description get a list of rekognition face collections
+    * /rekognition/face?collectionId=<CollectionId>&faceId=<FaceId>
+    * method: GET, POST, DELETE
+    */
+  Face: 'rekognition/face',
+
+  /**
    * @description get a list of rekognition custom labels models
    * /rekognition/custom-label-models
    * method: GET
    */
-  CustomLabelModels: 'rekognitin/custom-label-models',
+  CustomLabelModels: 'rekognition/custom-label-models',
 
   /**
    * @description get a list of transcribe custom vocabularies

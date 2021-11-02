@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import Localization from './shared/localization.js';
 import CognitoConnector from './shared/cognitoConnector.js';
@@ -6,6 +9,7 @@ import CollectionTab from './mainView/collectionTab.js';
 import UploadTab from './mainView/uploadTab.js';
 import ProcessingTab from './mainView/processingTab.js';
 import StatsTab from './mainView/statsTab.js';
+import FaceCollectionTab from './mainView/faceCollectionTab.js';
 import SettingsTab from './mainView/settingsTab.js';
 
 const ID_MAIN_CONTAINER = `main-${AppUtils.randomHexstring()}`;
@@ -24,6 +28,7 @@ export default class MainView {
       new UploadTab(),
       new ProcessingTab(),
       new StatsTab(),
+      new FaceCollectionTab(),
       new SettingsTab(),
     ];
   }
@@ -101,7 +106,7 @@ export default class MainView {
   }
 
   createLogoutIcon() {
-    const logout = $('<button/>').addClass('btn btn-sm btn-link')
+    const logout = $('<button/>').addClass('btn btn-sm btn-link text-white')
       .attr('type', 'button')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')

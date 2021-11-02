@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 export default class Localization {
   static get isoCode() {
     return 'en-US';
@@ -41,9 +44,13 @@ export default class Localization {
           Team: 'Team member goes here...',
           /* stats tab panel */
           StatsTab: 'Stats',
+          /* face collection tab panel */
+          FaceCollectionTab: 'FaceCollection',
           /* setting tab panel */
           SettingsTab: 'Settings',
           SettingsDesc: 'This setting page allows you to configure and fine tune AI/ML settings for each of the Amazon AI services.',
+          DatastoreFeature: 'Local Data Store (IndexedDB)',
+          DatastoreFeatureDesc: 'Media2Cloud uses <a href="https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API" target="_blank">IndexedDB</a> to cache thumbnail images, datasets, and other settings locally. Click <strong/>Clean up data store</strong> to delete the local data.',
           RekognitionFeatures: 'Amazon Rekognition Settings',
           RekognitionFeaturesDesc: '<a href="https://aws.amazon.com/rekognition" target="_blank">Amazon Rekognition</a> allows you to detect celebrities, faces, labels, objects or create your own <a href="https://docs.aws.amazon.com/rekognition/latest/dg/collections.html" target="_blank">Face Collection</a> to match faces in your collection.',
           ComprehendFeatures: 'Amazon Comprehend Settings',
@@ -65,16 +72,26 @@ export default class Localization {
           /* search component */
           Search: 'Search',
           Submit: 'Submit',
-          SearchDesc: 'Specify options to refine search results. Select specific category such as \'Video\' or \'Photo\' returns results in the selected categories. Select \'Exact match\' returns results that contains the exact phrases.',
+          SearchDesc: 'Fine tune search results by selecting media type(s) such as <strong>Video</strong> or <strong>Photo</strong>, type(s) of categories such as <strong>Known faces</strong> to search Celebrities and Faces found in Face Collection, <strong>Labels</strong> to search Rekognition labels, <strong>Transcript</strong> to search speech to text results, and/or <strong>Content attributes</strong> to search group name and attributes associated with uploaded content. Select <strong>Exact match</strong> to search exact terms',
+          SearchQueryFailed: 'Fail to query the search results',
+          // SearchDesc: 'Specify options to refine search results. Select specific category such as \'Video\' or \'Photo\' returns results in the selected categories. Select \'Exact match\' returns results that contains the exact phrases.',
           ExactMatch: 'Exact match',
           PageSize10: '10 results per page',
           PageSize30: '30 results per page',
           PageSize50: '50 results per page',
-          SearchResultDesc: 'Search results:',
+          SearchResultDesc: 'Search results',
+          Category: 'Category',
+          /* ai options */
+          Transcript: 'Transcript',
+          KnownFaces: 'Known faces',
+          Keyphrases: 'Key phrases',
+          Entities: 'Entities',
+          VisualText: 'Visual text',
+          ContentAttributes: 'Content attributes',
+          TranscriptPhrasesEntities: 'Transcript, Phrases, & Entities',
+          LabelsModeration: 'Labels & Moderation',
           /* content sub-tab */
           ContentTab: 'Content',
-          /* face collection sub-tab */
-          FaceCollectionTab: 'Face Collection',
           /* processing tab */
           VideoTab: 'Video',
           PhotoTab: 'Photo',
@@ -82,8 +99,9 @@ export default class Localization {
           DocumentTab: 'Document',
           GroupTab: 'Group',
           NoMediaPresent: 'You don\'t have any <abbr title="media">{{MEDIATYPE}}</abbr> files in your collection. Navigate to <abbr title="upload">{{UPLOADTAB}} Tab</abbr> to start adding files.',
-          MediaInProcess: 'Preview is not available as \'{{BASENAME}}\' is still in process. Please navigate to <abbr title="processing">{{PROCESSINGTAB}} Tab</abbr> to see more details.',
-          MediaError: 'Preview is not available as \'{{BASENAME}}\' reports an error. Please navigate to <abbr title="processing">{{PROCESSINGTAB}} Tab</abbr> to see more details.',
+          MediaInProcess: '<p><strong>{{BASENAME}}</strong> media is still in process. Please navigate to <strong>{{PROCESSINGTAB}} Tab</strong> to check the progress.</p>',
+          MediaError: '<p><strong>{{BASENAME}}</strong> media has failed to process. Please navigate to <strong>{{PROCESSINGTAB}} Tab</strong> to see more details.</p>',
+          RemoveMedia: '<p/>Removing <strong/>{{BASENAME}}</strong> will <u>delete</u> all proxies, metadata, and records from the collection.</p><p>Would you like to proceed?</p>',
           ProcessingTab: 'Processing',
           ProcessingDesc: 'List of processing jobs',
           ProcessingError: 'Fail to process <abbr title="basename">{{BASENAME}}</abbr>. Navigate to <abbr title="processing">{{PROCESSINGTAB}} Tab</abbr> to check the details.',
@@ -198,6 +216,8 @@ export default class Localization {
           /** analysis */
           AnalysisGroup: 'Analysis',
           StatisticsTab: 'Statistics',
+          SearchResultTab: 'Search Results',
+          ReAnalyzeTab: 'Re-Analyze',
           SummaryTab: 'Summary',
           WorkflowHistory: 'AWS Step Functions (workflow history)',
           Rekognition: 'Amazon Rekognition',
@@ -226,7 +246,7 @@ export default class Localization {
           ToggleAll: 'Toggle all labels',
           TranscriptionJob: 'Transcription Job',
           SubtitleSwitch: 'Turn subtitle on/off',
-          DownloadEDLDesc: 'Media2Cloud also converts shot segments result into Edit Decision List (EDL) file. You can download and import the timeline into popular editing software.',
+          DownloadEDLDesc: 'Media2Cloud converts AI/ML detection results to Edit Decision List (EDL) format that allows you to import the detection results as timelines into popular editing software.',
           ScatterGraphDesc: 'Toggle a legend to show or hide data points of the selected label. Click on individual data point to seek to the timestamp on the video to see the detection results.',
           /* textract */
           Row: 'Row',
@@ -252,14 +272,28 @@ export default class Localization {
           TotalSize: 'Total sizes of media per category',
           WorkflowStatuses: 'Overview of workflow statuses',
           MostRecentStats: 'Most recently ingested media',
-          Miscellaneous: 'Miscellaneous',
+          Aggregations: 'Aggregations of AI/ML metadata',
+          TopKnownFaces: 'Top known faces in library',
+          TopLabels: 'Top labels in library',
+          TopModerations: 'Top moderation labels in library',
+          TopKeyphrases: 'Top keyphrases in library',
+          TopEntities: 'Top entities in library',
           LongestFile: 'Longest duration in library',
           LargestFile: 'Largest filesize in library',
+          /* FaceCollection */
+          FaceCollectionDesc: 'Create, view and manage your Amazon Rekognition Face Collection(s).',
+          AvailableFaceCollections: 'List of available face collection(s)',
+          IndexedFacesInCollection: 'Indexed faces found in <strong>{{FACE_COLLECTION}}</strong> collection',
+          SelectFaceCollection: 'Select a face collection...',
+          Alternatively: 'Alternatively,',
+          /* Snapshot */
+          EnableSnapshotMode: 'Snapshot mode',
         },
         Tooltips: {
           /* main view */
           VisitSolutionPage: 'Visit AWS Solutions page',
           Logout: 'ready to logout?',
+          RemoveMedia: 'Remove media from collection',
           /* analysis component */
           MinConfidence: 'Set the minimum confidence level for various Amazon Rekognition detection(s) to return the result set',
           FaceColection: 'Uses Amazon Rekognition Face Collection',
@@ -302,6 +336,11 @@ export default class Localization {
           SelectMultipleItems: 'Select multiple items',
           PreviewMedia: 'Preview media',
           RefreshStats: 'Refresh stats',
+          /* face collection */
+          RemoveFaceFromCollection: 'Remove face from collection',
+          RemoveFaceCollection: 'Delete the entire face collection!',
+          /* snapshot */
+          IndexFace: 'Enter a name of the cropped face and select a face collection to store the face',
         },
         Buttons: {
           Back: 'Back',
@@ -318,9 +357,14 @@ export default class Localization {
           RestoreOriginal: 'Restore original',
           DownloadSummary: 'Download summary',
           ClosePreview: 'Close preview window',
-          DownloadEDL: 'Download EDL',
+          DownloadEDL: 'Download EDL Package',
           ReloadSettings: 'Reload settings',
           Refresh: 'Refresh',
+          CreateNewCollection: 'Create new collection',
+          RemoveFaceCollection: 'Delete face collection',
+          IndexFace: 'Index face',
+          CleanupDatastore: 'Clean up data store',
+          ReAnalyzeContent: 'Re-run AI/ML analysis',
         },
         Statuses: {
           NotStarted: 'Not started',
@@ -355,6 +399,15 @@ export default class Localization {
           ComputeChecksumError: 'fail to compute MD5 checksum...',
           UploadS3Error: 'fail to upload file to S3 bucket...',
           StartWorkflowError: 'fail to start ingest workflow...',
+          /* face collection */
+          InvalidFaceCollectionName: 'Face Collection name can only contain alphnumeric, period, dash, and underscore characters and be less than 255 characters',
+          /* snapshot */
+          InvalidIndexedName: 'Name can only contain alphnumeric, space, period, dash, and underscore characters and be less than 255 characters',
+          InvalidFaceCollectionSelection: 'Make sure to select a face collection. If you don`t have any face collection, navigate to <strong>FaceCollection Tab</strong> to create one.',
+          ConfirmFaceIndexed: '<strong>{{NAME}}</strong> has successfully added to <strong>{{FACECOLLECTION}}</strong> collection!',
+          /* ReAnalyze */
+          ReAnalzyeFailed: 'Fail to re-run AI/ML analysis process for <strong>{{BASENAME}}</strong> media.',
+          ReAnalyzeSubmitted: 'Re-runing the AI/ML analysis process for <strong>{{BASENAME}}</strong> media.',
         },
       },
     };

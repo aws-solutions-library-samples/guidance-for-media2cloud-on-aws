@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 module.exports = {
   Rekognition: {
     Celeb: 'celeb',
@@ -15,8 +18,9 @@ module.exports = {
     Keyphrase: 'keyphrase',
     Entity: 'entity',
     Sentiment: 'sentiment',
-    Topic: 'topic',
-    Classification: 'classification',
+    // Topic: 'topic',
+    // Classification: 'classification',
+    CustomEntity: 'customentity',
   },
   /* textract */
   Textract: 'textract',

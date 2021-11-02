@@ -1,3 +1,10 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const ResourcePrefix = process.env.ENV_RESOURCE_PREFIX;
+const CustomUserAgent = process.env.ENV_CUSTOM_USER_AGENT;
+const ExpectedBucketOwner = process.env.ENV_EXPECTED_BUCKET_OWNER;
+
 module.exports = {
   EventBridge: {
     Bus: process.env.ENV_BACKLOG_EB_BUS,
@@ -36,11 +43,19 @@ module.exports = {
     RoleArn: process.env.ENV_BACKLOG_TOPIC_ROLE_ARN,
   },
   StateMachines: {
-    BacklogCustomLabels: `${process.env.ENV_SOLUTION_ID}-${process.env.ENV_STACKNAME}-backlog-custom-labels`,
+    BacklogCustomLabels: `${ResourcePrefix}-backlog-custom-labels`,
     States: {
       CheckProjectVersionStatus: 'check-project-version-status',
       StartProjectVersion: 'start-project-version',
       DetectCustomLabels: 'detect-custom-labels',
     },
+  },
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
+  S3: {
+    ExpectedBucketOwner,
   },
 };

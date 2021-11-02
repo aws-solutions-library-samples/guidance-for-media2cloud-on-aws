@@ -1,11 +1,19 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PDF = require('pdfjs-dist');
 const Canvas = require('canvas');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
+const EXPECTED_BUCKET_OWNER = process.env.ENV_EXPECTED_BUCKET_OWNER;
 
 class NodeCanvasFactory {
   create(w, h) {
@@ -50,10 +58,12 @@ class PDFLib {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: CUSTOM_USER_AGENT,
     });
     return s3.getObject({
       Bucket: bucket,
       Key: key,
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
     }).promise().then(data => data.Body).catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${bucket}/${key}`);
     });

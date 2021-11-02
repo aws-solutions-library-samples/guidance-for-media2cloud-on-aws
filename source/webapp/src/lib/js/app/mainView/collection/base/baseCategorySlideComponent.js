@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
 import MediaManager from '../../../shared/media/mediaManager.js';
@@ -95,11 +96,20 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     const oldItem = list.find(`div[${DATA_UUID}="${media.uuid}"]`);
     let replacedItem;
     if (oldItem.length > 0 && (oldItem.attr(DATA_STATUS) !== media.overallStatus
-      || media.status === SolutionManifest.Statuses.IngestCompleted)) {
+      || media.status === SolutionManifest.Statuses.IngestStarted
+      || media.status === SolutionManifest.Statuses.AnalysisStarted)) {
       replacedItem = await this.createMediaListItem(media);
       oldItem.replaceWith(replacedItem);
     }
     return replacedItem;
+  }
+
+  async onMediaRemoved(media) {
+    await this.mediaManager.removeMedia(media);
+    /* remove it from ui */
+    const list = this.slide.find(`#${this.ids.mediaList}`);
+    const item = list.find(`div[${DATA_UUID}="${media.uuid}"]`);
+    item.remove();
   }
 
   async onMediaError(media) {
@@ -158,9 +168,8 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     const medias = this.mediaManager.findMediaByType(this.mediaType).filter(x =>
       x.overallStatus !== SolutionManifest.Statuses.Error);
     if (medias) {
-      for (let i = 0; i < medias.length; i++) {
-        list.append(await this.createMediaListItem(medias[i]));
-      }
+      await Promise.all(medias.map((media) =>
+        this.createMediaListItem(media, list)));
       this.showNoMediaMessage(false);
     } else {
       this.showNoMediaMessage(true);
@@ -169,7 +178,7 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     this.loading(false);
   }
 
-  async createMediaListItem(media) {
+  async createMediaListItem(media, container) {
     const image = await this.createThumbnail(media);
     const overlay = this.createMediaOverlay(media);
     const item = $('<div/>').addClass('col-3')
@@ -182,6 +191,9 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
       event.preventDefault();
       return this.slide.trigger(BaseCategorySlideComponent.Events.Media.Selected, [media]);
     });
+    if (container) {
+      container.append(item);
+    }
     return item;
   }
 
@@ -228,13 +240,35 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
   createMediaOverlay(media) {
     const title = $('<div/>').addClass('col-6 p-0 m-0')
       .append($('<h5/>').addClass('lead-s m-0 text-white text-contain')
-        .append(media.basename));
+        .append(AppUtils.shorten(media.basename, 54)));
     const status = this.createMediaStatus(media);
+
+    const removeBtn = $('<button/>').addClass('btn btn-sm btn-outline-danger lead-sm media-action')
+      .attr('data-toggle', 'tooltip')
+      .attr('data-placement', 'bottom')
+      .attr('title', Localization.Tooltips.RemoveMedia)
+      .append($('<i/>').addClass('far fa-trash-alt'))
+      .tooltip({
+        trigger: 'hover',
+      });
+    removeBtn.off('click').on('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      removeBtn.tooltip('hide');
+      return this.slide.trigger(BaseCategorySlideComponent.Events.Media.Removing, [media]);
+    });
+
+    const playIcon = $('<button/>').addClass('btn btn-link media-action')
+      .append($('<i/>').addClass('far fa-play-circle icon-4'));
+
     const content = $('<div/>').addClass('row no-gutters h-100')
       .append(title)
       .append(status)
-      .append($('<div/>').addClass('col-12 p-0 align-self-end d-flex justify-content-end')
-        .append($('<i/>').addClass('far fa-play-circle icon-4 p-2')));
+      .append($('<div/>').addClass('col-12 p-0 align-self-end d-flex')
+        .append($('<div/>').addClass('col-6 p-0 m-0 mt-auto')
+          .append(removeBtn))
+        .append($('<div/>').addClass('col-6 p-0 m-0 ml-auto text-right')
+          .append(playIcon)));
     const overlay = $('<div/>').addClass('card-img-overlay category p-2')
       .append(content);
     return overlay;

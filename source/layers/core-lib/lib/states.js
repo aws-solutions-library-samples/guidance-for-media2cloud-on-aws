@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 module.exports = {
   /* ingest */
   S3: 's3',
@@ -38,27 +36,32 @@ module.exports = {
   StartTranscribe: 'start-transcribe',
   CollectTranscribeResults: 'collect-transcribe-results',
   CreateSubtitle: 'create-subtitle',
+  IndexTranscribeResults: 'index-transcribe-results',
 
   StartEntity: 'start-entity',
   CheckEntityStatus: 'check-entity-status',
   CollectEntityResults: 'collect-entity-results',
   CreateEntityTrack: 'create-entity-track',
+  IndexEntityResults: 'index-entity-results',
 
   CheckCustomEntityCriteria: 'check-custom-entity-criteria',
   StartCustomEntity: 'start-custom-entity',
   CheckCustomEntityStatus: 'check-custom-entity-status',
   CollectCustomEntityResults: 'collect-custom-entity-results',
   CreateCustomEntityTrack: 'create-custom-entity-track',
+  IndexCustomEntityResults: 'index-custom-entity-results',
 
   StartKeyphrase: 'start-keyphrase',
   CheckKeyphraseStatus: 'check-keyphrase-status',
   CollectKeyphraseResults: 'collect-keyphrase-results',
   CreateKeyphraseTrack: 'create-keyphrase-track',
+  IndexKeyphraseResults: 'index-keyphrase-results',
 
   StartSentiment: 'start-sentiment',
   CheckSentimentStatus: 'check-sentiment-status',
   CollectSentimentResults: 'collect-sentiment-results',
   CreateSentimentTrack: 'create-sentiment-track',
+  IndexSentimentResults: 'index-sentiment-results',
 
   StartTopic: 'start-topic',
   CheckTopicStatus: 'check-topic-status',

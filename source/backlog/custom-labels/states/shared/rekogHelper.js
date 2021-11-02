@@ -1,8 +1,25 @@
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   Retry,
   BacklogClient: {
     CustomBacklogJob,
+  },
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
   },
 } = require('service-backlog-lib');
 
@@ -10,6 +27,7 @@ class RekogHelper {
   static getInstance() {
     return new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: CustomUserAgent,
     });
   }
 

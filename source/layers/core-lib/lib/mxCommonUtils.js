@@ -1,14 +1,20 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const URL = require('url');
 const CRYPTO = require('crypto');
 const MIME = require('mime');
 const ZLIB = require('zlib');
 const PATH = require('path');
+const Environment = require('./environment');
 
 const RAW_IMAGE_MIME_TYPES = {
   'image/x-adobe-dng': ['DNG'],
@@ -209,11 +215,13 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     return s3.headObject({
       Bucket,
       Key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${Bucket}/${Key}`);
     });
@@ -224,27 +232,21 @@ const mxCommonUtils = Base => class extends Base {
    * @param {string} Bucket
    * @param {string} Prefix
    */
-  static async listObjects(Bucket, Prefix, MaxKeys = 100) {
-    let response;
-    let collection = [];
-
+  static async listObjects(Bucket, Prefix, options) {
+    const prefix = PATH.join(Prefix, '/');
     const s3 = new AWS.S3({
       apiVersion: '2006-03-01',
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
-
-    do {
-      response = await s3.listObjectsV2({
-        Bucket,
-        Prefix,
-        MaxKeys,
-        ContinuationToken: (response || {}).NextContinuationToken,
-      }).promise();
-      collection = collection.concat(response.Contents);
-    } while ((response || {}).NextContinuationToken);
-    return collection;
+    return s3.listObjectsV2({
+      Bucket,
+      Prefix: prefix,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
+      ...options,
+    }).promise();
   }
 
   /**
@@ -258,6 +260,7 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     const {
@@ -346,11 +349,13 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     return s3.getObject({
       Bucket,
       Key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise().then(data =>
       ((bodyOnly)
         ? data.Body.toString()
@@ -385,7 +390,11 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
-    })).putObject(modified).promise().catch((e) => {
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
+    })).putObject({
+      ...modified,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
+    }).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${params.Bucket}/${params.Key}`);
     });
   }
@@ -404,6 +413,7 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     return s3.putObject({
       Bucket: bucket,
@@ -412,6 +422,7 @@ const mxCommonUtils = Base => class extends Base {
       ContentType: M0.getMime(name),
       ContentDisposition: disposition,
       ServerSideEncryption: 'AES256',
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${bucket}/${prefix}/${name}`);
     });
@@ -462,11 +473,13 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     return s3.deleteObject({
       Bucket,
       Key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise()
       .then(() => true)
       .catch(() => false);
@@ -485,9 +498,11 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     })).getObjectTagging({
       Bucket,
       Key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${Bucket}/${Key}`);
     });
@@ -506,11 +521,13 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     const response = await s3.getObjectTagging({
       Bucket,
       Key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${Bucket}/${Key}`);
     });
@@ -533,6 +550,7 @@ const mxCommonUtils = Base => class extends Base {
         Tagging: {
           TagSet: tagSet,
         },
+        ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
       }).promise().catch((e) => {
         throw new Error(`${e.statusCode} ${e.code} ${Bucket}/${Key}`);
       });
@@ -553,9 +571,11 @@ const mxCommonUtils = Base => class extends Base {
         computeChecksums: true,
         signatureVersion: 'v4',
         s3DisableBodySigning: false,
+        customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
       })).getObject(Object.assign({
         Bucket,
         Key,
+        ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
       }, options)).createReadStream();
     } catch (e) {
       throw new Error(`${e.statusCode} ${e.code} ${Bucket}/${Key}`);
@@ -580,11 +600,13 @@ const mxCommonUtils = Base => class extends Base {
         computeChecksums: true,
         signatureVersion: 'v4',
         s3DisableBodySigning: false,
+        customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
       });
 
       s3.selectObjectContent({
         Bucket: bucket,
         Key: key,
+        ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
         ExpressionType: 'SQL',
         Expression: escaped,
         InputSerialization: {
@@ -646,9 +668,11 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     })).restoreObject(Object.assign({
       Bucket: bucket,
       Key: key,
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }, options)).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${bucket}/${key}`);
     });
@@ -660,12 +684,14 @@ const mxCommonUtils = Base => class extends Base {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     })).copyObject(Object.assign({
       CopySource: source,
       Bucket: bucket,
       Key: key,
       MetadataDirective: 'COPY',
       TaggingDirective: 'COPY',
+      ExpectedBucketOwner: Environment.S3.ExpectedBucketOwner,
     }, options)).promise().catch((e) => {
       throw new Error(`${e.statusCode} ${e.code} ${bucket}/${key}`);
     });

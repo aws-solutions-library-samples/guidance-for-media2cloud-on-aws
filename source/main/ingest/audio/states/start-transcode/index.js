@@ -1,9 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const FS = require('fs');
 const PATH = require('path');
 const {
@@ -92,6 +97,7 @@ class StateStartTranscode {
     const template = await this.createJobTemplate();
     const mediaconvert = new AWS.MediaConvert({
       apiVersion: '2017-08-29',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
       endpoint: Environment.MediaConvert.Host,
     });
     return mediaconvert.createJob(template).promise();

@@ -1,11 +1,19 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const CHILD = require('child_process');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
+const EXPECTED_BUCKET_OWNER = process.env.ENV_EXPECTED_BUCKET_OWNER;
 
 class Exiftool {
   constructor() {
@@ -164,9 +172,11 @@ class Exiftool {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: CUSTOM_USER_AGENT,
     })).getObject({
       Bucket: bucket,
       Key: key,
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
     }).createReadStream();
   }
 }

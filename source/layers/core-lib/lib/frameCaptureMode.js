@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 module.exports = {
   MODE_NONE: 0, // disable frame capture
   MODE_1FPS: 1, // 1 frame per second

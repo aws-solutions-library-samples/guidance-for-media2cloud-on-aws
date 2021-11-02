@@ -1,7 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const BacklogJob = require('../backlogJob');
+const {
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
+} = require('../../shared/defs');
 
 class RekognitionBacklogJob extends BacklogJob {
   static get ServiceApis() {
@@ -88,6 +103,7 @@ class RekognitionBacklogJob extends BacklogJob {
   getRekognitionInstance() {
     return new AWS.Rekognition({
       rekognition: '2016-06-27',
+      customUserAgent: CustomUserAgent,
     });
   }
 

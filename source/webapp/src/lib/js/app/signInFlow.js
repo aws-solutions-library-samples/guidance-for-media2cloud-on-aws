@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from './shared/localization.js';
 import IotSubscriber from './shared/iotSubscriber.js';
 import CognitoConnector from './shared/cognitoConnector.js';
@@ -227,7 +230,10 @@ export default class SignInFlow {
 
       try {
         await this.cognito.confirmNewPassword(password01.val());
-        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PasswordConfirmed);
+        const btn = form.find('button[type="submit"]');
+        btn.addClass('disabled')
+          .attr('disabled', 'disabled');
+        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PasswordConfirmed, 3000);
         this.firstTimeSignIn = 1;
         this.cognito.signOut();
         password01.val('');

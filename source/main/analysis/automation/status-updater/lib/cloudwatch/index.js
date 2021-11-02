@@ -1,11 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   JobStatusError,
+  Environment,
 } = require('core-lib');
 const TranscribeStatusChangeEvent = require('./transcribeStatusChangeEvent');
 const BacklogStatusChangeEvent = require('./backlog/backlogStatusChangeEvent');
@@ -87,6 +93,7 @@ class CloudWatchStatus {
   async sendTaskSuccess() {
     return (new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     })).sendTaskSuccess({
       output: JSON.stringify(this.stateData.toJSON()),
       taskToken: this.token,
@@ -96,6 +103,7 @@ class CloudWatchStatus {
   async sendTaskFailure(error) {
     return (new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     })).sendTaskFailure({
       taskToken: this.token,
       error: error.name,

@@ -1,9 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   StateData,
   Environment,
@@ -26,6 +31,7 @@ class IotOp extends BaseOp {
 
     const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     const response = await iot.attachPolicy({

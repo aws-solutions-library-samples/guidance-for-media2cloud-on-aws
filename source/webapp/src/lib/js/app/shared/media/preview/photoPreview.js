@@ -1,10 +1,13 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import BasePreview from './basePreview.js';
 import S3Utils from '../../s3utils.js';
 import AnalysisTypes from '../../analysis/analysisTypes.js';
 
 export default class PhotoPreview extends BasePreview {
-  constructor(media) {
-    super(media);
+  constructor(media, optionalSearchResults) {
+    super(media, optionalSearchResults);
     this.$imageView = undefined;
     this.$canvases = {};
     this.$canvasIndex = PhotoPreview.Constants.Canvas.ZIndex;
@@ -65,6 +68,14 @@ export default class PhotoPreview extends BasePreview {
     return super.unload();
   }
 
+  async pause() {
+    this.container.find('div.canvas-list').addClass('collapse');
+  }
+
+  async unpause() {
+    this.container.find('div.canvas-list').removeClass('collapse');
+  }
+
   async preload() {
     await this.unload();
     const url = await this.media.getProxyImage();
@@ -76,7 +87,6 @@ export default class PhotoPreview extends BasePreview {
         resolve(img.attr('src', url));
       image.src = url;
     });
-
     const canvasList = $('<div/>').addClass('canvas-list');
     const canvases = await this.createCanvases();
     canvases.forEach(canvas =>
@@ -128,12 +138,12 @@ export default class PhotoPreview extends BasePreview {
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.Celeb,
         name: celeb.Name,
-        confidence: Number.parseFloat(Number.parseFloat(celeb.MatchConfidence).toFixed(2)),
+        confidence: Number(Number(celeb.MatchConfidence).toFixed(2)),
         coord: {
-          y: celeb.Face.BoundingBox.Top,
-          x: celeb.Face.BoundingBox.Left,
-          w: celeb.Face.BoundingBox.Width,
-          h: celeb.Face.BoundingBox.Height,
+          y: Number(Number(celeb.Face.BoundingBox.Top).toFixed(2)),
+          x: Number(Number(celeb.Face.BoundingBox.Left).toFixed(2)),
+          w: Number(Number(celeb.Face.BoundingBox.Width).toFixed(2)),
+          h: Number(Number(celeb.Face.BoundingBox.Height).toFixed(2)),
         },
       });
       const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
@@ -152,7 +162,7 @@ export default class PhotoPreview extends BasePreview {
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.Face,
         name: `Face ${faceIdx++}`,
-        confidence: Number.parseFloat(Number.parseFloat(face.Confidence).toFixed(2)),
+        confidence: Number(Number(face.Confidence).toFixed(2)),
         coord: {
           y: face.BoundingBox.Top,
           x: face.BoundingBox.Left,
@@ -160,7 +170,7 @@ export default class PhotoPreview extends BasePreview {
           h: face.BoundingBox.Height,
         },
         gender: (face.Gender || {}).Value
-          ? `${face.Gender.Value} (${Number.parseFloat(face.Gender.Confidence).toFixed(2)})`
+          ? `${face.Gender.Value} (${Number(face.Gender.Confidence).toFixed(2)})`
           : undefined,
         ageRange: (face.AgeRange || {}).Value
           ? `${face.AgeRange.Low}/${face.AgeRange.High}`
@@ -181,12 +191,12 @@ export default class PhotoPreview extends BasePreview {
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.FaceMatch,
         name: match.Face.ExternalImageId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        confidence: Number.parseFloat(Number.parseFloat(match.Similarity).toFixed(2)),
+        confidence: Number(Number(match.Similarity).toFixed(2)),
         coord: {
-          y: match.Face.BoundingBox.Top,
-          x: match.Face.BoundingBox.Left,
-          w: match.Face.BoundingBox.Width,
-          h: match.Face.BoundingBox.Height,
+          y: Number(Number(data.SearchedFaceBoundingBox.Top).toFixed(2)),
+          x: Number(Number(data.SearchedFaceBoundingBox.Left).toFixed(2)),
+          w: Number(Number(data.SearchedFaceBoundingBox.Width).toFixed(2)),
+          h: Number(Number(data.SearchedFaceBoundingBox.Height).toFixed(2)),
         },
       });
       const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
@@ -210,7 +220,7 @@ export default class PhotoPreview extends BasePreview {
           const canvasId = this.canvasRegister({
             type: AnalysisTypes.Rekognition.Label,
             name: `${label.Name} ${i++}`,
-            confidence: Number.parseFloat(Number.parseFloat(instance.Confidence).toFixed(2)),
+            confidence: Number(Number(instance.Confidence).toFixed(2)),
             coord: {
               y: instance.BoundingBox.Top,
               x: instance.BoundingBox.Left,
@@ -228,7 +238,7 @@ export default class PhotoPreview extends BasePreview {
         const canvasId = this.canvasRegister({
           type: AnalysisTypes.Rekognition.Label,
           name: label.Name,
-          confidence: Number.parseFloat(Number.parseFloat(label.Confidence).toFixed(2)),
+          confidence: Number(Number(label.Confidence).toFixed(2)),
           coord: undefined,
           parentName: parents,
         });
@@ -251,7 +261,7 @@ export default class PhotoPreview extends BasePreview {
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.Moderation,
         name: moderation.Name,
-        confidence: Number.parseFloat(Number.parseFloat(moderation.Confidence).toFixed(2)),
+        confidence: Number(Number(moderation.Confidence).toFixed(2)),
         coord: undefined,
         parentName: moderation.ParentName,
       });
@@ -273,7 +283,7 @@ export default class PhotoPreview extends BasePreview {
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.Text,
         name: text.DetectedText,
-        confidence: Number.parseFloat(Number.parseFloat(text.Confidence).toFixed(2)),
+        confidence: Number(Number(text.Confidence).toFixed(2)),
         coord: {
           y: text.Geometry.BoundingBox.Top,
           x: text.Geometry.BoundingBox.Left,

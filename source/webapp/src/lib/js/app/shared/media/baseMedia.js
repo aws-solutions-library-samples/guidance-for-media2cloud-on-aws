@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import S3Utils from '../s3utils.js';
 import AppUtils from '../appUtils.js';
@@ -163,9 +166,38 @@ export default class BaseMedia extends mxReadable(class {}) {
     return DEFAULT_IMAGE;
   }
 
+  getVideoDimension() {
+    const track = this.mediainfo.media.track.find((x) =>
+      x.$.type.toLowerCase() === 'video') || {};
+    return {
+      width: track.width || 0,
+      height: track.height || 0,
+    };
+  }
+
   async refresh() {
     const data = await ApiHelper.getRecord(this.uuid);
+    const bucket = data.destination.bucket;
+    /* reload mediainfo */
+    if (Array.isArray(data.mediainfo) && data.mediainfo.length > 0) {
+      const key = data.mediainfo.find(x => /\.json$/.test(x));
+      if (bucket && key) {
+        data.mediainfo = await S3Utils.getObject(bucket, key)
+          .then((res) =>
+            JSON.parse(res.Body.toString()).mediaInfo)
+          .catch((e) =>
+            console.error(`[ERR]: fail to get mediainfo. ${encodeURIComponent(e.message)}`));
+      }
+    } else if (data.imageinfo) {
+      /* reload imageinfo */
+      data.imageinfo = await S3Utils.getObject(bucket, data.imageinfo)
+        .then((res) =>
+          JSON.parse(res.Body.toString()))
+        .catch((e) =>
+          console.error(`[ERR]: fail to get imageinfo. ${encodeURIComponent(e.message)}`));
+    }
     this.data = data;
+    /* reload analysis results */
     if (this.status === SolutionManifest.Statuses.AnalysisCompleted) {
       await this.getAnalysisResults(true);
     }

@@ -1,23 +1,13 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment,
-  CommonUtils,
   DB,
   SNS,
   StateData,
   IngestError,
 } = require('core-lib');
-
-const TAG_INGESTCOMPLETED = [
-  {
-    Key: 'IngestCompleted',
-    Value: 'true',
-  },
-];
 
 class StateJobCompleted {
   constructor(stateData) {
@@ -48,12 +38,6 @@ class StateJobCompleted {
       overallStatus,
       status,
     }, false);
-    /* remove executionArn attribute on complete */
-    await db.dropColumns(uuid, undefined, 'executionArn')
-      .catch(() => undefined);
-
-    const input = this.stateData.input;
-    await CommonUtils.tagObject(input.bucket, input.key, TAG_INGESTCOMPLETED);
 
     this.stateData.setCompleted(status);
     await SNS.send(`ingest: ${this.stateData.uuid}`, this.stateData.toJSON()).catch(() => false);

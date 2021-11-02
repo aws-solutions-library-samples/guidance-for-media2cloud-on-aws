@@ -1,15 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
-const URL = require('url');
-const PATH = require('path');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
-  AnalysisError,
-  CommonUtils,
-  TarStreamHelper,
+  AnalysisTypes,
+  Environment,
 } = require('core-lib');
 const {
   BacklogJob,
@@ -17,13 +19,10 @@ const {
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const CATEGORY = 'comprehend';
-const SUB_CATEGORY = 'custom-entity';
-const DOC_BASENAME = 'document';
-const ENTITY_OUTPUT = 'output';
+const SUB_CATEGORY = AnalysisTypes.Comprehend.CustomEntity;
 /* comprehend Job Status */
 const SUBMITTED = 'SUBMITTED';
 const IN_PROGRESS = 'IN_PROGRESS';
-const COMPLETED = 'COMPLETED';
 const FAILED = 'FAILED';
 const STOP_REQUESTED = 'STOP_REQUESTED';
 const STOPPED = 'STOPPED';
@@ -54,6 +53,7 @@ class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
     const jobId = this.stateData.data[CATEGORY][SUB_CATEGORY].jobId;
     const comprehend = new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const response = await comprehend.describeEntitiesDetectionJob({
       JobId: jobId,
@@ -68,65 +68,15 @@ class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
   }
 
   async onCompleted(data) {
-    const uri = URL.parse(data.EntitiesDetectionJobProperties.OutputDataConfig.S3Uri);
-    const key = uri.pathname.slice(1);
-    let bucket = uri.hostname;
-
     await this.removeBacklogItem(data.EntitiesDetectionJobProperties.JobStatus)
       .catch(() => undefined);
 
-    const results = await TarStreamHelper.extract(bucket, key);
-    if (!results[ENTITY_OUTPUT]) {
-      throw new AnalysisError('fail to extract output.tar.gz');
-    }
-    let lines = results[ENTITY_OUTPUT].toString()
-      .split('\n')
-      .filter(x => x)
-      .map(x => JSON.parse(x));
-
-    const totalEntities = lines.reduce((a0, c0) =>
-      a0 + c0.Entities.length, 0);
-
+    const uri = new URL(data.EntitiesDetectionJobProperties.OutputDataConfig.S3Uri);
+    const key = uri.pathname.slice(1);
     this.stateData.setData(CATEGORY, {
       [SUB_CATEGORY]: {
         ...this.stateData.data[CATEGORY][SUB_CATEGORY],
-        endTime: new Date().getTime(),
-        totalEntities,
-      },
-    });
-    if (!totalEntities) {
-      this.stateData.setNoData();
-      return this.stateData.toJSON();
-    }
-
-    const re = new RegExp(`${DOC_BASENAME}-([0-9]+).txt`);
-    lines = lines.map(x => ({
-      ...x,
-      FileIdx: Number.parseInt(x.File.match(re)[1], 10),
-    })).sort((a, b) => ((a.FileIdx < b.FileIdx)
-      ? -1
-      : (a.FileIdx > b.FileIdx)
-        ? 1
-        : a.Line - b.Line));
-
-    const numOutputs = this.stateData.data[CATEGORY][SUB_CATEGORY].numOutputs;
-    const parsed = Array.from({
-      length: numOutputs,
-    }, () => []);
-    while (lines.length) {
-      const line = lines.shift();
-      parsed[line.FileIdx].splice(parsed[line.FileIdx].length, 0, ...line.Entities);
-    }
-
-    bucket = this.stateData.input.destination.bucket;
-    const prefix = this.stateData.data[CATEGORY][SUB_CATEGORY].prefix;
-    const name = `${ENTITY_OUTPUT}.json`;
-    await CommonUtils.uploadFile(bucket, prefix, name, parsed);
-
-    this.stateData.setData(CATEGORY, {
-      [SUB_CATEGORY]: {
-        ...this.stateData.data[CATEGORY][SUB_CATEGORY],
-        output: PATH.join(prefix, name),
+        output: key,
       },
     });
     this.stateData.setCompleted();

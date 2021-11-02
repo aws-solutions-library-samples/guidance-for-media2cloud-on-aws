@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import GeneralGroup from './technical/generalGroup.js';
 import ProxyGroup from './technical/proxyGroup.js';
 import MediaInfoGroup from './technical/mediainfoGroup.js';

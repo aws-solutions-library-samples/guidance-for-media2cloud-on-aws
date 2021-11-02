@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../shared/localization.js';
 import S3Utils from '../../../../../../shared/s3utils.js';
 import BaseMedia from '../../../../../../shared/media/baseMedia.js';
@@ -69,7 +72,7 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
   }
 
   async createContent() {
-    return $('<div/>').addClass(`${COL_TAB} my-4`)
+    return $('<div/>').addClass(`${COL_TAB} my-4 max-h36r`)
       .html(Localization.Messages.NoData);
   }
 
@@ -194,7 +197,6 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
       .append(displayName);
     btn.off('click').on('click', async (event) => {
       const enableNow = btn.attr('aria-pressed') === 'false';
-      console.log(`${btn.data('trackName')} ${enableNow}`);
       return this.previewComponent.trackToggle(name, enableNow);
     });
     return btn;

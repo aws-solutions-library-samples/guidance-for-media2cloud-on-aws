@@ -1,9 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
   AIML,
@@ -39,8 +44,7 @@ const TYPE_COMPREHEND = [
   AnalysisTypes.Comprehend.Keyphrase,
   AnalysisTypes.Comprehend.Entity,
   AnalysisTypes.Comprehend.Sentiment,
-  AnalysisTypes.Comprehend.Topic,
-  AnalysisTypes.Comprehend.Classification,
+  AnalysisTypes.Comprehend.CustomEntity,
 ];
 const TYPE_TEXTRACT = [
   AnalysisTypes.Textract,
@@ -226,15 +230,18 @@ class StatePrepareAnalysis {
     }
     const rekog = new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     return rekog.listFaces({
       CollectionId: collectionId,
       MaxResults: 2,
-    }).promise().catch(() => undefined).then(data => data.Faces.length);
+    }).promise()
+      .then(data => (data.Faces || []).length)
+      .catch(() => undefined);
   }
 
   async checkRekognitionCustomLabels(options) {
-    /* make sure customlabel and customLabelMidels are set */
+    /* make sure customlabel and customLabelModels are set */
     if (!options[AnalysisTypes.Rekognition.CustomLabel] || !options.customLabelModels) {
       return options;
     }
@@ -257,6 +264,7 @@ class StatePrepareAnalysis {
   async getRunnableProjectVersion(model) {
     const rekog = new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const projectArn = [
       'arn:aws:rekognition',
@@ -286,6 +294,7 @@ class StatePrepareAnalysis {
     }
     const transcribe = new AWS.TranscribeService({
       apiVersion: '2017-10-26',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const response = await transcribe.describeLanguageModel({
       ModelName: options.customLanguageModel,
@@ -317,6 +326,7 @@ class StatePrepareAnalysis {
     }
     const transcribe = new AWS.TranscribeService({
       apiVersion: '2017-10-26',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const response = await transcribe.getVocabulary({
       VocabularyName: options.customVocabulary,
@@ -347,7 +357,7 @@ class StatePrepareAnalysis {
   }
 
   async checkCustomEntityRecognizer(options) {
-    if (!options.customEntityRecognizer) {
+    if (!options[AnalysisTypes.Comprehend.CustomEntity] || !options.customEntityRecognizer) {
       return options;
     }
     const arn = [
@@ -358,6 +368,7 @@ class StatePrepareAnalysis {
     ].join(':');
     const comprehend = new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const response = await comprehend.describeEntityRecognizer({
       EntityRecognizerArn: arn,
@@ -371,6 +382,7 @@ class StatePrepareAnalysis {
       .catch(() => undefined);
     /* CER not ready to use */
     if (!response || !response.canUse) {
+      options[AnalysisTypes.Comprehend.CustomEntity] = false;
       options.customEntityRecognizer = undefined;
       return options;
     }
@@ -378,6 +390,7 @@ class StatePrepareAnalysis {
     /* languageCode takes priority and disable CER */
     if (options.languageCode
       && options.languageCode.slice(0, 2) !== response.languageCode) {
+      options[AnalysisTypes.Comprehend.CustomEntity] = false;
       options.customEntityRecognizer = undefined;
       return options;
     }

@@ -1,14 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   ServiceAvailability,
 } = require('core-lib');
@@ -28,6 +28,7 @@ class Vocabulary extends mxBaseResponse(class {}) {
 
     this.$instance = new AWS.TranscribeService({
       apiVersion: '2017-10-26',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
   }
 

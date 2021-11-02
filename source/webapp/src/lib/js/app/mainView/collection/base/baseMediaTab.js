@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
 import AppUtils from '../../../shared/appUtils.js';
@@ -43,7 +46,19 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
   }
 
   async createCarousel() {
-    this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Selected, async (event, media) => {
+    this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Removing, async (event, media) => {
+      if (media.overallStatus === SolutionManifest.Statuses.Processing) {
+        return this.showProcessingDialog(media);
+      }
+      const yesno = await this.showRemoveMediaDialog(media);
+      if (yesno) {
+        this.loading(true);
+        await this.categorySlideComponent.onMediaRemoved(media);
+        this.loading(false);
+      }
+      return undefined;
+    });
+    this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Selected, async (event, media, optionalSearchResults) => {
       if (media.overallStatus === SolutionManifest.Statuses.Processing) {
         return this.showProcessingDialog(media);
       }
@@ -51,7 +66,7 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
         return this.showErrorDialog(media);
       }
       this.loading(true);
-      await this.previewSlideComponent.setMedia(media);
+      await this.previewSlideComponent.setMedia(media, optionalSearchResults);
       this.loading(false);
       return this.slideTo(this.previewSlideComponent.slideId);
     });
@@ -109,34 +124,55 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
     return this.showDialog(media.basename, message);
   }
 
-  async showDialog(title, message, btns) {
-    const close = $('<button/>').addClass('btn btn-sm btn-primary')
-      .attr('type', 'button')
-      .attr('data-dismiss', 'modal')
-      .append(Localization.Buttons.Close);
-    const modal = $('<div/>').addClass('modal-dialog')
-      .attr('role', 'document')
-      .append($('<div/>').addClass('modal-content')
-        .append($('<div/>').addClass('modal-header')
-          .append($('<h5/>').addClass('modal-title lead')
-            .html(title)))
-        .append($('<div/>').addClass('modal-body')
-          .append(message))
-        .append($('<div/>').addClass('modal-footer')
-          .append(btns)
-          .append(close)));
-    const dialog = $('<div/>').addClass('modal fade')
-      .attr('tabindex', -1)
-      .attr('role', 'dialog')
-      .append(modal);
+  async showRemoveMediaDialog(media) {
+    let confirmed = false;
+    const message = Localization.Messages.RemoveMedia
+      .replace('{{BASENAME}}', media.basename);
+    const yes = $('<button/>').addClass('btn btn-sm btn-outline-danger')
+      .append('Yes, remove it');
+    yes.off('click').on('click', async (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      confirmed = true;
+      const dialog = $(event.currentTarget).parents('div[role="dialog"]');
+      dialog.modal('hide');
+    });
+    await this.showDialog(media.basename, message, [
+      yes,
+    ]);
+    return confirmed;
+  }
 
-    dialog.off('hidden.bs.modal').on('hidden.bs.modal', () =>
-      dialog.remove());
-    this.tabContent.append(dialog);
-    return dialog.modal({
-      backdrop: 'static',
-      keyboard: false,
-      show: true,
+  async showDialog(title, message, btns) {
+    return new Promise((resolve) => {
+      const close = $('<button/>').addClass('btn btn-sm btn-primary')
+        .attr('type', 'button')
+        .attr('data-dismiss', 'modal')
+        .append(Localization.Buttons.Close);
+      const modal = $('<div/>').addClass('modal-dialog')
+        .attr('role', 'document')
+        .append($('<div/>').addClass('modal-content')
+          .append($('<div/>').addClass('modal-header')
+            .append($('<h5/>').addClass('modal-title lead')
+              .html(title)))
+          .append($('<div/>').addClass('modal-body')
+            .append(message))
+          .append($('<div/>').addClass('modal-footer')
+            .append(btns)
+            .append(close)));
+      const dialog = $('<div/>').addClass('modal fade')
+        .attr('tabindex', -1)
+        .attr('role', 'dialog')
+        .append(modal);
+      dialog.off('hidden.bs.modal').on('hidden.bs.modal', () =>
+        resolve(dialog.remove()));
+
+      this.tabContent.append(dialog);
+      return dialog.modal({
+        backdrop: 'static',
+        keyboard: false,
+        show: true,
+      });
     });
   }
 

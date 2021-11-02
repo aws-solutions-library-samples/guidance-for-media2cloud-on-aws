@@ -1,22 +1,24 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const FS = require('fs');
 const URL = require('url');
 const PATH = require('path');
 const CHILD = require('child_process');
-
 const {
   Parser,
   Builder,
 } = require('xml2js');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 /**
  * @class MediaInfoError
@@ -43,6 +45,7 @@ class MediaInfoCommand {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: CUSTOM_USER_AGENT,
       ...options,
     });
     this.$rawXml = undefined;
@@ -91,6 +94,7 @@ class MediaInfoCommand {
           'pixelAspectRatio',
           'displayAspectRatio',
           'frameRate',
+          'frameRateNominal', /* wmv framerate */
           'bitDepth',
           'scanType',
           'scanOrder',
@@ -412,7 +416,10 @@ class MediaInfoCommand {
       } else if (/^false$/i.test(v1)) {
         v1 = false;
       } else if (/^[-|+]{0,1}\d+$/.test(v1) || /^[-|+]{0,1}\d+\.\d+$/.test(v1)) {
-        v1 = Number.parseFloat(v1);
+        const num = Number.parseFloat(v1);
+        if (num >= Number.MIN_SAFE_INTEGER && num <= Number.MAX_SAFE_INTEGER) {
+          v1 = num;
+        }
       }
       return v1;
     }

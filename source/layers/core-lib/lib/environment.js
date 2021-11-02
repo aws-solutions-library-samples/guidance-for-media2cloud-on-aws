@@ -1,38 +1,39 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const Solution = require('./solution');
+
+const ResourcePrefix = process.env.ENV_RESOURCE_PREFIX;
 
 module.exports = {
   Solution: {
     Id: Solution.Id,
     Name: Solution.Name,
     Version: Solution.Version,
-    StackName: process.env.ENV_STACKNAME,
     Metrics: {
       Uuid: process.env.ENV_SOLUTION_UUID,
       AnonymousUsage: (process.env.ENV_ANONYMOUS_USAGE || '').toUpperCase() === 'YES',
+      CustomUserAgent: process.env.ENV_CUSTOM_USER_AGENT
+        || `AWSSOLUTION/${Solution.Id}/${Solution.Version}`,
     },
   },
   StateMachines: {
-    Main: `${Solution.Id}-${process.env.ENV_STACKNAME}-main`,
-    Ingest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-main`,
-    FixityIngest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-fixity`,
-    AudioIngest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-audio`,
-    VideoIngest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-video`,
-    ImageIngest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-image`,
-    DocumentIngest: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest-document`,
-    Analysis: `${Solution.Id}-${process.env.ENV_STACKNAME}-analysis-main`,
-    AudioAnalysis: `${Solution.Id}-${process.env.ENV_STACKNAME}-analysis-audio`,
-    VideoAnalysis: `${Solution.Id}-${process.env.ENV_STACKNAME}-analysis-video`,
-    ImageAnalysis: `${Solution.Id}-${process.env.ENV_STACKNAME}-analysis-image`,
-    DocumentAnalysis: `${Solution.Id}-${process.env.ENV_STACKNAME}-analysis-document`,
+    Main: `${ResourcePrefix}-main`,
+    Ingest: `${ResourcePrefix}-ingest-main`,
+    FixityIngest: `${ResourcePrefix}-ingest-fixity`,
+    AudioIngest: `${ResourcePrefix}-ingest-audio`,
+    VideoIngest: `${ResourcePrefix}-ingest-video`,
+    ImageIngest: `${ResourcePrefix}-ingest-image`,
+    DocumentIngest: `${ResourcePrefix}-ingest-document`,
+    Analysis: `${ResourcePrefix}-analysis-main`,
+    AudioAnalysis: `${ResourcePrefix}-analysis-audio`,
+    VideoAnalysis: `${ResourcePrefix}-analysis-video`,
+    ImageAnalysis: `${ResourcePrefix}-analysis-image`,
+    DocumentAnalysis: `${ResourcePrefix}-analysis-document`,
   },
   DynamoDB: {
     Ingest: {
-      Table: `${Solution.Id}-${process.env.ENV_STACKNAME}-ingest`,
+      Table: `${ResourcePrefix}-ingest`,
       PartitionKey: 'uuid',
       GSI: {
         SchemaVersion: {
@@ -56,18 +57,14 @@ module.exports = {
       },
     },
     AIML: {
-      Table: `${Solution.Id}-${process.env.ENV_STACKNAME}-aiml`,
+      Table: `${ResourcePrefix}-aiml`,
       PartitionKey: 'uuid',
       SortKey: 'type',
     },
     ServiceToken: {
-      Table: `${Solution.Id}-${process.env.ENV_STACKNAME}-service-token`,
+      Table: `${ResourcePrefix}-service-token`,
       PartitionKey: 'uuid',
       SortKey: 'keyword',
-    },
-    Stats: {
-      Table: `${Solution.Id}-${process.env.ENV_STACKNAME}-stats`,
-      PartitionKey: 'type',
     },
   },
   Iot: {
@@ -92,7 +89,7 @@ module.exports = {
     Bucket: process.env.ENV_PROXY_BUCKET,
   },
   Rekognition: {
-    MinConfidence: Number.parseInt(process.env.ENV_DEFAULT_MINCONFIDENCE, 10),
+    MinConfidence: Number(process.env.ENV_DEFAULT_MINCONFIDENCE || 80),
     Notification: {
       RoleArn: process.env.ENV_SERVICE_TOPIC_ROLE_ARN,
     },
@@ -103,7 +100,6 @@ module.exports = {
     },
   },
   Elasticsearch: {
-    IndexName: process.env.ENV_ES_INDEX_NAME,
     DomainEndpoint: process.env.ENV_ES_DOMAIN_ENDPOINT,
   },
   ElasticTranscoder: {
@@ -116,5 +112,8 @@ module.exports = {
   },
   DataAccess: {
     RoleArn: process.env.ENV_DATA_ACCESS_ROLE,
+  },
+  S3: {
+    ExpectedBucketOwner: process.env.ENV_EXPECTED_BUCKET_OWNER,
   },
 };

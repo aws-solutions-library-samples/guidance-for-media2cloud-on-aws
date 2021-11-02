@@ -53,7 +53,7 @@ __
 Follow the step described in [README](../../README.md).
 
 ```bash
-git clone git@github.com:awslabs/media2cloud.git
+git clone git@github.com:aws-solutions/media2cloud.git
 
 cd ./media2cloud/deployment
 

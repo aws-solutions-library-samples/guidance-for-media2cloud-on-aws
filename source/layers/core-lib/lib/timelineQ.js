@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const THRESHOLD_TIMEDRIFT = 1200; // 1200ms
 const THRESHOLD_POSITIONDRIFT = 0.10; // 10%
 
@@ -396,6 +394,28 @@ class CustomLabelItem extends BaseItem {
   }
 }
 
+class TextItem extends BaseItem {
+  constructor(item, options) {
+    super({
+      name: (item.TextDetection.Type === 'LINE')
+        ? item.TextDetection.DetectedText
+        : undefined,
+      confidence: item.TextDetection.Confidence,
+      begin: item.Timestamp,
+      end: item.Timestamp,
+      boundingBox: (item.TextDetection.Geometry || {}).BoundingBox,
+    }, options);
+  }
+
+  canUse() {
+    return !!this.name;
+  }
+
+  get [Symbol.toStringTag]() {
+    return 'TextItem';
+  }
+}
+
 class TimelineQ extends Array {
   static createTypedItem(item, options) {
     if (item.Celebrity) {
@@ -418,6 +438,9 @@ class TimelineQ extends Array {
     }
     if (item.Face) {
       return new FaceItem(item, options);
+    }
+    if (item.TextDetection) {
+      return new TextItem(item, options);
     }
     throw new Error('fail to create typed item');
   }

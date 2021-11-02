@@ -1,20 +1,19 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   DB,
   Environment,
   StateData,
   Metrics,
-  BaseIndex,
+  Indexer,
   IngestError,
 } = require('core-lib');
 
-class StateIndexIngestResults extends BaseIndex {
+const INDEX_INGEST = 'ingest';
+
+class StateIndexIngestResults {
   constructor(stateData) {
-    super();
     if (!(stateData instanceof StateData)) {
       throw new IngestError('stateData not StateData object');
     }
@@ -34,28 +33,35 @@ class StateIndexIngestResults extends BaseIndex {
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
-    const result = await db.fetch(this.stateData.uuid);
-
-    if (Object.keys(result || {}).length) {
-      /* TODO: need to update the logic with new elasticsearch implementation */
-      /* TODO: need to update the logic with new elasticsearch implementation */
-      /* clean up the payload */
+    const uuid = this.stateData.uuid;
+    const result = await db.fetch(uuid, undefined,
       [
-        'proxies',
-        'web-upload',
-        'schemaVersion',
-        'storageClass',
-        'analysis',
-        'mediainfo',
-        'imageinfo',
-        'docinfo',
-      ].forEach(x => delete result[x]);
-      await this.indexDocument(this.stateData.uuid, result);
-      await this.sendAnonymous(result);
-      this.stateData.setData('indexer', {
-        terms: Object.keys(result),
-      });
-    }
+        'overallStatus',
+        'lastModified',
+        'timestamp',
+        'status',
+        'basename',
+        'attributes',
+        'bucket',
+        'group',
+        'fileSize',
+        'mime',
+        'framerate',
+        'uuid',
+        'key',
+        'duration',
+        'type',
+        'md5',
+      ]);
+    const indexer = new Indexer();
+    await indexer.indexDocument(INDEX_INGEST, uuid, result)
+      .catch((e) =>
+        console.error(`[ERR]: indexDocument: ${INDEX_INGEST}: ${uuid}:`, e));
+
+    await this.sendAnonymous(result);
+    this.stateData.setData('indexer', {
+      terms: Object.keys(result),
+    });
     this.stateData.setCompleted();
     return this.stateData.toJSON();
   }

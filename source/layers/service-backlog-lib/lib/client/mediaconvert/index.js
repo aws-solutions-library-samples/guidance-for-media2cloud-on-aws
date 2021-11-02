@@ -1,9 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   MediaConvert,
   DataAccess,
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
 } = require('../../shared/defs');
 
 const BacklogJob = require('../backlogJob');
@@ -33,6 +46,7 @@ class MediaConvertBacklogJob extends BacklogJob {
     }
     return new AWS.MediaConvert({
       apiVersion: '2017-08-29',
+      customUserAgent: CustomUserAgent,
       endpoint: MediaConvert.Endpoint,
     });
   }

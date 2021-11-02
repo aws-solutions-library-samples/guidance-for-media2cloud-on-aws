@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import S3Utils from '../s3utils.js';
 import StoreDefinitions from './storeDefs.js';
 import BaseStore from './baseStore.js';

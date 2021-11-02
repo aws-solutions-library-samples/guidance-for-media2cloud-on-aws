@@ -1,11 +1,8 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
-  StatsDB,
-  BaseIndex,
+  Indexer,
 } = require('core-lib');
 const BaseOp = require('./baseOp');
 
@@ -19,113 +16,173 @@ class StatsOp extends BaseOp {
   }
 
   async onGET() {
-    const size = (this.request.queryString || {}).size || 100;
-    if (size && !Number.parseInt(size, 10)) {
+    const qs = this.request.queryString || {};
+    const indices = (qs.aggregate || '')
+      .split(',')
+      .filter((x) => x);
+    const size = Number(qs.size || 100);
+    if (Number.isNaN(size)) {
       throw new Error('invalid size');
     }
-    const [
-      largest,
-      longest,
-      recents,
-      overall,
-    ] = await Promise.all([
-      this.searchLargestFile(),
-      this.searchLongestDuration(),
-      this.searchMostRecentItems(size),
-      StatsDB.scanAll(),
-    ]);
-    return super.onGET({
-      largest,
-      longest,
-      recents,
-      overall,
-    });
+    const response = (indices.length > 0)
+      ? await this.aggregateSearch(indices, size)
+      : await this.getOverallStats(size);
+    return super.onGET(response);
   }
 
-  async searchLargestFile() {
-    return this.searchIndex({
+  async getOverallStats(size) {
+    return Promise.all([
+      this.getIngestStats(),
+      this.getMostRecentIngestedAssets(size),
+    ]).then((res) => ({
+      stats: res[0],
+      recents: res[1],
+    }));
+  }
+
+  async getIngestStats() {
+    const indexer = new Indexer();
+    const query = {
+      index: 'ingest',
       body: {
-        from: 0,
-        size: 1,
-        _source: {
-          includes: [
-            'type',
-            'basename',
-            'fileSize',
-          ],
+        size: 0,
+        aggs: {
+          groupByType: {
+            terms: {
+              field: 'type',
+            },
+            aggs: {
+              maxSize: {
+                max: {
+                  field: 'fileSize',
+                },
+              },
+              minSize: {
+                min: {
+                  field: 'fileSize',
+                },
+              },
+              avgSize: {
+                avg: {
+                  field: 'fileSize',
+                },
+              },
+              totalSize: {
+                sum: {
+                  field: 'fileSize',
+                },
+              },
+              /* duration */
+              maxDuration: {
+                max: {
+                  field: 'duration',
+                },
+              },
+              minDuration: {
+                min: {
+                  field: 'duration',
+                },
+              },
+              avgDuration: {
+                avg: {
+                  field: 'duration',
+                },
+              },
+              totalDuration: {
+                sum: {
+                  field: 'duration',
+                },
+              },
+            },
+          },
+          groupByOverallStatus: {
+            terms: {
+              field: 'overallStatus',
+            },
+            aggs: {
+              count: {
+                value_count: {
+                  field: 'overallStatus',
+                },
+              },
+            },
+          },
         },
-        sort: [{
+      },
+    };
+    return indexer.search(query)
+      .then((res) => ({
+        types: res.body.aggregations.groupByType.buckets.map((x) => ({
+          type: x.key,
+          count: x.doc_count,
           fileSize: {
-            order: 'desc',
+            max: Math.floor(x.maxSize.value),
+            min: Math.floor(x.minSize.value),
+            avg: Math.floor(x.avgSize.value),
+            total: Math.floor(x.totalSize.value),
           },
-        }],
-        query: {
-          match_all: {},
-        },
-      },
-    });
-  }
-
-  async searchLongestDuration() {
-    return this.searchIndex({
-      body: {
-        from: 0,
-        size: 1,
-        _source: {
-          includes: [
-            'type',
-            'basename',
-            'duration',
-          ],
-        },
-        sort: [{
           duration: {
-            order: 'desc',
+            max: Math.floor(x.maxDuration.value),
+            min: Math.floor(x.minDuration.value),
+            avg: Math.floor(x.avgDuration.value),
+            total: Math.floor(x.totalDuration.value),
           },
-        }],
-        query: {
-          match_all: {},
-        },
-      },
-    });
+        })),
+        overallStatuses: res.body.aggregations.groupByOverallStatus.buckets.map((x) => ({
+          overallStatus: x.key,
+          count: x.count.value,
+        })),
+      }));
   }
 
-  async searchMostRecentItems(size = 100) {
-    return this.searchIndex({
+  async getMostRecentIngestedAssets(size = 100) {
+    const indexer = new Indexer();
+    const includes = [
+      'type',
+      'basename',
+      'duration',
+      'fileSize',
+      'lastModified',
+      'timestamp',
+    ];
+    const query = {
+      index: 'ingest',
       body: {
         from: 0,
         size,
         _source: {
-          includes: [
-            'type',
-            'basename',
-            'duration',
-            'fileSize',
-            'lastModified',
-            'timestamp',
-          ],
+          includes,
         },
-        sort: [{
-          timestamp: {
-            order: 'desc',
+        sort: [
+          {
+            timestamp: 'desc',
           },
-        }],
-        query: {
-          match_all: {},
-        },
+        ],
       },
-    });
+    };
+    return indexer.search(query)
+      .then((res) => res.body.hits.hits.map((x) => ({
+        ...x._source,
+        uuid: x._id,
+      })));
   }
 
-  async searchIndex(params) {
-    const indexer = new BaseIndex();
-    return indexer.query(params)
-      .then(data => data.body.hits.hits.map(x => ({
-        uuid: x._id,
-        ...x._source,
-      })))
-      .catch(e =>
-        console.log(`searchIndex: ${e.message}\n${JSON.stringify(params, null, 2)}`));
+  async aggregateSearch(indices, size) {
+    const availableIndices = Indexer.getIndices();
+    for (let i = 0; i < indices.length; i++) {
+      if (availableIndices.indexOf(indices[i]) < 0) {
+        throw new Error('invalid aggregate value');
+      }
+    }
+    const name = indices.join(',');
+    const indexer = new Indexer();
+    return indexer.aggregate(name, size)
+      .then((res) => ({
+        aggregations: res[name][name].buckets.map((x) => ({
+          name: x.key,
+          count: x.doc_count,
+        })),
+      }));
   }
 }
 

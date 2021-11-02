@@ -1,9 +1,12 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import AppUtils from '../../appUtils.js';
 import BasePreview from './basePreview.js';
 
 export default class VideoPreview extends BasePreview {
-  constructor(media) {
-    super(media);
+  constructor(media, optionalSearchResults) {
+    super(media, optionalSearchResults);
     this.$ids = {
       ...this.$ids,
       player: `vjs-${AppUtils.randomHexstring()}`,
@@ -124,10 +127,16 @@ export default class VideoPreview extends BasePreview {
       .attr('crossorigin', 'anonymous'))
       .append(this.canvasView);
 
+    const dimension = this.media.getVideoDimension();
+    /* workaround: set aspect raio to 16:9 for portrait mode video */
+    const aspectRatio = (dimension.height > dimension.width)
+      ? '16:9'
+      : undefined;
     const player = videojs(this.ids.player, {
       textTrackDisplay: {
         allowMultipleShowingTracks: true,
       },
+      aspectRatio,
     });
     player.markers({
       markers: [],
@@ -289,6 +298,8 @@ export default class VideoPreview extends BasePreview {
     for (let i = 0; i < track.cues.length; i++) {
       const cue = $(track.cues[i].getCueAsHTML()).addClass('d-inline')
         .attr('data-cue-index', i);
+      /* strip leading '--' characters from Amazon Transcribe */
+      cue.text(cue.text().replace(/-{2}\s/g, ' '));
       this.subtitleView.append(cue);
     }
   }
@@ -325,5 +336,20 @@ export default class VideoPreview extends BasePreview {
       : on
         ? this.markerAdd(track)
         : this.markerRemove(track);
+  }
+
+  createTrackFromCues(label, cues) {
+    if (this.player) {
+      const texttrack = this.player.addRemoteTextTrack({
+        kind: 'chapters',
+        language: 'en',
+        label,
+      }, false);
+      cues.forEach((cue) =>
+        texttrack.track.addCue(cue));
+      texttrack.track.mode = 'hidden';
+      return texttrack.track;
+    }
+    return undefined;
   }
 }

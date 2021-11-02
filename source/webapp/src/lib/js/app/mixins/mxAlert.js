@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const mxAlert = Base => class extends Base {
   shake(container, delay = 200) {
     container.addClass('shake-sm')

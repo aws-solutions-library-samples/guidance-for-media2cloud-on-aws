@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const CloudFormationResponse = require('./lib/shared/cfResponse');
 
 exports.handler = async (event, context) => {
@@ -26,9 +24,15 @@ exports.handler = async (event, context) => {
       case 'UpdateManifest':
         handler = require('./lib/web/index').UpdateManifest;
         break;
+      case 'CreateSolutionManifest':
+        handler = require('./lib/web/index').UpdateManifest;
+        break;
       /* S3 */
       case 'SetCORS':
         handler = require('./lib/s3/index').SetCORS;
+        break;
+      case 'ConfigureBucketNotification':
+        handler = require('./lib/s3/index').ConfigureBucketNotification;
         break;
       /* string */
       case 'StringManipulation':
@@ -71,6 +75,10 @@ exports.handler = async (event, context) => {
         break;
       case 'CreatePipeline':
         handler = require('./lib/elastictranscoder').CreatePipeline;
+        break;
+      /* cloudfront */
+      case 'InvalidateCache':
+        handler = require('./lib/cloudfront').InvalidateCache;
         break;
       default:
         break;

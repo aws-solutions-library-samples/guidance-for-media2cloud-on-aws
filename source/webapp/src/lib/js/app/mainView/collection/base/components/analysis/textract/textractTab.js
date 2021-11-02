@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../shared/localization.js';
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
 
@@ -7,7 +10,7 @@ export default class TextractTab extends BaseAnalysisTab {
   }
 
   async createContent() {
-    const col = $('<div/>').addClass('col-12 my-4');
+    const col = $('<div/>').addClass('col-12 my-4 max-h36r');
     const pageContainer = this.previewComponent.getPageControlContainer();
     if (!pageContainer) {
       return super.createContent();

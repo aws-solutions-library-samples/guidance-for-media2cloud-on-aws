@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment,
   StateData,
@@ -17,7 +15,7 @@ const StateUpdateRecord = require('./states/update-record');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
@@ -26,7 +24,6 @@ const REQUIRED_ENVS = [
   'ENV_PROXY_BUCKET',
   'ENV_SNS_TOPIC_ARN',
   'ENV_ES_DOMAIN_ENDPOINT',
-  'ENV_ES_INDEX_NAME',
 ];
 
 exports.handler = async (event, context) => {

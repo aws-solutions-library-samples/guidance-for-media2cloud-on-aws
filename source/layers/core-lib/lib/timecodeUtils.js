@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const EnumFrameRate = Object.freeze({
   FPS_23_976: Symbol('23.976'),
   FPS_24: Symbol('24'),

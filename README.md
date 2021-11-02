@@ -1,21 +1,17 @@
-# AWS Media2Cloud Solution Version 3 Preview
-
-## # IMPORTANT NOTE
-This is a **Preview beta** of Media2Cloud Version 3. If you are looking for a stable version, please use the published version (Version 2) from our [AWS Solutions](https://aws.amazon.com/solutions/implementations/media2cloud/).
+# AWS Media2Cloud Solution Version 3
 
 __
 
 ## What's new in V3?
 
 * New web user interface makes it easier to navigate different categories
-* Added Stats view lets you visualize your library
-* Built-in queue management to handle large requests of Amazon Rekognition Video processes
-* [Amazon EventBridge](https://docs.aws.amazon.com/eventbridge/latest/userguide/what-is-amazon-eventbridge.html) makes it easily to integrate V3 CloudWatch events into your downstream processes by configuring an Amazon CloudWatch Event Rule to trigger your own workflows
-* [Amazon Rekognition Video Segment API](https://docs.aws.amazon.com/rekognition/latest/dg/segment-api.html) allows you to analyze video shot change and technical cues such as black frame, color bar, and end credits event. V3 also converts segment results into Edit Decision List (EDL) format allowing you to import the shot timeline to popular editing software such as Adobe Premerie Pro and BlackMagic DaVinci Resolve
-* [Amazon Rekognition Custom Labels](https://aws.amazon.com/rekognition/custom-labels-features/) feature is our AutoML service that lets you easily train computer vision models such as image classification and object detection model. Although V3 doesn't train CL model for you, it can use the CL models you have already trained to analyze both image and _video_ assets. To train a CL model, check out this open source [custom brand detection](https://github.com/aws-samples/amazon-rekognition-custom-brand-detection) project. V3 also manages (auto-start and stop) the runtime of your CL models to minimize the inference cost
-* _Frame based analysis_ lets you specify the framerate to run Amazon Rekognition Image API instead of Amazon Rekognition Video API. (Note that Amazon Rekognition Segment API and Amazon Rekognition Person Pathing API continue to use the Video API.)
-* Integrated [Amazon Transcribe Custom Language Model (CLM)](https://docs.aws.amazon.com/transcribe/latest/dg/create-custom-language-model.html) and [Amazon Transcribe Custom Vocabulary](https://docs.aws.amazon.com/transcribe/latest/dg/how-vocabulary.html) features that improve the transcription results. Check out this blog post [Building custom language models to supercharge speech-to-text performance for Amazon Transcribe](https://aws.amazon.com/blogs/machine-learning/building-custom-language-models-to-supercharge-speech-to-text-performance-for-amazon-transcribe/)
-* Last but not least, Media2Cloud V3 got its own logo!
+* Advanced search feature with [Amazon OpenSearch](https://aws.amazon.com/opensearch-service/the-elk-stack/what-is-opensearch/) service now returns types and timestamps of the search term that allows you to _jump_ to a specific timestamp of the media file that contains the search result.
+* Added ```Stats``` view lets you visualize your library.
+* Built-in ```Backlog Management System``` to handle large requests of Amazon Rekognition Video processes.
+* [Amazon Rekognition Video Segment API](https://docs.aws.amazon.com/rekognition/latest/dg/segment-api.html) allows you to analyze video shot change and technical cues such as black frame, color bar, and end credits event. V3 also converts segment results into Edit Decision List (EDL) format allowing you to import the shot timeline to popular editing software such as Adobe Premerie Pro and BlackMagic DaVinci Resolve.
+* [Amazon Rekognition Custom Labels](https://aws.amazon.com/rekognition/custom-labels-features/) (CL) feature is an AutoML service that lets you easily train computer vision models such as image classification and object detection model. Version 3 can use your trained CL model to analyze content. To train a CL model, check out this open source [custom brand detection](https://github.com/aws-samples/amazon-rekognition-custom-brand-detection) project. Version 3 also manages the runtime of your CL models (auto-start and stop the model after use) to minimize inference cost.
+* ```Frame based analysis``` option lets you specify the framerate (ie., one frame every second or one frame very two seconds) to run Amazon Rekognition Image API instead of Amazon Rekognition Video API. Note that for Video-specific APIs such as ```Amazon Rekognition Segment``` and ```Amazon Rekognition Person Pathing```, Version 3 continues to use the Video APIs.
+* Integrated [Amazon Transcribe Custom Language Model](https://docs.aws.amazon.com/transcribe/latest/dg/create-custom-language-model.html) (CLM) and [Amazon Transcribe Custom Vocabulary](https://docs.aws.amazon.com/transcribe/latest/dg/how-vocabulary.html) features that improve the transcription results. Check out [Building custom language models to supercharge speech-to-text performance for Amazon Transcribe](https://aws.amazon.com/blogs/machine-learning/building-custom-language-models-to-supercharge-speech-to-text-performance-for-amazon-transcribe/) blog post to learn more how you can train a domain specific CLM to improve transcription accuracy.
 
 __
 
@@ -38,7 +34,7 @@ __
 
 ## Architecture overview
 
-![Architecture](./deployment/tutorials/images/architecture-overall.jpg)
+![Architecture](./deployment/tutorials/images/architecture.png)
 
 __
 
@@ -50,9 +46,9 @@ Media2Cloud uses Amazon CloudFormation service to orchestrate the entire workflo
 
 | AWS Region | Amazon CloudFormation template |
 | :--- | :---------- |
-| US East (N. Virginia) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=m2cv3&templateURL=https://ml-specialist-sa-demo-us-east-1.s3.amazonaws.com/media2cloud/v3preview/media2cloud.template" target="_blank">Launch stack</a> |
-| US West (Oregon) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=m2cv3&templateURL=https://ml-specialist-sa-demo-us-west-2.s3-us-west-2.amazonaws.com/media2cloud/v3preview/media2cloud.template" target="_blank">Launch stack</a> |
-| Europe (Ireland) | <a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=m2cv3&templateURL=https://ml-specialist-sa-demo-eu-west-1.s3-eu-west-1.amazonaws.com/media2cloud/v3preview/media2cloud.template" target="_blank">Launch stack</a> |
+| US East (N. Virginia) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-us-east-1.s3.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
+| US West (Oregon) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
+| Europe (Ireland) | <a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
 
 __
 
@@ -90,59 +86,23 @@ Click on _Create stack_ will start the stack creation process. It takes approxim
 
 __
 
-## Build Environment
-The sample code is written in ```NodeJS v14.x```. Before you start, please make sure NodeJS has been installed. You would also need to create an Amazon Simple Storage Service (Amazon S3) bucket to store the build artifacts. 
-
-_
-
-### ## NodeJS
-
-For MAC user, download and install from [nodejs.org](https://nodejs.org/en/download/). Alternatively, you can also use [Homebrew](https://brew.sh/).
-
-For Linux or Amazon EC2 user, follow [Tutorial: Setting Up Node.js on an Amazon EC2 Instance](https://docs.aws.amazon.com/sdk-for-javascript/v2/developer-guide/setting-up-node-on-ec2-instance.html)
-
-For Windows 10 user, make sure to install [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install-win10) before installing ```NodeJS```. The build and deploy scripts are written in Bash script.
-
-_
-
-### ## AWS CLI
-
-```deploy-s3-dist.sh``` shell script uploads the build artifacts to your S3 bucket; thus, it requires [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) to be installed and configured.
-
-```shell
-# after AWS CLI is installed, run the command and follow the instruction to configure your profile
-
-aws configure
-
-```
-
-_
-
-### ## JQ, a command line JSON processor 
-
-```deploy-s3-dist.sh``` also uses [jq](https://stedolan.github.io/jq/) to parse JSON file. Download and install [jq](https://stedolan.github.io/jq/) on your build system.
-
-__
-
 ## Building and customizing the solution
 
+* Create a bucket in the AWS region you would like to deploy the solution. For example, **my-bucket** in us-east-1 region.
+* Make sure to specify **--single-region** in the command line
 
-1) Create a bucket in the AWS region you would like to deploy the solution. For example, **my-bucket** in us-east-1 region.
-2) Make sure to specify ```--single-region``` in the command line
+    ```
+    bash ./build-s3-dist.sh --bucket my-bucket --single-region
+    ```
 
-  ```shell
-  bash ./build-s3-dist.sh --bucket my-bucket --single-region
-  ```
+* Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
 
-3) Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
+    ```
+    bash ./deploy-s3-dist.sh --bucket my-bucket --single-region
+    ```
 
-  ```shell
-  bash ./deploy-s3-dist.sh --bucket my-bucket --single-region
-  ```
-
-4) Get the HTTPS URL link of ```media2cloud.template``` after you have uploaded to your Amazon S3 bucket.
-
-5) Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the ```media2cloud.template```.
+* Get the HTTPS URL link of **media2cloud.template** after you have uploaded to your Amazon S3 bucket.
+* Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the **media2cloud.template**.
 
 __
 
@@ -192,7 +152,7 @@ __
 
 ## License
 
-Copyright 2021 Amazon.com, Inc. and its affiliates. All Rights Reserved.
+Copyright 2019 Amazon.com, Inc. and its affiliates. All Rights Reserved.
 
 SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 

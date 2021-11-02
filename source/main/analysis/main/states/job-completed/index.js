@@ -1,11 +1,8 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   DB,
-  StatsDB,
   Environment,
   StateData,
   SNS,
@@ -39,14 +36,6 @@ class StateJobCompleted {
     /* update ingest table */
     const attrib = await this.updateIngestTable(types);
 
-    /* update stats table */
-    await StatsDB.addItem({
-      type: attrib.type,
-      fileSize: attrib.fileSize,
-      duration: attrib.duration,
-      overallStatus: StateData.Statuses.Completed,
-    }).catch(() => undefined);
-
     /* TODO: review this 'src' thing */
     /* TODO: review this 'src' thing */
     this.stateData.setData('src', {
@@ -79,7 +68,9 @@ class StateJobCompleted {
     ]);
 
     let categories = analyzedCategories.concat(attributes.analysis || []);
-    categories = [...new Set(categories)];
+    categories = [
+      ...new Set(categories),
+    ];
 
     const uuid = this.stateData.uuid;
     await db.update(uuid, undefined, {
@@ -87,9 +78,6 @@ class StateJobCompleted {
       status: StateData.Statuses.AnalysisCompleted,
       analysis: categories,
     }, false);
-    /* remove executionArn attribute on complete */
-    await db.dropColumns(uuid, undefined, 'executionArn')
-      .catch(() => undefined);
 
     return attributes;
   }

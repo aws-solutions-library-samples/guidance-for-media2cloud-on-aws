@@ -1,27 +1,23 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 const {
   Environment,
   StateData,
   AnalysisError,
 } = require('core-lib');
+const StateIndexAnalysisResults = require('./states/index-analysis-results');
 const StateStartDocumentAnalysis = require('./states/start-document-analysis');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_PROXY_BUCKET',
+  'ENV_ES_DOMAIN_ENDPOINT',
 ];
 
 exports.handler = async (event, context) => {
@@ -40,6 +36,9 @@ exports.handler = async (event, context) => {
     switch (stateData.operation) {
       case StateData.States.StartDocumentAnalysis:
         instance = new StateStartDocumentAnalysis(stateData);
+        break;
+      case StateData.States.IndexAnalysisResults:
+        instance = new StateIndexAnalysisResults(stateData);
         break;
       default:
         break;

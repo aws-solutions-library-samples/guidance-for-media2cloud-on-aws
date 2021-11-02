@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../shared/localization.js';
 import MediaFactory from '../../../shared/media/mediaFactory.js';
 import PreviewSlideEvents from './previewSlideComponentEvents.js';
@@ -46,10 +47,11 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
     return (this.$previewComponent || {}).media;
   }
 
-  async setMedia(media) {
-    if (this.media !== media) {
+  async setMedia(media, optionalSearchResults) {
+    if (optionalSearchResults !== undefined
+      || this.media !== media) {
       await this.hide();
-      this.previewComponent = await MediaFactory.createPreviewComponent(media);
+      this.previewComponent = await MediaFactory.createPreviewComponent(media, optionalSearchResults);
       this.analysisComponent = new AnalysisComponent(this.previewComponent);
     }
   }
@@ -87,10 +89,10 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
     const controls = this.createAnalysisView();
     const closeBtn = this.createCloseButton();
     const row = $('<div/>').addClass('row no-gutters')
-      .append($('<div/>').addClass(`col-6 p-0 ${BKGD_PREVIEW}`)
+      .append($('<div/>').addClass(`col-6 p-0 overflow-auto maxh-600 ${BKGD_PREVIEW}`)
         .attr(DATA_VIEW, VIEW_PREVIEW)
         .append(preview))
-      .append($('<div/>').addClass(`col-6 p-0 m-0 overflow-auto ${BKGD_TECHVIEW}`)
+      .append($('<div/>').addClass(`col-6 p-0 m-0 overflow-auto maxh-600 ${BKGD_TECHVIEW}`)
         .attr(DATA_VIEW, VIEW_TECH)
         .append(techView))
       .append($('<div/>').addClass(`col-12 p-0 m-0 overflow-auto ${BKGD_ANALYSISVIEW}`)
@@ -119,7 +121,7 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
       .attr('title', Localization.Buttons.ClosePreview)
-      .css('font-size', '1.8rem')
+      .css('font-size', '3rem')
       .tooltip({
         trigger: 'hover',
       });
@@ -142,7 +144,7 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
       height,
     } = this.previewComponent.getContainerDimensions();
     const tech = this.slide.find(`div[${DATA_VIEW}="${VIEW_TECH}"]`);
-    tech.css('height', height);
+    // tech.css('height', height);
     return this;
   }
 }

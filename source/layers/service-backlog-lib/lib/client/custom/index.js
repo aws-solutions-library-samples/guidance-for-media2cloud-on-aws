@@ -1,6 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const BacklogJob = require('../backlogJob');
 const BacklogTable = require('../../backlog-table');
 const AtomicLockTable = require('../../atomic-lock-table');
@@ -137,6 +145,7 @@ class CustomBacklogJob extends BacklogJob {
     };
     const step = new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const fn = step.startExecution.bind(step);
     return Retry.run(fn, params)
@@ -151,6 +160,7 @@ class CustomBacklogJob extends BacklogJob {
     };
     const rekog = new AWS.Rekognition({
       rekognition: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     const fn = rekog.stopProjectVersion.bind(rekog);
     return Retry.run(fn, params)

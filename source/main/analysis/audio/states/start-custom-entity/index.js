@@ -1,10 +1,10 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const CRYPTO = require('crypto');
+const PATH = require('path');
 const {
+  AnalysisTypes,
   ServiceToken,
 } = require('core-lib');
 const {
@@ -13,7 +13,7 @@ const {
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const CATEGORY = 'comprehend';
-const SUB_CATEGORY = 'custom-entity';
+const SUB_CATEGORY = AnalysisTypes.Comprehend.CustomEntity;
 const DOC_BASENAME = 'document';
 
 class StateStartCustomEntity extends BaseStateStartComprehend {
@@ -75,11 +75,11 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
       EntityRecognizerArn: arn,
       LanguageCode: languageCode,
       InputDataConfig: {
-        S3Uri: `s3://${bucket}/${prefix}/${DOC_BASENAME}`,
+        S3Uri: `s3://${PATH.join(bucket, prefix, DOC_BASENAME)}`,
         InputFormat: 'ONE_DOC_PER_LINE',
       },
       OutputDataConfig: {
-        S3Uri: `s3://${bucket}/${prefix}`,
+        S3Uri: `s3://${PATH.join(bucket, prefix)}`,
       },
     };
   }

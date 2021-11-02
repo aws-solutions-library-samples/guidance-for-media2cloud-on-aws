@@ -35,7 +35,8 @@
     "no-bitwise": 0,
     "no-unused-vars": 0,
     "no-continue": 0,
-    "global-require": 0
+    "global-require": 0,
+    "no-loop-func": 0
   },
   "env": {
     "es6": true,

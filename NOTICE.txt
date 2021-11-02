@@ -21,7 +21,7 @@ THIRD PARTY COMPONENTS
 This software includes third party software subject to the following copyrights:
 
 AWS SDK under the Apache License Version 2.0
-AWS Amplify under the Apache License Version 2.0
+Amazon Cognito Identity SDK for JavaScript under the Apache License Version 2.0
 AWS IoT SDK for JavaScript under the Apache License Version 2.0
 Elasticsearch Node.js client under the Apache License Version 2.0
 VideoJS under the Apache License Version 2.0
@@ -31,11 +31,21 @@ Popper under the Massachusetts Institute of Technology (MIT) license
 SparkMD5 under the Massachusetts Institute of Technology (MIT) license
 Mime under the Massachusetts Institute of Technology (MIT) license
 adm-zip under the Massachusetts Institute of Technology (MIT) license
-Deepmerge under the Massachusetts Institute of Technology (MIT) license
 Crypto-js under the Massachusetts Institute of Technology (MIT) license
 aws-elasticsearch-connector under the Massachusetts Institute of Technology (MIT) license
 node-xml2js under the Massachusetts Institute of Technology (MIT) license
 Rusha (NodeJS) under the Massachusetts Institute of Technology (MIT) license
-node-tar under Internet Systems Consortium (ISC) license
 ExitTool by Phil Harvey - This package is distributed under Artistic License 1.0 (Perl). Amazon expressly elects to distribute the package under the Artistic License 1.0 (Perl) and NOT under GNU General Public License Version 1.
 Perl/Perl5 - This package is distributed under Artistic License 1.0 (Perl). Amazon expressly elects to distribute the package under the Artistic License 1.0 (Perl) and NOT under GNU General Public License Version 1.
+Fontawesome icon under Font Awesome Free License
+MediaInfo under the BSD-2-Clause License
+Apache ECharts under the Apache License Version 2.0
+Cropper.js under the Massachusetts Institute of Technology (MIT) license
+Video.js Markers under the Massachusetts Institute of Technology (MIT) license
+Node Canvas under the Massachusetts Institute of Technology (MIT) license
+WebVTT compiler parser and segmenter under the Massachusetts Institute of Technology (MIT) license
+sqlstring under the Massachusetts Institute of Technology (MIT) license
+tar-stream under the Massachusetts Institute of Technology (MIT) license
+Jimp under the Massachusetts Institute of Technology (MIT) license
+PDF.JS under the Apache License Version 2.0
+@npcz/magic under the BSD-3-Clause License

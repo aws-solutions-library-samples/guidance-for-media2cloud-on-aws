@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 /**
  * @class SigV4Client
  * @description modify sigV4Client open source code to be ES6 and pure browser javascript

@@ -1,9 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const CRYPTO = require('crypto');
 const {
@@ -15,7 +20,6 @@ const {
 } = require('core-lib');
 
 const CATEGORY = 'transcribe';
-const OUTPUT_JSON = 'output.json';
 
 class StateStartTranscribe {
   constructor(stateData) {
@@ -69,11 +73,13 @@ class StateStartTranscribe {
         LanguageModelName: aiOptions.customLanguageModel,
       }
       : undefined;
-    const settings = (aiOptions.customVocabulary)
-      ? {
-        VocabularyName: aiOptions.customVocabulary,
-      }
-      : undefined;
+    const settings = {
+      ShowSpeakerLabels: true,
+      MaxSpeakerLabels: 10,
+    };
+    if (aiOptions.customVocabulary !== undefined) {
+      settings.VocabularyName = aiOptions.customVocabulary;
+    }
     return {
       TranscriptionJobName: id,
       Media: {
@@ -85,12 +91,17 @@ class StateStartTranscribe {
       },
       MediaFormat: 'mp4',
       OutputBucketName: bucket,
-      OutputKey: PATH.join(outPrefix, OUTPUT_JSON),
+      OutputKey: outPrefix,
       OutputEncryptionKMSKeyId: 'alias/aws/s3',
       IdentifyLanguage: (aiOptions.languageCode === undefined),
       LanguageCode: aiOptions.languageCode,
       Settings: settings,
       ModelSettings: modelSettings,
+      Subtitles: {
+        Formats: [
+          'vtt',
+        ],
+      },
     };
   }
 
@@ -132,6 +143,7 @@ class StateStartTranscribe {
 
     const transcribe = new AWS.TranscribeService({
       apiVersion: '2017-10-26',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     let response;
     while (attempts.length) {

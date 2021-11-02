@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import ApiHelper from '../apiHelper.js';
 import AppUtils from '../appUtils.js';
@@ -135,7 +138,6 @@ export default class MediaManager {
   async scanProcessingRecords() {
     const overallStatus = SolutionManifest.Statuses.Processing;
     const response = await this.scanRecordsByStatus(overallStatus, 1);
-    console.log(JSON.stringify(response, null, 2));
     const medias = await this.batchInsertMedia(response.Items);
     this.addMediaToCollection(medias);
     return medias;
@@ -144,7 +146,6 @@ export default class MediaManager {
   async scanErrorRecords() {
     const overallStatus = SolutionManifest.Statuses.Error;
     const response = await this.scanRecordsByStatus(overallStatus);
-    console.log(JSON.stringify(response, null, 2));
     const medias = await this.batchInsertMedia(response.Items);
     this.addMediaToCollection(medias);
     return medias;
@@ -153,7 +154,6 @@ export default class MediaManager {
   async scanCompletedRecords() {
     const overallStatus = SolutionManifest.Statuses.Completed;
     const response = await this.scanRecordsByStatus(overallStatus);
-    console.log(JSON.stringify(response, null, 2));
     const medias = await this.batchInsertMedia(response.Items);
     this.addMediaToCollection(medias);
     return medias;
@@ -203,10 +203,32 @@ export default class MediaManager {
     }
     const media = await MediaFactory.createMedia(item.uuid).catch(e => e);
     if (media instanceof Error) {
-      console.error(media.message);
+      console.error(encodeURIComponent(media.message));
       return undefined;
     }
     return media;
+  }
+
+  async removeMedia(item) {
+    const uuid = (item || {}).uuid;
+    if (!uuid) {
+      return console.error('item contains no uuid');
+    }
+    /* remove media in backend */
+    await ApiHelper.purgeRecord(uuid)
+      .catch((e) =>
+        console.error(`fail to remove media ${item.uuid}`));
+    /* remove item from media manager */
+    const types = Object.keys(this.collection);
+    while (types.length) {
+      const type = types.shift();
+      const items = this.collection[type].items || [];
+      const idx = items.findIndex((x) => x.uuid === uuid);
+      if (idx >= 0) {
+        return items.splice(idx, 1)[0];
+      }
+    }
+    return undefined;
   }
 
   findMediaByType(type) {
@@ -264,7 +286,6 @@ export default class MediaManager {
   }
 
   async onIotMessage(payload) {
-    console.log(`mediaManager: received ${JSON.stringify(payload, null, 2)}`);
     let media = this.findMediaByUuid(payload.uuid);
     if (!media) {
       media = await this.insertMedia(payload);
@@ -273,9 +294,14 @@ export default class MediaManager {
         ? this.eventSource.trigger(MediaManager.Event.Media.Added, [media])
         : undefined;
     }
-    if (payload.status === SolutionManifest.Statuses.IngestCompleted
+    if (payload.status === SolutionManifest.Statuses.AnalysisStarted
       || payload.status === SolutionManifest.Statuses.AnalysisCompleted) {
       await media.refresh();
+    }
+    if (payload.status === SolutionManifest.Statuses.IngestStarted
+      || payload.status === SolutionManifest.Statuses.IngestCompleted
+      || payload.status === SolutionManifest.Statuses.AnalysisStarted
+      || payload.status === SolutionManifest.Statuses.AnalysisCompleted) {
       return this.eventSource.trigger(MediaManager.Event.Media.Updated, [media]);
     }
     if (payload.overallStatus === SolutionManifest.Statuses.Error) {

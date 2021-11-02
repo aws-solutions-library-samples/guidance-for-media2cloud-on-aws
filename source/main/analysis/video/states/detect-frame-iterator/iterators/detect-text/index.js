@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   AnalysisTypes,
 } = require('core-lib');
@@ -54,8 +52,16 @@ class DetectTextIterator extends BaseDetectFrameIterator {
   }
 
   mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    /* TODO: handle mapData */
-    return undefined;
+    let keys = data.map(x =>
+      (x.TextDetection || {}).DetectedText).filter(x => x);
+    keys = [...new Set(keys)];
+    while (keys.length) {
+      const key = keys.shift();
+      const unique = new Set(mapData[key]);
+      unique.add(seqFile);
+      mapData[key] = [...unique];
+    }
+    return mapData;
   }
 
   static computeRegionsOfInterest(regionsOfInterest) {

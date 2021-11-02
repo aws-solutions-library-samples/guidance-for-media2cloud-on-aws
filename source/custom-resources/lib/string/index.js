@@ -1,13 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const CRYPTO = require('crypto');
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
@@ -30,6 +31,7 @@ exports.StringManipulation = async (event, context) => {
     if (x0.isRequestType('Update') && event.ResourceProperties.OutputReference) {
       const result = await (new AWS.CloudFormation({
         apiVersion: '2010-05-15',
+        customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
       })).describeStacks({
         StackName: event.StackId.split('/')[1],
       }).promise().catch(() => undefined);

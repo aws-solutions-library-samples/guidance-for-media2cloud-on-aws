@@ -1,26 +1,25 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
-
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   Environment,
   StateData,
   IotStatus,
   SNS,
   DB,
-  StatsDB,
 } = require('core-lib');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
@@ -39,6 +38,7 @@ exports.handler = async (event, context) => {
   async function getExecutionError(arn) {
     const step = new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     let response;
@@ -96,13 +96,14 @@ exports.handler = async (event, context) => {
       || `${event.detail.executionArn} ${event.detail.status}`;
     /* check to see if it is JSON string */
     try {
-      message = JSON.parse(message).errorMessage || message;
+      const parsed = JSON.parse(message);
+      message = parsed.errorMessage || parsed.Status || message;
     } catch (e) {
       // do nothing
     }
     const input = JSON.parse(event.detail.input);
     const stateMachine = event.detail.executionArn.split(':')[6];
-    const uuid = input.uuid || input.contentUuid;
+    const uuid = input.uuid || (input.input || {}).uuid;
     const overallStatus = StateData.Statuses.Error;
     const status = (stateMachine === Environment.StateMachines.Ingest)
       ? StateData.Statuses.IngestError
@@ -121,16 +122,6 @@ exports.handler = async (event, context) => {
         status,
         errorMessage: message,
       }, false);
-      /* update stats */
-      const attributes = await db.fetch(uuid, undefined, [
-        'type',
-        'fileSize',
-        'duration',
-      ]);
-      await StatsDB.addItem({
-        ...attributes,
-        overallStatus,
-      }).catch(() => undefined);
     }
 
     const response = {

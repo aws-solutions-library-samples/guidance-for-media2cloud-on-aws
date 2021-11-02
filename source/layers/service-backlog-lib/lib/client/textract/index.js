@@ -1,7 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const BacklogJob = require('../backlogJob');
+const {
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
+} = require('../../shared/defs');
 
 class TextractBacklogJob extends BacklogJob {
   static get ServiceApis() {
@@ -34,6 +49,7 @@ class TextractBacklogJob extends BacklogJob {
   getTextractInstance() {
     return new AWS.Textract({
       apiVersion: '2018-06-27',
+      customUserAgent: CustomUserAgent,
     });
   }
 

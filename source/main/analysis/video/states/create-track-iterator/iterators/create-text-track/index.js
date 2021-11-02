@@ -1,10 +1,7 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
-  SQL,
   AnalysisTypes,
   CommonUtils,
 } = require('core-lib');
@@ -25,12 +22,46 @@ class CreateTextTrackIterator extends BaseCreateTrackIterator {
     return false;
   }
 
-  get enableMetadata() {
-    return false;
+  async downloadSelected(bucket, key, name) {
+    return this.downloadJson(bucket, key, name);
   }
 
-  get enableTimeseries() {
-    return false;
+  async downloadJson(bucket, key, name) {
+    const data = await CommonUtils.download(bucket, key)
+      .then(x => JSON.parse(x));
+    return ((data || {}).TextDetections || []).filter(x =>
+      (x.TextDetection.DetectedText === name && x.TextDetection.Type === 'LINE'));
+  }
+
+  createTimeseriesData(name, datasets) {
+    const timestamps = {};
+    for (let i = 0; i < datasets.length; i++) {
+      const dataset = datasets[i];
+      const box = dataset.TextDetection.Geometry.BoundingBox;
+      if (!box) {
+        continue;
+      }
+      const confidence = Number(Number(dataset.TextDetection.Confidence).toFixed(2));
+      timestamps[dataset.Timestamp] = timestamps[dataset.Timestamp] || [];
+      timestamps[dataset.Timestamp].push({
+        c: confidence,
+        w: Number(Number(box.Width).toFixed(4)),
+        h: Number(Number(box.Height).toFixed(4)),
+        l: Number(Number(box.Left).toFixed(4)),
+        t: Number(Number(box.Top).toFixed(4)),
+      });
+    }
+    if (!Object.keys(timestamps)) {
+      return undefined;
+    }
+    return {
+      label: name,
+      data: Object.keys(timestamps).map(x => ({
+        x: Number(x),
+        y: timestamps[x].length,
+        details: timestamps[x],
+      })),
+    };
   }
 }
 

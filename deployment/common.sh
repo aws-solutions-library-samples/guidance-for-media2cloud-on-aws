@@ -114,9 +114,14 @@ REGIONS=( \
 )
 
 #
-# BUCKET := bucket base name. The 'actual' bucket name will be concatenated
+# BUCKET_NAME := bucket base name. The 'actual' bucket name will be concatenated
 #           with region. The bucket stores cloudformation template and package.
-#           For example, if BUCKET is 'solutions' and is deployed in eu-west-1
+#           For example, if BUCKET_NAME is 'solutions' and is deployed in eu-west-1
 #           Then, the actual deployment bucket will be 'solutions-eu-west-1'.
 #           (Mandatory)
-BUCKET=
+BUCKET_NAME=
+
+#
+# SOLUTION_ID := Solution ID
+#
+SOLUTION_ID=SO0050

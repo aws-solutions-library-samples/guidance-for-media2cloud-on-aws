@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   DB,
@@ -50,8 +48,10 @@ class StateRunMediaInfo {
     const mediainfo = await this.uploadMediainfoFiles(src.destination, fullData, mi.rawXml);
     /* #3: update table */
     const parsed = mi.miniData;
-    const duration = ((parsed.container[0] || {}).duration || 0) * 1000;
-    const framerate = (parsed.video[0] || {}).frameRate || (parsed.container[0] || {}).frameRate;
+    const video = parsed.video[0] || {};
+    const container = parsed.container[0] || {};
+    const duration = (container.duration || 0) * 1000;
+    const framerate = video.frameRate || video.frameRateNominal || container.frameRate;
     const db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,

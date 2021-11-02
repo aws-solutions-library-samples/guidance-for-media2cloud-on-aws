@@ -1,8 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   DataAccess,
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
 } = require('../../shared/defs');
 const BacklogJob = require('../backlogJob');
 
@@ -73,6 +86,7 @@ class ComprehendBacklogJob extends BacklogJob {
   getComprehendInstance() {
     return new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: CustomUserAgent,
     });
   }
 

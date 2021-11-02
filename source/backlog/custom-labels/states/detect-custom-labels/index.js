@@ -1,14 +1,29 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
   Retry,
   BacklogClient: {
     CustomBacklogJob,
+  },
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
+    S3: {
+      ExpectedBucketOwner,
+    },
   },
 } = require('service-backlog-lib');
 const RekogHelper = require('../shared/rekogHelper');
@@ -134,6 +149,7 @@ class StateDetectCustomLabels extends BaseState {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: CustomUserAgent,
     });
     const params = {
       Bucket: bucket,
@@ -142,6 +158,7 @@ class StateDetectCustomLabels extends BaseState {
       ContentType: 'application/json',
       ContentDisposition: `attachment; filename="${name}"`,
       ServerSideEncryption: 'AES256',
+      ExpectedBucketOwner,
     };
     const fn = s3.putObject.bind(s3);
     return Retry.run(fn, params);

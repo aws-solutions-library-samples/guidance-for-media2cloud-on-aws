@@ -1,9 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const Retry = require('../shared/retry');
 const {
   DynamoDB: DDB,
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
 } = require('../shared/defs');
 
 const TTL_MIN = 60;
@@ -64,6 +77,7 @@ class BacklogTable {
   static getDocumentClient() {
     return new AWS.DynamoDB.DocumentClient({
       apiVersion: '2012-08-10',
+      customUserAgent: CustomUserAgent,
     });
   }
 

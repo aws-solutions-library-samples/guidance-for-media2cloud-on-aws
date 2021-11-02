@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   StateData,
@@ -160,8 +158,8 @@ class BaseCollectResultsIterator {
       this.mapData = await CommonUtils.download(bucket, PATH.join(prefix, name), false)
         .then(x => JSON.parse(x.Body.toString()))
         .catch(() => ({}));
-      this.mapData = this.mapUniqueNameToSequenceFile(this.mapData, data, seqFile);
     }
+    this.mapData = this.mapUniqueNameToSequenceFile(this.mapData, data, seqFile);
     return (this.mapData)
       ? CommonUtils.uploadFile(bucket, prefix, name, this.mapData)
         .catch(e => console.error(e))

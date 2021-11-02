@@ -1,9 +1,15 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
+const Environment = require('./environment');
 const {
   mxCommonUtils,
 } = require('./mxCommonUtils');
@@ -35,6 +41,7 @@ class DB {
 
     this.$instance = new AWS.DynamoDB.DocumentClient({
       apiVersion: '2012-08-10',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
   }
 
@@ -276,6 +283,7 @@ class DB {
   async describe() {
     const instance = new AWS.DynamoDB({
       apiVersion: '2012-08-10',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     const response = await instance.describeTable({

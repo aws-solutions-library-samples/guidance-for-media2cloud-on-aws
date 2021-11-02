@@ -1,5 +1,8 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../shared/localization.js';
-import Storage from '../../../../../shared/storage.js';
+import SettingStore from '../../../../../shared/localCache/settingStore.js';
 import GoogleMap from '../../../../../shared/googleMap.js';
 import DescriptionList from '../../descriptionList.js';
 
@@ -83,7 +86,6 @@ export default class EXIFGroup {
   }
 
   static createMap(longitude, latitude) {
-    const apiKey = Storage.getOption(OPT_MAPAPIKEY, undefined);
     const map = $('<div/>').addClass('collapse ml-4 mb-2 h-400')
       .attr(DATA_ROLE, ROLE_MAP)
       .attr(DATA_INIT, false)
@@ -97,14 +99,6 @@ export default class EXIFGroup {
     const label = $('<label/>').addClass('xs-switch')
       .append(input)
       .append($('<span/>').addClass('xs-slider round'));
-    if (!apiKey) {
-      label.attr('data-toggle', 'tooltip')
-        .attr('data-placement', 'bottom')
-        .attr('title', Localization.Tooltips.DeveloperWarning)
-        .tooltip({
-          trigger: 'hover',
-        });
-    }
     const toggle = $('<div/>').addClass('form-group ml-4 mb-2')
       .append($('<div/>').addClass('input-group')
         .append(label)
@@ -125,7 +119,8 @@ export default class EXIFGroup {
     }
     const lat = map.data('lat');
     const lng = map.data('lng');
-    const gMap = await GoogleMap.getSingleton();
+    const apiKey = await (SettingStore.getSingleton()).getItem(OPT_MAPAPIKEY);
+    const gMap = await GoogleMap.getSingleton(apiKey);
     if (gMap) {
       gMap.render(map[0], lat, lng);
       map.prop(DATA_INIT, true);

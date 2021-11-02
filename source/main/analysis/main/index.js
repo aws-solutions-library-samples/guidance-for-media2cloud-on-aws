@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment,
   IotStatus,
@@ -12,12 +10,11 @@ const {
 
 const StatePrepareAnalysis = require('./states/prepare-analysis');
 const StateCollectAnalysisResults = require('./states/collect-analysis-results');
-const StateIndexAnalysisResults = require('./states/index-analysis-results');
 const StateJobCompleted = require('./states/job-completed');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_PROXY_BUCKET',
@@ -74,9 +71,6 @@ exports.handler = async (event, context) => {
         break;
       case StateData.States.CollectAnalysisResults:
         instance = new StateCollectAnalysisResults(stateData);
-        break;
-      case StateData.States.IndexAnalysisResults:
-        instance = new StateIndexAnalysisResults(stateData);
         break;
       case StateData.States.JobCompleted:
         instance = new StateJobCompleted(stateData);

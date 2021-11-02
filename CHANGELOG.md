@@ -4,13 +4,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.0] - TBD
+## [3.0.0] - TBD
 ### Added
-- optimized state machines by using Step Functions Service Integration to reduce the number of state transitions whenever possible.
+- Amazon Rekognition Custom Labels model support
+- Amazon Rekognition Segment API support
+- Amazon Rekognition Text detection for video
+- Amazon Transcribe Custom Vocabulary and Custom Language Model support
+- Amazon Comprehend Custom Entity Recognizer support
+- Support audio and document files
+- Frame based analysis
+- Backlog queuing mangagement system
+- Rewrite backend state machines to use Nested state machine and Map state to simplify workflow
+- Enable AWS-XRAY tracing on all AWS Lambda functions
 
 ### Changed
+- Updated search engine to Amazon OpenSearch 1.0
+- Redesigned UI/UX to enable different type of collections
+- Advanced search feature to pinpoint timestamps of the search results
 
 ### Removed
+- Removed Amazon SageMaker Ground Truth Labeling workflow for face indexing
+
 
 ## [2.0.1] - 2019-12-13
 ### Added

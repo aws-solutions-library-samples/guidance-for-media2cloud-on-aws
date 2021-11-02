@@ -1,14 +1,8 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 const {
-  BaseIndex,
+  Indexer,
 } = require('core-lib');
 
 const mxBaseResponse = require('../shared/mxBaseResponse');
@@ -31,15 +25,14 @@ exports.CreateIndex = async (event, context) => {
     }
 
     const data = event.ResourceProperties.Data;
-    if (!data.DomainEndpoint || !data.IndexName) {
-      throw new Error('missing DomainEndpoint or IndexName');
+    if (!data.DomainEndpoint) {
+      throw new Error('missing DomainEndpoint');
     }
 
-    const client = new BaseIndex(data.DomainEndpoint);
-    const response = await client.createIndex(data.IndexName);
-    console.log(`CreateIndex.response = ${JSON.stringify(response, null, 2)}`);
+    const indexer = new Indexer(data.DomainEndpoint);
+    const response = await indexer.batchCreateIndices();
+    console.log(`Indexer.batchCreateIndices = ${JSON.stringify(response, null, 2)}`);
 
-    x0.storeResponseData('IndexName', data.IndexName);
     x0.storeResponseData('Status', 'SUCCESS');
     return x0.responseData;
   } catch (e) {

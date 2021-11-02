@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
 
 export default class BaseComprehendTab extends BaseAnalysisTab {
@@ -7,6 +10,9 @@ export default class BaseComprehendTab extends BaseAnalysisTab {
 
   async createTimelineButtons(type) {
     const result = this.media.getComprehendResults();
+    if (!(result[type] || {}).metadata) {
+      return [];
+    }
     const response = await this.download(result[type].metadata);
     if (!response) {
       return [];

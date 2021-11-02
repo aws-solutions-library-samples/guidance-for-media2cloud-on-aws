@@ -1,9 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
+const {
+  Environment,
+} = require('core-lib');
 const BaseOp = require('./baseOp');
 
 const OP_CUSTOMENTITYRECOGNIERS = 'custom-entity-recognizers';
@@ -29,6 +37,7 @@ class ComprehendOp extends BaseOp {
   async onGetCustomEntityRecognizers() {
     const comprehend = new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     let response;

@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   SQL,
   AnalysisTypes,
@@ -22,7 +20,7 @@ class CreateModerationTrackIterator extends BaseCreateTrackIterator {
   }
 
   async downloadSelected(bucket, key, name) {
-    const query = `SELECT * FROM S3Object[*].ModerationLabels[*] s WHERE s.ModerationLabel.ParentName = '${SQL.escape(name)}';`;
+    const query = `SELECT * FROM S3Object[*].ModerationLabels[*] s WHERE s.ModerationLabel.Name = '${SQL.escape(name)}';`;
     return CommonUtils.selectS3Content(bucket, key, query).catch(() =>
       this.downloadJson(bucket, key, name));
   }
@@ -31,7 +29,7 @@ class CreateModerationTrackIterator extends BaseCreateTrackIterator {
     const data = await CommonUtils.download(bucket, key)
       .then(x => JSON.parse(x));
     return ((data || {}).ModerationLabels || []).filter(x =>
-      ((x.ModerationLabel || {}).ParentName === name));
+      ((x.ModerationLabel || {}).Name === name));
   }
 
   createTimeseriesData(name, datasets) {

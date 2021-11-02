@@ -1,3 +1,7 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+import AnalysisTypes from '../shared/analysis/analysisTypes.js';
 import Localization from '../shared/localization.js';
 import ApiHelper from '../shared/apiHelper.js';
 import AppUtils from '../shared/appUtils.js';
@@ -7,8 +11,18 @@ import mxSpinner from '../mixins/mxSpinner.js';
 import BaseTab from '../shared/baseTab.js';
 
 const ID_OVERALLGRAPH = `pie-${AppUtils.randomHexstring()}`;
-const ID_MISC = `misc-${AppUtils.randomHexstring()}`;
+const ID_AGGREGATIONGRAPH = `aggs-${AppUtils.randomHexstring()}`;
 const MOST_RECENT_ITEMS = 20;
+const AGGREGATED_KNOWN_FACE_SIZE = 20;
+const AGGREGATED_LABEL_SIZE = 20;
+const AGGREGATED_MODERATION_SIZE = 20;
+const AGGREGATED_KEYPHRASE_SIZE = 20;
+const AGGREGATED_ENTITY_SIZE = 20;
+const AGGS_TYPE_KNOWNFACES = 'knownFaces';
+const AGGS_TYPE_LABELS = 'labels';
+const AGGS_TYPE_MODERATIONS = 'moderations';
+const AGGS_TYPE_KEYPHRASES = 'keyphrases';
+const AGGS_TYPE_ENTITIES = 'entities';
 
 export default class StatsTab extends mxSpinner(BaseTab) {
   constructor(defaultTab = false) {
@@ -21,6 +35,13 @@ export default class StatsTab extends mxSpinner(BaseTab) {
         totalSize: undefined,
         status: undefined,
         recents: undefined,
+      },
+      aggs: {
+        [AGGS_TYPE_KNOWNFACES]: undefined,
+        [AGGS_TYPE_LABELS]: undefined,
+        [AGGS_TYPE_MODERATIONS]: undefined,
+        [AGGS_TYPE_KEYPHRASES]: undefined,
+        [AGGS_TYPE_ENTITIES]: undefined,
       },
     };
   }
@@ -57,6 +78,50 @@ export default class StatsTab extends mxSpinner(BaseTab) {
     this.$pieGraphs.overall.recents = val;
   }
 
+  get aggsGraphs() {
+    return this.$pieGraphs.aggs;
+  }
+
+  get knownFacesGraph() {
+    return this.$pieGraphs.aggs.knownFaces;
+  }
+
+  set knownFacesGraph(val) {
+    this.$pieGraphs.aggs.knownFaces = val;
+  }
+
+  get labelsGraph() {
+    return this.$pieGraphs.aggs.labels;
+  }
+
+  set labelsGraph(val) {
+    this.$pieGraphs.aggs.labels = val;
+  }
+
+  get moderationsGraph() {
+    return this.$pieGraphs.aggs.moderations;
+  }
+
+  set moderationsGraph(val) {
+    this.$pieGraphs.aggs.moderations = val;
+  }
+
+  get keyphrasesGraph() {
+    return this.$pieGraphs.aggs.keyphrases;
+  }
+
+  set keyphrasesGraph(val) {
+    this.$pieGraphs.aggs.keyphrases = val;
+  }
+
+  get entitiesGraph() {
+    return this.$pieGraphs.aggs.entities;
+  }
+
+  set entitiesGraph(val) {
+    this.$pieGraphs.aggs.entities = val;
+  }
+
   async show() {
     if (!this.initialized) {
       this.tabContent.append(this.createSkeleton());
@@ -70,7 +135,7 @@ export default class StatsTab extends mxSpinner(BaseTab) {
   createSkeleton() {
     const description = this.createDescription();
     const overall = this.createOverallStatus();
-    const misc = this.createMiscellaneous();
+    const aggs = this.createAggregations();
     const controls = this.createControls();
     const row = $('<div/>').addClass('row no-gutters')
       .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
@@ -79,7 +144,7 @@ export default class StatsTab extends mxSpinner(BaseTab) {
         .append(overall))
       .append($('<div/>').addClass('col-12 p-0 m-0 p-0 bg-light')
         .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
-          .append(misc)))
+          .append(aggs)))
       .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
         .append(controls))
       .append(this.createLoading());
@@ -101,14 +166,14 @@ export default class StatsTab extends mxSpinner(BaseTab) {
       .append(pieGraphContainer);
   }
 
-  createMiscellaneous() {
+  createAggregations() {
     const title = $('<span/>').addClass('d-block p-0 lead')
-      .html(Localization.Messages.Miscellaneous);
-    const misc = $('<div/>').addClass('col-12 p-0 mx-0 my-4')
-      .attr('id', ID_MISC);
+      .html(Localization.Messages.Aggregations);
+    const aggsGraphContainer = $('<div/>').addClass('row no-gutters')
+      .attr('id', ID_AGGREGATIONGRAPH);
     return $('<div/>').addClass('col-12 p-0 m-0 mb-4')
       .append(title)
-      .append(misc);
+      .append(aggsGraphContainer);
   }
 
   createControls() {
@@ -141,31 +206,92 @@ export default class StatsTab extends mxSpinner(BaseTab) {
   }
 
   async refreshContent() {
-    const response = await ApiHelper.getStats({
+    const stats = await ApiHelper.getStats({
       size: MOST_RECENT_ITEMS,
     });
-    await this.refreshOverallStats(response);
-    await this.refreshMiscellaneous(response);
-    console.log(JSON.stringify(response, null, 2));
+    const [
+      knownFaces,
+      labels,
+      moderations,
+      keyphrases,
+      entities,
+    ] = await Promise.all([
+      this.aggregateKnownFaces(),
+      this.aggregateLabels(),
+      this.aggregateModerations(),
+      this.aggregateKeyphrases(),
+      this.aggregateEntities(),
+    ]);
+
+    await this.refreshOverallStats(stats);
+    await this.refreshAggregations({
+      [AGGS_TYPE_KNOWNFACES]: knownFaces.aggregations,
+      [AGGS_TYPE_LABELS]: labels.aggregations,
+      [AGGS_TYPE_MODERATIONS]: moderations.aggregations,
+      [AGGS_TYPE_KEYPHRASES]: keyphrases.aggregations,
+      [AGGS_TYPE_ENTITIES]: entities.aggregations,
+    });
     return undefined;
+  }
+
+  async aggregateKnownFaces() {
+    return ApiHelper.getStats({
+      size: AGGREGATED_KNOWN_FACE_SIZE,
+      aggregate: [
+        AnalysisTypes.Rekognition.Celeb,
+        AnalysisTypes.Rekognition.FaceMatch,
+      ].join(','),
+    });
+  }
+
+  async aggregateLabels() {
+    return ApiHelper.getStats({
+      size: AGGREGATED_LABEL_SIZE,
+      aggregate: [
+        AnalysisTypes.Rekognition.Label,
+        AnalysisTypes.Rekognition.CustomLabel,
+      ].join(','),
+    });
+  }
+
+  async aggregateModerations() {
+    return ApiHelper.getStats({
+      size: AGGREGATED_MODERATION_SIZE,
+      aggregate: [
+        AnalysisTypes.Rekognition.Moderation,
+      ].join(','),
+    });
+  }
+
+  async aggregateKeyphrases() {
+    return ApiHelper.getStats({
+      size: AGGREGATED_KEYPHRASE_SIZE,
+      aggregate: [
+        AnalysisTypes.Comprehend.Keyphrase,
+      ].join(','),
+    });
+  }
+
+  async aggregateEntities() {
+    return ApiHelper.getStats({
+      size: AGGREGATED_ENTITY_SIZE,
+      aggregate: [
+        AnalysisTypes.Comprehend.Entity,
+        AnalysisTypes.Comprehend.CustomEntity,
+      ].join(','),
+    });
   }
 
   async refreshOverallStats(data) {
     const container = this.tabContent.find(`#${ID_OVERALLGRAPH}`);
-    if (this.overallCountGraph) {
-      this.overallCountGraph.destroy();
-    }
-    if (this.overallSizeGraph) {
-      this.overallSizeGraph.destroy();
-    }
     container.children().remove();
-    if (!data.overall.length) {
+    if (!data.stats.types) {
       return container.append($('<p/>').addClass('text-center text-muted')
         .append(Localization.Messages.NoData));
     }
-    return container.append(await this.refreshOverallCountStats(data.overall))
-      .append(await this.refreshOverallSizeStats(data.overall))
-      .append(await this.refreshOverallStatusStats(data.overall))
+    return container.append(await this.refreshOverallCountStats(data.stats.types))
+      .append(await this.refreshOverallSizeStats(data.stats.types))
+      .append(await this.refreshOverallStatusStats(data.stats.overallStatuses))
       .append(await this.refreshMostRecentStats(data.recents));
   }
 
@@ -175,7 +301,7 @@ export default class StatsTab extends mxSpinner(BaseTab) {
     }
     const datasets = data.reduce((a0, c0) => a0.concat({
       name: c0.type,
-      value: c0.totalCount,
+      value: c0.count,
     }), []);
     const total = datasets.reduce((a0, c0) => a0 + c0.value, 0);
     const title = `${Localization.Messages.TotalCount} (${total} files)`;
@@ -191,15 +317,17 @@ export default class StatsTab extends mxSpinner(BaseTab) {
     if (this.overallSizeGraph) {
       this.overallSizeGraph.destroy();
     }
-    const datasets = data.reduce((a0, c0) => a0.concat({
-      name: c0.type,
-      value: c0.totalSizeInKB,
-    }), []);
-    const total = datasets.reduce((a0, c0) => a0 + c0.value, 0);
-    const title = `${Localization.Messages.TotalSize} (${AppUtils.readableFileSize(total * 1000)})`;
+    const datasets = data.reduce((a0, c0) =>
+      a0.concat({
+        name: c0.type,
+        value: c0.fileSize.total,
+      }), []);
+    const total = datasets.reduce((a0, c0) =>
+      a0 + c0.value, 0);
+    const title = `${Localization.Messages.TotalSize} (${AppUtils.readableFileSize(total)})`;
     const graph = new PieGraph(title, datasets, {
       formatter: (point) =>
-        `<strong>${point.data.name}:</strong> ${AppUtils.readableFileSize(point.data.value * 1000)}`,
+        `<strong>${point.data.name}:</strong> ${AppUtils.readableFileSize(point.data.value)}`,
     });
     this.overallSizeGraph = graph;
     return $('<div/>').addClass('col-6 m-0 p-0')
@@ -210,29 +338,14 @@ export default class StatsTab extends mxSpinner(BaseTab) {
     if (this.overallStatusGraph) {
       this.overallStatusGraph.destroy();
     }
-    let totalCount = 0;
-    let errorCount = 0;
-    let completedCount = 0;
-    data.forEach((x) => {
-      totalCount += x.totalCount;
-      errorCount += (x.errorCount || 0);
-      completedCount += (x.completedCount || 0);
-    });
-    const datasets = [
-      {
-        name: Localization.Statuses.Completed,
-        value: completedCount,
-      },
-      {
-        name: Localization.Statuses.Processing,
-        value: totalCount - completedCount - errorCount,
-      },
-      {
-        name: Localization.Statuses.Error,
-        value: errorCount,
-      },
-    ];
-    const title = `${Localization.Messages.WorkflowStatuses} (${totalCount} processes)`;
+    const datasets = data.reduce((a0, c0) =>
+      a0.concat({
+        name: c0.overallStatus,
+        value: c0.count,
+      }), []);
+    const total = datasets.reduce((a0, c0) =>
+      a0 + c0.value, 0);
+    const title = `${Localization.Messages.WorkflowStatuses} (${total} processes)`;
     const graph = new PieGraph(title, datasets, {
       formatter: '<strong>{b}</strong>: {c} counts ({d}%)',
     });
@@ -269,31 +382,43 @@ export default class StatsTab extends mxSpinner(BaseTab) {
       .append(graph.getGraphContainer());
   }
 
-  async refreshMiscellaneous(data) {
-    /* TODO: TO BE CONTINUED */
-    /* TODO: TO BE CONTINUED */
-    /* TODO: TO BE CONTINUED */
-    const container = this.tabContent.find(`#${ID_MISC}`);
+  async refreshAggregations(data) {
+    const container = this.tabContent.find(`#${ID_AGGREGATIONGRAPH}`);
     container.children().remove();
-    if (!data.largest.length && !data.longest.length) {
+    if (!data) {
       return container.append($('<p/>').addClass('text-center text-muted')
         .append(Localization.Messages.NoData));
     }
-    if (data.largest.length) {
-      const largest = data.largest[0];
-      const media = await MediaFactory.createMedia(largest.uuid);
-      if (media) {
-        const image = await media.getThumbnail();
-      }
-      const desc = $('<span/>').addClass('stats-misc')
-        .append(Localization.Messages.LargestFile);
-      container.append(desc);
+    const aggs = await Promise.all(Object.keys(data).map((type) =>
+      this.refreshAggregateByType(data[type], type)));
+    return container.append(aggs);
+  }
+
+  async refreshAggregateByType(data, type) {
+    if (this.aggsGraphs[type]) {
+      this.aggsGraphs[type].destroy();
     }
-    if (data.longest.length) {
-      const longest = $('<span/>').addClass('stats-misc')
-        .append(Localization.Messages.LongestFile);
-      container.append(longest);
-    }
-    return undefined;
+    const datasets = data.reduce((a0, c0) =>
+      a0.concat({
+        name: c0.name,
+        value: c0.count,
+      }), []);
+    const title = (type === AGGS_TYPE_KNOWNFACES)
+      ? Localization.Messages.TopKnownFaces
+      : (type === AGGS_TYPE_LABELS)
+        ? Localization.Messages.TopLabels
+        : (type === AGGS_TYPE_MODERATIONS)
+          ? Localization.Messages.TopModerations
+          : (type === AGGS_TYPE_KEYPHRASES)
+            ? Localization.Messages.TopKeyphrases
+            : (type === AGGS_TYPE_ENTITIES)
+              ? Localization.Messages.TopEntities
+              : undefined;
+    const graph = new PieGraph(title, datasets, {
+      formatter: '<strong>{b}</strong>: {c} documents',
+    });
+    this.aggsGraphs[type] = graph;
+    return $('<div/>').addClass('col-6 m-0 p-0')
+      .append(graph.getGraphContainer());
   }
 }

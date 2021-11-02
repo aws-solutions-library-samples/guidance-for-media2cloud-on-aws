@@ -1,12 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 const {
   CommonUtils,
   Metrics,
@@ -45,8 +39,9 @@ exports.SendConfig = async (event, context) => {
   class X0 extends mxBaseResponse(class {}) {}
   const x0 = new X0(event, context);
   try {
+    const data = event.ResourceProperties.Data;
     const key = (x0.isRequestType('Delete')) ? 'Deleted' : 'Launch';
-    const cluster = event.ResourceProperties.Data.ElasticsearchCluster;
+    const cluster = data.ElasticsearchCluster || data.OpenSearchCluster;
     const matched = cluster.match(/([a-zA-z0-9 ]+)\s\(([a-zA-Z0-9.=,]+)\)/);
     if (matched) {
       const config = matched[2].split(',').map(x => {
@@ -62,17 +57,18 @@ exports.SendConfig = async (event, context) => {
       });
       console.log(`ElasticsearchClusterConfig = ${JSON.stringify(config, null, 2)}`);
     }
-    const data = {
-      Version: event.ResourceProperties.Data.Version,
-      ElasticsearchCluster: cluster,
-      Metrics: event.ResourceProperties.Data.AnonymousUsage,
+    const env = {
+      Solution: data.SolutionId,
+      UUID: data.SolutionUuid,
+    };
+    const params = {
+      Version: data.Version,
+      Metrics: data.AnonymousUsage,
+      SearchEngine: cluster,
       [key]: (new Date()).toISOString().replace('T', ' ').replace('Z', ''),
     };
-    const env = {
-      Solution: event.ResourceProperties.Data.SolutionId,
-      UUID: event.ResourceProperties.Data.SolutionUuid,
-    };
-    const response = await Metrics.sendAnonymousData(data, env);
+    console.log(`sendAnonymousData = ${JSON.stringify(params, null, 2)}`);
+    const response = await Metrics.sendAnonymousData(params, env);
     console.log(`sendAnonymousData = ${response.toString()}`);
     x0.storeResponseData('Status', 'SUCCESS');
   } catch (e) {

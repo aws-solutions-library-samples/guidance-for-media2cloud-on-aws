@@ -1,0 +1,871 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (%%SOLUTION_ID%%) Media2Cloud Core Stack - create the core resources that are shared among other stacks included Amazon S3 buckets, AWS Lambda layers, Amazon OpenSearch Service, Amazon CloudFront distribution, AWS IoT Core, and so forth. Version %%VERSION%%
+
+Mappings:
+    S3:
+        Website:
+            MainPage: index.html
+            ErrorPage: 404.html
+    Layer:
+        AwsSdkLib:
+            Package: "%%LAYER_AWSSDK%%"
+            Name: aws-sdk-lib
+        CoreLib:
+            Package: "%%LAYER_CORE_LIB%%"
+            Name: core-lib
+    OpenSearch:
+        Engine:
+            Version: OpenSearch_1.0
+    Node:
+        Runtime:
+            Version: nodejs14.x
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: S3Bucket
+    KeyPrefix:
+        Type: String
+        Description: KeyPrefix
+    SolutionId:
+        Type: String
+        Description: SolutionId
+    SolutionLowerCaseId:
+        Type: String
+        Description: SolutionLowerCaseId
+    ResourcePrefix:
+        Type: String
+        Description: ResourcePrefix
+    CustomResourcesLambdaArn:
+        Type: String
+        Description: CustomResourcesLambdaArn
+    CustomResourcesRoleName:
+        Type: String
+        Description: CustomResourcesRoleName
+    UserDefinedIngestBucket:
+        Type: String
+        Description: UserDefinedIngestBucket
+    OpenSearchDedicatedMaster:
+        Type: String
+        Description: OpenSearchDedicatedMaster
+    OpenSearchInstance:
+        Type: String
+        Description: OpenSearchInstance
+    OpenSearchVolume:
+        Type: String
+        Description: OpenSearchVolume
+    OpenSearchAvailabilityZone:
+        Type: String
+        Description: OpenSearchAvailabilityZone
+    PriceClass:
+        Type: String
+        Description: PriceClass
+
+Conditions:
+    bCreateIngestBucket: !Equals
+        - !Ref UserDefinedIngestBucket
+        - ""
+    bUSEast1: !Equals
+        - !Ref AWS::Region
+        - us-east-1
+    bSingleAZ: !Equals
+        - "1"
+        - !Select
+            - 1
+            - !Split
+                - "="
+                - !Ref OpenSearchAvailabilityZone
+    bDedicatedNodes: !Not
+        - !Equals
+            - "0"
+            - !Select
+                - 1
+                - !Split
+                    - "="
+                    - !Ref OpenSearchDedicatedMaster
+
+Resources:
+    ################################################################################
+    #
+    # Bucket (Logs)
+    #
+    ################################################################################
+    LogsBucket:
+        Type: AWS::S3::Bucket
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W35
+                        reason: Disable loggings on Logs bucket
+        DeletionPolicy: Retain
+        UpdateReplacePolicy: Retain
+        Properties:
+            BucketName: !Sub ${ResourcePrefix}-${AWS::AccountId}-${AWS::Region}-logs
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccessControl: LogDeliveryWrite
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: Keep access logs for 7 days
+                        Status: Enabled
+                        Prefix: /
+                        ExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Suspended
+
+    LogsBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref LogsBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: s3:*
+                        Resource:
+                            - !GetAtt LogsBucket.Arn
+                            - !Sub ${LogsBucket.Arn}/*
+                        Condition:
+                            Bool:
+                                aws:SecureTransport: false
+
+    ################################################################################
+    #
+    # Bucket (Ingest)
+    #
+    ################################################################################
+    IngestBucket:
+        Condition: bCreateIngestBucket
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        UpdateReplacePolicy: Retain
+        Properties:
+            BucketName: !Sub ${ResourcePrefix}-${AWS::AccountId}-${AWS::Region}-ingest
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccelerateConfiguration:
+                AccelerationStatus: Enabled
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+                DestinationBucketName: !Ref LogsBucket
+                LogFilePrefix: access_logs_ingest_bucket/
+            CorsConfiguration:
+                CorsRules:
+                    -
+                        AllowedMethods:
+                            - GET
+                            - PUT
+                            - POST
+                            - HEAD
+                        AllowedOrigins:
+                            - "*"
+                        AllowedHeaders:
+                            - "*"
+                        ExposedHeaders:
+                            - ETag
+                            - Content-Length
+                            - x-amz-meta-uuid
+                            - x-amz-meta-md5
+                        MaxAge: 3000
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: Enable Intelligent Tier
+                        Status: Enabled
+                        Transitions:
+                            -
+                                StorageClass: INTELLIGENT_TIERING
+                                TransitionInDays: 0
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: Keep previous version for 7 days
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            IntelligentTieringConfigurations:
+                - 
+                    Id: EnableGlacierTier
+                    Prefix: /
+                    Status: Enabled
+                    Tierings:
+                        -
+                            AccessTier: ARCHIVE_ACCESS
+                            Days: 90
+                - 
+                    Id: EnableDeepArchiveTier
+                    Prefix: /
+                    Status: Enabled
+                    Tierings:
+                        -
+                            AccessTier: DEEP_ARCHIVE_ACCESS
+                            Days: 180
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    IngestBucketPolicy:
+        Condition: bCreateIngestBucket
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref IngestBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: s3:*
+                        Resource:
+                            - !GetAtt IngestBucket.Arn
+                            - !Sub ${IngestBucket.Arn}/*
+                        Condition:
+                            Bool:
+                                aws:SecureTransport: false
+
+    ################################################################################
+    #
+    # Bucket (Proxy)
+    #
+    ################################################################################
+    ProxyBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        UpdateReplacePolicy: Retain
+        Properties:
+            BucketName: !Sub ${ResourcePrefix}-${AWS::AccountId}-${AWS::Region}-proxy
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccelerateConfiguration:
+                AccelerationStatus: Enabled
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+                DestinationBucketName: !Ref LogsBucket
+                LogFilePrefix: access_logs_proxy_bucket/
+            CorsConfiguration:
+                CorsRules:
+                    -
+                        AllowedMethods:
+                            - GET
+                            - PUT
+                            - POST
+                            - HEAD
+                        AllowedOrigins:
+                            - "*"
+                        AllowedHeaders:
+                            - "*"
+                        ExposedHeaders:
+                            - ETag
+                            - Content-Length
+                            - x-amz-meta-uuid
+                            - x-amz-meta-md5
+                        MaxAge: 3000
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: Enable Intelligent Tier
+                        Status: Enabled
+                        Transitions:
+                            -
+                                StorageClass: INTELLIGENT_TIERING
+                                TransitionInDays: 0
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: Keep previous version for 7 days
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    ProxyBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref ProxyBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: s3:*
+                        Resource:
+                            - !GetAtt ProxyBucket.Arn
+                            - !Sub ${ProxyBucket.Arn}/*
+                        Condition:
+                            Bool:
+                                aws:SecureTransport: false
+
+    ################################################################################
+    #
+    # Bucket (Web) and OAID
+    #
+    ################################################################################
+    WebBucket:
+        Type: AWS::S3::Bucket
+        DeletionPolicy: Retain
+        UpdateReplacePolicy: Retain
+        Properties:
+            BucketName: !Sub ${ResourcePrefix}-${AWS::AccountId}-${AWS::Region}-web
+            BucketEncryption:
+                ServerSideEncryptionConfiguration:
+                    -
+                      ServerSideEncryptionByDefault:
+                          SSEAlgorithm: AES256
+            AccelerateConfiguration:
+                AccelerationStatus: Enabled
+            AccessControl: LogDeliveryWrite
+            LoggingConfiguration:
+                DestinationBucketName: !Ref LogsBucket
+                LogFilePrefix: access_logs_web_bucket/
+            CorsConfiguration:
+                CorsRules:
+                    -
+                        AllowedMethods:
+                            - GET
+                            - PUT
+                            - POST
+                            - HEAD
+                        AllowedOrigins:
+                            - "*"
+                        AllowedHeaders:
+                            - "*"
+                        ExposedHeaders:
+                            - ETag
+                            - Content-Length
+                            - x-amz-meta-uuid
+                            - x-amz-meta-md5
+                        MaxAge: 3000
+            WebsiteConfiguration:
+                IndexDocument: !FindInMap
+                    - S3
+                    - Website
+                    - MainPage
+                ErrorDocument: !FindInMap
+                    - S3
+                    - Website
+                    - ErrorPage
+            LifecycleConfiguration:
+                Rules:
+                    -
+                        Id: Enable Intelligent Tier
+                        Status: Enabled
+                        Transitions:
+                            -
+                                StorageClass: INTELLIGENT_TIERING
+                                TransitionInDays: 0
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+                    -
+                        Id: Keep previous version for 7 days
+                        Status: Enabled
+                        NoncurrentVersionExpirationInDays: 7
+                        AbortIncompleteMultipartUpload:
+                            DaysAfterInitiation: 1
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+            VersioningConfiguration:
+                Status: Enabled
+
+    OAID:
+        Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+        Properties:
+            CloudFrontOriginAccessIdentityConfig:
+                Comment: !Sub access-identity-${WebBucket}
+
+    WebBucketPolicy:
+        Type: AWS::S3::BucketPolicy
+        Properties:
+            Bucket: !Ref WebBucket
+            PolicyDocument:
+                Statement:
+                    -
+                        Effect: Deny
+                        Principal: "*"
+                        Action: "s3:*"
+                        Resource:
+                            - !GetAtt WebBucket.Arn
+                            - !Sub ${WebBucket.Arn}/*
+                        Condition:
+                            Bool:
+                                aws:SecureTransport: false
+                    -
+                        Effect: Allow
+                        Action: s3:GetObject
+                        Resource: !Sub ${WebBucket.Arn}/*
+                        Principal:
+                            CanonicalUser: !GetAtt OAID.S3CanonicalUserId
+
+    ################################################################################
+    #
+    # Lambda Layers shared among other stacks
+    # * AwsSdkLayer
+    # * CoreLibLayer
+    #
+    ################################################################################
+    AwsSdkLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Layer
+                    - AwsSdkLib
+                    - Name
+            CompatibleRuntimes:
+                - !FindInMap
+                    - Node
+                    - Runtime
+                    - Version
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Layer
+                        - AwsSdkLib
+                        - Package
+            Description: !Sub (${SolutionLowerCaseId}) aws-sdk layer
+            LicenseInfo: Apache-2.0
+
+    CoreLibLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Layer
+                    - CoreLib
+                    - Name
+            CompatibleRuntimes:
+                - !FindInMap
+                    - Node
+                    - Runtime
+                    - Version
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Layer
+                        - CoreLib
+                        - Package
+            Description: !Sub (${SolutionLowerCaseId}) m2c core library layer
+            LicenseInfo: MIT-0
+
+    ################################################################################
+    #
+    # Custom Resources Policy for Core stack
+    #
+    ################################################################################
+    CustomResourcesPolicyCore:
+        Type: AWS::IAM::Policy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W12
+                        reason: Resources require wildcard
+        Properties:
+            Roles:
+                - !Ref CustomResourcesRoleName
+            PolicyName: !Sub ${ResourcePrefix}-custom-resources-core-stack
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # IoT
+                    -
+                        Effect: Allow
+                        Action: iot:DescribeEndpoint
+                        # This wildcard is present because iot:DescribeEndpoint doesn't take resource.
+                        # See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
+                        Resource: "*"
+                    -
+                        Effect: Allow
+                        Action: iot:ListTargetsForPolicy
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:policy/*
+                    -
+                        Effect: Allow
+                        Action: iot:DetachPolicy
+                        # This wildcard is present as we are detaching Cognito Identity Id where
+                        # cert/* and thinggroup/* resources not applicable!
+                        # See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
+                        Resource: "*"
+                    -
+                        Effect: Allow
+                        Action: mediaConvert:DescribeEndpoints
+                        Resource: !Sub arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*
+                    # OpenSearch - create indices
+                    -
+                        Effect: Allow
+                        Action:
+                            - es:ESHttpGet
+                            - es:ESHttpHead
+                            - es:ESHttpPost
+                            - es:ESHttpPut
+                            - es:ESHttpDelete
+                        Resource:
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage/*
+
+    ################################################################################
+    #
+    # IoT resources
+    # * IotThing and Policy
+    # * Custom::IotEndpoint
+    # * Custom::IotDetachPolices (DELETE stack only)
+    #
+    ################################################################################
+    IotUrl:
+        DependsOn: CustomResourcesPolicyCore
+        Type: Custom::IotEndpoint
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+
+    IotThing:
+        Type: AWS::IoT::Thing
+        Properties:
+            ThingName: !Sub ${ResourcePrefix}-thing
+
+    IotThingPolicy:
+        Type: AWS::IoT::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-thing-policy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: iot:Connect
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*
+                    -
+                        Effect: Allow
+                        Action: iot:Subscribe
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${ResourcePrefix}/status
+                    -
+                        Effect: Allow
+                        Action:
+                            - iot:Publish
+                            - iot:Receive
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${ResourcePrefix}/status
+
+    IotDetachPolices:
+        DependsOn: CustomResourcesPolicyCore
+        Type: Custom::IotDetachPolices
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+            Data:
+                IotThingPolicy: !Ref IotThingPolicy
+
+    ################################################################################
+    #
+    # Custom::MediaConvertEndpoint
+    #
+    ################################################################################
+    MediaConvertEndpoint:
+        DependsOn: CustomResourcesPolicyCore
+        Type: Custom::MediaConvertEndpoint
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+
+    ################################################################################
+    #
+    # Custom::CreateSolutionUuid
+    #
+    ################################################################################
+    CreateSolutionUuid:
+        DependsOn: CustomResourcesPolicyCore
+        Type: Custom::CreateSolutionUuid
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+
+    ################################################################################
+    #
+    # Amazon OpenSearch cluster
+    #
+    ################################################################################
+    OpenSearchCluster:
+        Type: AWS::OpenSearchService::Domain
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Explicitly assign predefined domain name to OpenSearch cluster
+        Properties:
+            AccessPolicies:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            AWS: !Ref AWS::AccountId
+                        Action:
+                            - es:ESHttpGet
+                            - es:ESHttpHead
+                            - es:ESHttpPost
+                            - es:ESHttpPut
+                            - es:ESHttpDelete
+                        Resource:
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage/*
+            AdvancedOptions:
+                rest.action.multi.allow_explicit_index: "true"
+            DomainEndpointOptions:
+                EnforceHTTPS: true
+                TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+            DomainName: !Sub ${ResourcePrefix}-storage
+            EBSOptions:
+                EBSEnabled: true
+                Iops: 0
+                VolumeSize: !Select
+                    - 1
+                    - !Split
+                        - "="
+                        - !Ref OpenSearchVolume
+                VolumeType: !Select
+                    - 0
+                    - !Split
+                        - "="
+                        - !Ref OpenSearchVolume
+            ClusterConfig:
+                DedicatedMasterEnabled: !If
+                    - bDedicatedNodes
+                    - true
+                    - false
+                DedicatedMasterCount: !If
+                    - bDedicatedNodes
+                    - !Select
+                        - 1
+                        - !Split
+                            - "="
+                            - !Ref OpenSearchDedicatedMaster
+                    - !Ref AWS::NoValue
+                DedicatedMasterType: !If
+                    - bDedicatedNodes
+                    - !Sub
+                        - "${type}.search"
+                        - type: !Select
+                            - 0
+                            - !Split
+                                - "="
+                                - !Ref OpenSearchDedicatedMaster
+                    - !Ref AWS::NoValue
+                InstanceCount: !Select
+                    - 1
+                    - !Split
+                        - "="
+                        - !Ref OpenSearchInstance
+                InstanceType: !Sub
+                    - ${type}.search
+                    - type: !Select
+                        - 0
+                        - !Split
+                            - "="
+                            - !Ref OpenSearchInstance
+                ZoneAwarenessEnabled: !If
+                    - bSingleAZ
+                    - false
+                    - true
+                ZoneAwarenessConfig: !If
+                    - bSingleAZ
+                    - !Ref AWS::NoValue
+                    - AvailabilityZoneCount: !Select
+                        - 1
+                        - !Split
+                            - "="
+                            - !Ref OpenSearchAvailabilityZone
+            EngineVersion: !FindInMap
+                - OpenSearch
+                - Engine
+                - Version
+            EncryptionAtRestOptions:
+                Enabled: true
+            NodeToNodeEncryptionOptions:
+                Enabled: true
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+
+    CreateIndex:
+        DependsOn: CustomResourcesPolicyCore
+        Type: Custom::CreateIndex
+        Properties:
+            ServiceToken: !Ref CustomResourcesLambdaArn
+            Data:
+                DomainEndpoint: !GetAtt OpenSearchCluster.DomainEndpoint
+
+    ################################################################################
+    #
+    # CloudFront Distribution
+    #
+    ################################################################################
+    CloudFrontDistribution:
+        Type: AWS::CloudFront::Distribution
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W70
+                        reason: Will revisit to enable MinimumProtocolVersion to TLS1.2
+        Properties:
+            DistributionConfig:
+                Comment: Website distribution for Media2Cloud solution
+                Origins:
+                    -
+                        Id: !Sub S3-${WebBucket}
+                        DomainName: !If
+                            - bUSEast1
+                            - !Sub ${WebBucket}.s3.amazonaws.com
+                            - !Sub ${WebBucket}.s3.${AWS::Region}.amazonaws.com
+                        S3OriginConfig:
+                            OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${OAID}
+                DefaultCacheBehavior:
+                    TargetOriginId: !Sub S3-${WebBucket}
+                    AllowedMethods:
+                        - HEAD
+                        - DELETE
+                        - POST
+                        - GET
+                        - OPTIONS
+                        - PUT
+                        - PATCH
+                    CachedMethods:
+                        - GET
+                        - HEAD
+                        - OPTIONS
+                    ForwardedValues:
+                        QueryString: false
+                    ViewerProtocolPolicy: redirect-to-https
+                DefaultRootObject: !FindInMap
+                    - S3
+                    - Website
+                    - MainPage
+                CustomErrorResponses:
+                    -
+                        ErrorCode: 403
+                        ResponseCode: 200
+                        ResponsePagePath: !Sub
+                            - /${errorPage}
+                            - errorPage: !FindInMap
+                                - S3
+                                - Website
+                                - ErrorPage
+                    -
+                        ErrorCode: 404
+                        ResponseCode: 200
+                        ResponsePagePath: !Sub
+                            - /${errorPage}
+                            - errorPage: !FindInMap
+                                - S3
+                                - Website
+                                - ErrorPage
+                IPV6Enabled: true
+                ViewerCertificate:
+                    CloudFrontDefaultCertificate: true
+                Enabled: true
+                HttpVersion: http2
+                PriceClass: !Ref PriceClass
+                Logging:
+                    Bucket: !Sub ${LogsBucket}.s3.amazonaws.com
+                    Prefix: access_logs_cloudfront/
+                    IncludeCookies: true
+
+Outputs:
+    # S3 Buckets
+    LogsBucket:
+        Value: !Ref LogsBucket
+        Description: LogsBucket
+    IngestBucket:
+        Value: !If
+            - bCreateIngestBucket
+            - !Ref IngestBucket
+            - !Ref UserDefinedIngestBucket
+        Description: IngestBucket
+    ProxyBucket:
+        Value: !Ref ProxyBucket
+        Description: ProxyBucket
+    WebBucket:
+        Value: !Ref WebBucket
+        Description: WebBucket
+    UseAccelerateEndpoint:
+        Value: !If
+            - bCreateIngestBucket
+            - true
+            - false
+        Description: UseAccelerateEndpoint
+    # Lambda Layers
+    AwsSdkLayer:
+        Value: !Ref AwsSdkLayer
+        Description: AwsSdkLayer
+    CoreLibLayer:
+        Value: !Ref CoreLibLayer
+        Description: CoreLibLayer
+    # IoT
+    IotHost:
+        Value: !GetAtt IotUrl.Endpoint
+        Description: IotHost
+    IotTopic:
+        Value: !Sub ${ResourcePrefix}/status
+        Description: IotTopic
+    IotThingPolicy:
+        Value: !Ref IotThingPolicy
+        Description: IotThingPolicy
+    # OpenSearch
+    OpenSearchDomainName:
+        Value: !Ref OpenSearchCluster
+        Description: OpenSearchDomainName
+    OpenSearchDomainEndpoint:
+        Value: !GetAtt OpenSearchCluster.DomainEndpoint
+        Description: OpenSearchDomainEndpoint
+    OpenSearchEngineVersion:
+        Value: !FindInMap
+            - OpenSearch
+            - Engine
+            - Version
+        Description: OpenSearchEngineVersion
+    # CloudFront
+    CloudFrontDistributionId:
+        Value: !Ref CloudFrontDistribution
+        Description: CloudFrontDistributionId
+    CloudFrontDistributionDomainName:
+        Value: !GetAtt CloudFrontDistribution.DomainName
+        Description: CloudFrontDistribution
+    # MediaConvert
+    MediaConvertEndpoint:
+        Value: !GetAtt MediaConvertEndpoint.Endpoint
+        Description: MediaConvertEndpoint
+    # Misc.
+    SolutionUuid:
+        Value: !GetAtt CreateSolutionUuid.Uuid
+        Description: SolutionUuid

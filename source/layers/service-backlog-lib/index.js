@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const BacklogTable = require('./lib/backlog-table');
 const BacklogTableStream = require('./lib/backlog-table-stream');
 const BacklogJob = require('./lib/client/backlogJob');

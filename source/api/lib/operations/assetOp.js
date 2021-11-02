@@ -1,14 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
-  BaseIndex,
   CommonUtils,
   DB,
-  StatsDB,
   Environment,
   StateData,
 } = require('core-lib');
@@ -66,51 +69,16 @@ class AssetOp extends BaseOp {
 
   async onDELETE() {
     const uuid = (this.request.pathParameters || {}).uuid;
-
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
       throw new Error('invalid uuid');
     }
-
-    let promises = [];
-    /* #1: remove proxy files */
-    const responses = await CommonUtils.listObjects(Environment.Proxy.Bucket, uuid);
-    promises = promises.concat(responses.map(x =>
-      CommonUtils.deleteObject(Environment.Proxy.Bucket, x.Key).catch(() => undefined)));
-
-    /* #2: remove row from ingest table */
-    let db = new DB({
+    const db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
-
-    const fetched = await db.fetch(uuid, undefined, [
-      'analysis',
-      'type',
-      'duration',
-      'fileSize',
-      'overallStatus',
-    ]);
-    promises.push(db.purge(uuid).catch(() => undefined));
-
-    /* #3: remove item from stats */
-    promises.push(StatsDB.removeItem(fetched).catch(e =>
-      console.log(`StatsDB.removeItem: ${e.message}.\n${JSON.stringify(fetched, null, 2)}`)));
-
-    /* #4: remove rows from aiml table */
-    db = new DB({
-      Table: Environment.DynamoDB.AIML.Table,
-      PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
-      SortKey: Environment.DynamoDB.AIML.SortKey,
-    });
-    promises = promises.concat(((fetched || {}).analysis || []).map(x =>
-      db.purge(uuid, x).catch(() => undefined)));
-
-    /* #5: remove index from search engine */
-    promises.push((new BaseIndex()).deleteDocument(uuid).catch(e =>
-      console.log(`deleteDocument(${uuid}): ${e.message}`)));
-
-    await Promise.all(promises);
-
+    await db.purge(uuid)
+      .catch((e) =>
+        console.error(`[ERR]: db.purge: ${uuid} ${e.code} ${e.message}`));
     return super.onDELETE({
       uuid,
       status: StateData.Statuses.Removed,
@@ -174,6 +142,7 @@ class AssetOp extends BaseOp {
 
     const step = new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     return step.startExecution({
       input: JSON.stringify({

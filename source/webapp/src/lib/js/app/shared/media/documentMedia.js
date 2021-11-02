@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import S3Utils from '../s3utils.js';
 import BaseMedia from './baseMedia.js';
 
@@ -31,7 +34,7 @@ export default class DocumentMedia extends BaseMedia {
 
   async loadPages() {
     const results = await this.loadJsonResults();
-    this.pages = (await Promise.all(results.map(x =>
+    this.pages = (await Promise.all((results || []).map(x =>
       this.loadPageImage(x))))
       .filter(x => x);
     return this.pages;

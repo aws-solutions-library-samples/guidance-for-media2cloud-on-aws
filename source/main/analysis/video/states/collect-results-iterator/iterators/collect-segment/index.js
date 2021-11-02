@@ -1,11 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   AnalysisTypes,
+  Environment,
 } = require('core-lib');
 const BaseCollectResultsIterator = require('../shared/baseCollectResultsIterator');
 
@@ -17,6 +23,7 @@ class CollectSegmentIterator extends BaseCollectResultsIterator {
     super(stateData, SUBCATEGORY, NAMED_KEY);
     const rekog = new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     this.$func = rekog.getSegmentDetection.bind(rekog);
     this.$responseMetadata = undefined;

@@ -5,15 +5,6 @@
             "Type": "Parallel",
             "Branches": [
                 {
-                    "StartAt": "Pass through",
-                    "States": {
-                        "Pass through": {
-                            "Type": "Pass",
-                            "End": true
-                        }
-                    }
-                },
-                {
                     "StartAt": "Frame-based detection iterators",
                     "States": {
                         "Frame-based detection iterators": {
@@ -144,13 +135,32 @@
                                             {
                                                 "Variable": "$.status",
                                                 "StringEquals": "COMPLETED",
-                                                "Next": "Frame-based track completed (Iterator)"
+                                                "Next": "Index frame-based analysis (Iterator)"
                                             }
                                         ],
                                         "Default": "Create frame-based track (Iterator)"
                                     },
-                                    "Frame-based track completed (Iterator)": {
-                                        "Type": "Succeed"
+                                    "Index frame-based analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
                                     }
                                 }
                             },
@@ -259,13 +269,32 @@
                                             {
                                                 "Variable": "$.status",
                                                 "StringEquals": "COMPLETED",
-                                                "Next": "Video-based track completed (Iterator)"
+                                                "Next": "Index video-based analysis (Iterator)"
                                             }
                                         ],
                                         "Default": "Create video-based track (Iterator)"
                                     },
-                                    "Video-based track completed (Iterator)": {
-                                        "Type": "Succeed"
+                                    "Index video-based analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
                                     }
                                 }
                             },
@@ -374,13 +403,32 @@
                                             {
                                                 "Variable": "$.status",
                                                 "StringEquals": "COMPLETED",
-                                                "Next": "Custom track completed (Iterator)"
+                                                "Next": "Index custom analysis (Iterator)"
                                             }
                                         ],
                                         "Default": "Create custom track (Iterator)"
                                     },
-                                    "Custom track completed (Iterator)": {
-                                        "Type": "Succeed"
+                                    "Index custom analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
                                     }
                                 }
                             },
@@ -397,9 +445,7 @@
             "Resource": "${x0}",
             "Parameters": {
                 "operation": "job-completed",
-                "startTime.$": "$$.Execution.StartTime",
-                "executionArn.$": "$$.Execution.Id",
-                "stateName.$": "$$.State.Name",
+                "stateExecution.$": "$$.Execution",
                 "parallelStateOutputs.$": "$"
             },
             "End": true,

@@ -1,7 +1,6 @@
-/**
- * @class S3Utils
- * @description override constructor to set common parameters
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 
 export default class S3Utils {
@@ -18,6 +17,7 @@ export default class S3Utils {
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
       useAccelerateEndpoint: !!((SolutionManifest.S3 || {}).UseAccelerateEndpoint),
+      customUserAgent: SolutionManifest.CustomUserAgent,
       ...params,
     });
   }
@@ -34,6 +34,7 @@ export default class S3Utils {
     return S3Utils.getInstance().getObject({
       Bucket: bucket,
       Key: key,
+      // ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
     }).promise();
   }
 
@@ -47,6 +48,7 @@ export default class S3Utils {
         Prefix: prefix,
         MaxKeys: 100,
         ContinuationToken: (response || {}).NextContinuationToken,
+        // ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
       }).promise();
       collection.splice(collection.length, 0, ...response.Contents);
     } while ((response || {}).NextContinuationToken);

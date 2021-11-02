@@ -1,13 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const MIME = require('mime');
 const {
   AIML,
@@ -17,6 +18,8 @@ const {
   AnalysisTypes,
 } = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+const ExpectedBucketOwner = process.env.ENV_EXPECTED_BUCKET_OWNER;
 
 /**
  * @class SolutionManifest
@@ -165,6 +168,7 @@ class SolutionManifest extends mxBaseResponse(class {}) {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
     return s3.putObject({
       Bucket: this.webBucket,
@@ -172,6 +176,7 @@ class SolutionManifest extends mxBaseResponse(class {}) {
       ContentType: MIME.getType(key),
       ServerSideEncryption: 'AES256',
       Body: manifest,
+      ExpectedBucketOwner,
     }).promise();
   }
 

@@ -1,4 +1,11 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const LanguageCodes = [
+  {
+    name: 'Afrikaans (South Africa)',
+    value: 'af-ZA',
+  },
   {
     name: 'Arabic (U.A.E.)',
     value: 'ar-AE',
@@ -6,6 +13,22 @@ const LanguageCodes = [
   {
     name: 'Arabic (Saudi Arabia)',
     value: 'ar-SA',
+  },
+  {
+    name: 'Chinese (PRC)',
+    value: 'zh-CN',
+  },
+  {
+    name: 'Chinese (Traditional)',
+    value: 'zh-TW',
+  },
+  {
+    name: 'Danish (Denmark)',
+    value: 'da-DK',
+  },
+  {
+    name: 'Dutch (Netherlands)',
+    value: 'nl-NL',
   },
   {
     name: 'German (Switzerland)',
@@ -24,16 +47,24 @@ const LanguageCodes = [
     value: 'en-AU',
   },
   {
-    name: 'English (United Kingdom)',
-    value: 'en-GB',
-  },
-  {
     name: 'English (Ireland)',
     value: 'en-IE',
   },
   {
     name: 'English (Indian)',
     value: 'en-IN',
+  },
+  {
+    name: 'English (New Zealand)',
+    value: 'en-NZ',
+  },
+  {
+    name: 'English (South Africa)',
+    value: 'en-ZA',
+  },
+  {
+    name: 'English (United Kingdom)',
+    value: 'en-GB',
   },
   {
     name: 'English (United States)',
@@ -92,10 +123,6 @@ const LanguageCodes = [
     value: 'ms-MY',
   },
   {
-    name: 'Dutch (Netherlands)',
-    value: 'nl-NL',
-  },
-  {
     name: 'Portuguese (Brazil)',
     value: 'pt-BR',
   },
@@ -112,16 +139,16 @@ const LanguageCodes = [
     value: 'ta-IN',
   },
   {
+    name: 'Thai (Thailand)',
+    value: 'th-TH',
+  },
+  {
     name: 'Telugu (India)',
     value: 'te-IN',
   },
   {
     name: 'Turkish (Turkey)',
     value: 'tr-TR',
-  },
-  {
-    name: 'Chinese (PRC)',
-    value: 'zh-CN',
   },
 ];
 

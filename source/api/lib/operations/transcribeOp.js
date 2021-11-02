@@ -1,9 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
+const {
+  Environment,
+} = require('core-lib');
 const BaseOp = require('./baseOp');
 
 const OP_CUSTOMVOCABULARIES = 'custom-vocabularies';
@@ -12,6 +20,13 @@ const STATUS_COMPLETED = 'COMPLETED';
 const STATUS_READY = 'READY';
 
 class TranscribeOp extends BaseOp {
+  static createInstance() {
+    return new AWS.TranscribeService({
+      apiVersion: '2017-10-26',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
+    });
+  }
+
   async onPOST() {
     throw new Error('TranscribeOp.onPOST not impl');
   }
@@ -32,9 +47,7 @@ class TranscribeOp extends BaseOp {
   }
 
   async onGetCustomLanguageModels() {
-    const transcribe = new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-    });
+    const transcribe = TranscribeOp.createInstance();
 
     let response;
     const customLanguageModels = [];
@@ -57,9 +70,7 @@ class TranscribeOp extends BaseOp {
   }
 
   async onGetCustomVocabularies() {
-    const transcribe = new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-    });
+    const transcribe = TranscribeOp.createInstance();
 
     let response;
     const customVocabularies = [];

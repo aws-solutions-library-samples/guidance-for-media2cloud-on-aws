@@ -1,4 +1,14 @@
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const RekognitionBacklogJob = require('../client/rekognition');
 const TranscribeBacklogJob = require('../client/transcribe');
 const ComprehendBacklogJob = require('../client/comprehend');

@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   StateData,
@@ -125,13 +123,22 @@ class BaseCreateTrackIterator {
     let appearances = await Promise.all(this.mapData[name].map(x =>
       this.downloadSelected(data.bucket, PATH.join(prefix, x), name)));
     appearances = appearances.reduce((a0, c0) => a0.concat(c0), []);
+    /* #1.1: create timelines */
+    const timelines = this.createTimelines(name, appearances);
     /* #2: create and upload timeseries data */
     let oPrefix;
     let oName;
-    const basename = name.toLowerCase().replace(/\s/g, '_');
+    const basename = name.toLowerCase().replace(/\s/g, '_').replace(/\//g, '-');
     if (this.enableTimeseries) {
       const timeseries = this.createTimeseriesData(name, appearances);
       if (timeseries) {
+        /* compute show rate, duration and appearance */
+        timeseries.duration = data.duration || 1;
+        const appearance = (!timelines)
+          ? 0
+          : timelines.reduce((a0, c0) =>
+            a0 + (c0.end - c0.begin), 0);
+        timeseries.appearance = Math.round(appearance);
         oPrefix = this.makeTimeseriesPrefix();
         oName = `${basename}.json`;
         promises.push(CommonUtils.uploadFile(data.bucket, oPrefix, oName, timeseries));
@@ -141,7 +148,6 @@ class BaseCreateTrackIterator {
     if (!this.enableMetadata && !this.enableVtt) {
       return Promise.all(promises);
     }
-    const timelines = this.createTimelines(name, appearances);
     if (!timelines) {
       return Promise.all(promises);
     }
@@ -169,8 +175,8 @@ class BaseCreateTrackIterator {
       : undefined;
     const timelines = [];
     const queue = new TimelineQ();
-    while (dataset.length) {
-      const item = TimelineQ.createTypedItem(dataset.shift(), options);
+    for (let i = 0; i < dataset.length; i++) {
+      const item = TimelineQ.createTypedItem(dataset[i], options);
       if (!item.canUse()) {
         continue;
       }
@@ -220,6 +226,7 @@ class BaseCreateTrackIterator {
       backlogId: data.backlogId,
       jobId: data.jobId,
       numOutputs: data.numOutputs,
+      bucket: data.bucket,
       output,
       metadata,
       timeseries,

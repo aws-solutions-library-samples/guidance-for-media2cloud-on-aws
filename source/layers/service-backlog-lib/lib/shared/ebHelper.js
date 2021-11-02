@@ -1,9 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const Retry = require('./retry');
 const {
   EventBridge: EB,
+  Solution: {
+    Metrics: {
+      CustomUserAgent,
+    },
+  },
 } = require('./defs');
 
 class EBHelper {
@@ -32,6 +45,7 @@ class EBHelper {
     };
     const eb = new AWS.EventBridge({
       apiVersion: '2015-10-07',
+      customUserAgent: CustomUserAgent,
     });
     console.log(`EBHelper.putEvents = ${JSON.stringify(params, null, 2)}`);
     return Retry.run(eb.putEvents.bind(eb), params)

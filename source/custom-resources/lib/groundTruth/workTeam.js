@@ -1,16 +1,16 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const FS = require('fs');
 const PATH = require('path');
-const AWS = require('aws-sdk');
-
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
@@ -27,10 +27,12 @@ class WorkTeam extends mxBaseResponse(class {}) {
 
     this.$cognito = new AWS.CognitoIdentityServiceProvider({
       apiVersion: '2016-04-18',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
 
     this.$sagemaker = new AWS.SageMaker({
       apiVersion: '2017-07-24',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
   }
 

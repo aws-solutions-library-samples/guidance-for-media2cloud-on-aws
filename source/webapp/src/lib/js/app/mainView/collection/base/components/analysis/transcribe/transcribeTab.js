@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../shared/localization.js';
 import VideoPreview from '../../../../../../shared/media/preview/videoPreview.js';
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
@@ -8,7 +11,7 @@ export default class TranscribeTab extends BaseAnalysisTab {
   }
 
   async createContent() {
-    const col = $('<div/>').addClass('col-9 my-4');
+    const col = $('<div/>').addClass('col-9 my-4 max-h36r');
     const on = this.previewComponent.trackIsEnabled(VideoPreview.Constants.Subtitle);
     const input = $('<input/>')
       .attr('type', 'checkbox')
@@ -30,7 +33,6 @@ export default class TranscribeTab extends BaseAnalysisTab {
 
     const view = this.previewComponent.getSubtitleView();
     view.on(VideoPreview.Events.Track.Loaded, (event, track) => {
-      console.log(`VideoPreview.Events.Track.Loaded: ${track.label}`);
       /*
       if (this.previewComponent.trackIsSub(track)) {
         input.prop('checked', true);

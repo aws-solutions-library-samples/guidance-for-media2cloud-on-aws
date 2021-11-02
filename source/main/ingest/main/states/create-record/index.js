@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   DB,
@@ -122,13 +120,15 @@ class StateCreateRecord {
   parseFrameCaptureMode(aiOptions) {
     const options = aiOptions;
     /* auto select frameCaptureMode if not defined */
-    if (options[AnalysisTypes.Rekognition.CustomLabel]
+    if (options
+      && options[AnalysisTypes.Rekognition.CustomLabel]
       && options.customLabelModels
       && !options.frameCaptureMode) {
       options.frameCaptureMode = FrameCaptureMode.MODE_1F_EVERY_2S;
     }
     /* if frameCaptureMode is set to MODE_NODE, disable customlabel and customLabelModels */
-    if (options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
+    if (options
+      && options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
       options[AnalysisTypes.Rekognition.CustomLabel] = false;
       options.customLabelModels = undefined;
     }

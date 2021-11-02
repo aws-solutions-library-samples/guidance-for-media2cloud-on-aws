@@ -1,14 +1,20 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const PATH = require('path');
 const {
   CommonUtils,
   AnalysisTypes,
   AnalysisError,
+  Environment,
 } = require('core-lib');
 const {
   BacklogClient,
@@ -95,6 +101,7 @@ class StartCustomLabelIterator extends BaseStartDetectionIterator {
     const projectVersions = [];
     const rekog = new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     do {
       response = await rekog.describeProjectVersions({

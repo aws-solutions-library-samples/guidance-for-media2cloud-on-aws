@@ -1,20 +1,15 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 const {
   SNS,
 } = require('core-lib');
 const CloudWatchStatus = require('./lib/cloudwatch');
+const DDBStreamEvent = require('./lib/ddbstream');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
@@ -22,7 +17,10 @@ const REQUIRED_ENVS = [
   'ENV_INGEST_BUCKET',
   'ENV_PROXY_BUCKET',
   'ENV_SNS_TOPIC_ARN',
+  'ENV_ES_DOMAIN_ENDPOINT',
 ];
+
+const DDB_STREAM_SOURCE = 'aws:dynamodb';
 
 /**
  * @exports handler
@@ -37,6 +35,8 @@ exports.handler = async (event, context) => {
     let instance;
     if (event.source) {
       instance = new CloudWatchStatus(event, context);
+    } else if (event.Records && event.Records[0].eventSource === DDB_STREAM_SOURCE) {
+      instance = new DDBStreamEvent(event, context);
     } else {
       throw new Error('event not supported. exiting....');
     }

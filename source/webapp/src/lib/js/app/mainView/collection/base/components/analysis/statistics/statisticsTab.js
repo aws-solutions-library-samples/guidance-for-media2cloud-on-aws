@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../shared/localization.js';
 import S3Utils from '../../../../../../shared/s3utils.js';
 import BaseMedia from '../../../../../../shared/media/baseMedia.js';
@@ -91,15 +94,12 @@ export default class StatisticsTab extends BaseAnalysisTab {
     [
       'startTime',
       'endTime',
-      'totalWordCounts',
     ].forEach(name =>
       this.appendTableList(dl, name, this.readableValue(data, name)));
 
     [
       'output',
-      'cuelines',
       'vtt',
-      'phrases',
     ].forEach((x) => {
       if (data[x]) {
         const name = data[x].substring(data[x].lastIndexOf('/') + 1, data[x].length);
@@ -134,10 +134,12 @@ export default class StatisticsTab extends BaseAnalysisTab {
       'output',
       'metadata',
     ].forEach((x) => {
-      const name = data[x].substring(data[x].lastIndexOf('/') + 1, data[x].length);
-      const href = S3Utils.signUrl(bucket, data[x]);
-      const tooltip = Localization.Tooltips.DownloadFile;
-      this.appendTableList(dl, x, this.createBadge(name, href, tooltip));
+      if (data[x]) {
+        const name = data[x].substring(data[x].lastIndexOf('/') + 1, data[x].length);
+        const href = S3Utils.signUrl(bucket, data[x]);
+        const tooltip = Localization.Tooltips.DownloadFile;
+        this.appendTableList(dl, x, this.createBadge(name, href, tooltip));
+      }
     });
     return details;
   }
@@ -166,7 +168,7 @@ export default class StatisticsTab extends BaseAnalysisTab {
   }
 
   async createContent() {
-    const col = $('<div/>').addClass(`${COL_TAB} my-4`);
+    const col = $('<div/>').addClass(`${COL_TAB} my-4 max-h36r`);
     setTimeout(async () => {
       this.loading(true);
       const aimls = await this.media.getAnalysisResults();

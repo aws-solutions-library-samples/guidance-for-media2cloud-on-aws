@@ -36,7 +36,7 @@ cd deployment
 bash ./build-s3-dist.sh --bucket DEPLOY_BUCKET_BASENAME [--solution SOLUTION] [--version VERSION] [--single-region]
 
 where
-  --bucket BUCKET             specify the bucket name where the templates and packages deployed to.
+  --bucket BUCKET_NAME        specify the bucket name where the templates and packages deployed to.
                               By default, the script deploys the templates and packages across all regions
                               where '--bucket' setting is treated as a basename of the bucket and a region
                               string is automatically appended to the bucket name. For example,
@@ -64,7 +64,7 @@ where
 
 ######################################################################
 #
-# BUCKET must be defined through commandline option
+# BUCKET_NAME must be defined through commandline option
 #
 # --bucket DEPLOY_BUCKET_BASENAME
 #
@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
       -b|--bucket)
-      BUCKET="$2"
+      BUCKET_NAME="$2"
       shift # past key
       shift # past value
       ;;
@@ -109,7 +109,12 @@ TEMPLATE_DIST_DIR="$DEPLOY_DIR/global-s3-assets"
 BUILD_DIST_DIR="$DEPLOY_DIR/regional-s3-assets"
 TMP_DIR=$(mktemp -d)
 
-[ -z "$BUCKET" ] && \
+[ -z "$SOLUTION_ID" ] && \
+  echo "error: can't find SOLUTION_ID..." && \
+  usage && \
+  exit 1
+
+[ -z "$BUCKET_NAME" ] && \
   echo "error: missing --bucket parameter..." && \
   usage && \
   exit 1
@@ -147,7 +152,6 @@ PKG_INGEST_VIDEO=
 PKG_INGEST_AUDIO=
 PKG_INGEST_IMAGE=
 PKG_INGEST_DOCUMENT=
-PKG_INGEST_S3EVENT=
 PKG_INGEST_STATUS_UPDATER=
 ## Analysis Workflow packages ##
 PKG_ANALYSIS_MAIN=
@@ -159,8 +163,9 @@ PKG_ANALYSIS_STATUS_UPDATER=
 PKG_BACKLOG_STATUS_UPDATER=
 PKG_BACKLOG_STREAM_CONNECTOR=
 PKG_BACKLOG_CUSTOMLABELS=
-## State Machine Error Handling ##
+## Main Workflow ##
 PKG_ERROR_HANDLER=
+PKG_MAIN_S3EVENT=
 ## CloudFormation Custom Resource ##
 PKG_CUSTOM_RESOURCES=
 ## WebApp packages ##
@@ -429,7 +434,6 @@ function build_ingest_workflow_packages() {
   build_ingest_image_package
   build_ingest_document_package
   # automation
-  build_ingest_automation_s3event_package
   build_ingest_status_updater_package
 }
 
@@ -526,23 +530,6 @@ function build_ingest_document_package() {
   npm run build
   npm run zip -- "$PKG_INGEST_DOCUMENT" .
   cp -v "./dist/$PKG_INGEST_DOCUMENT" "$BUILD_DIST_DIR"
-  popd
-}
-
-function build_ingest_automation_s3event_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Ingest Automation S3 Event lambda package"
-  echo "------------------------------------------------------------------------------"
-  local workflow="ingest"
-  local automation="automation"
-  local lambda="s3event"
-  local package="${workflow}-${automation}-${lambda}"
-  PKG_INGEST_S3EVENT="${package}-${VERSION}.zip"
-  pushd "$SOURCE_DIR/main/${workflow}/${automation}/${lambda}"
-  npm install
-  npm run build
-  npm run zip -- "$PKG_INGEST_S3EVENT" .
-  cp -v "./dist/$PKG_INGEST_S3EVENT" "$BUILD_DIST_DIR"
   popd
 }
 
@@ -694,19 +681,39 @@ function build_main_workflow_packages() {
   build_analysis_workflow_packages
   # state machine error handler
   build_workflow_error_handler_package
+  # optional s3event package
+  build_main_automation_s3event_package
 }
 
 function build_workflow_error_handler_package() {
   echo "------------------------------------------------------------------------------"
   echo "Building Workflow Error Handler package"
   echo "------------------------------------------------------------------------------"
-  local package="error-handler"
+  local workflow="main"
+  local lambda="error-handler"
+  local package="${workflow}-${lambda}"
   PKG_ERROR_HANDLER="${package}-${VERSION}.zip"
-  pushd "$SOURCE_DIR/main/automation/${package}"
+  pushd "$SOURCE_DIR/main/automation/${lambda}"
   npm install
   npm run build
   npm run zip -- "$PKG_ERROR_HANDLER" .
   cp -v "./dist/$PKG_ERROR_HANDLER" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_main_automation_s3event_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Main Automation S3 Event lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="main"
+  local lambda="s3event"
+  local package="${workflow}-${lambda}"
+  PKG_MAIN_S3EVENT="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/automation/${lambda}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_MAIN_S3EVENT" .
+  cp -v "./dist/$PKG_MAIN_S3EVENT" "$BUILD_DIST_DIR"
   popd
 }
 
@@ -899,119 +906,127 @@ function build_cloudformation_templates() {
   runcmd cp -rv *.yaml "$TEMPLATE_DIST_DIR/"
   pushd "$TEMPLATE_DIST_DIR"
 
-  # solution name
-  echo "Updating %SOLUTION% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%SOLUTION%|${SOLUTION}|g" *.yaml || exit 1
+  # solution Id
+  echo "Updating %%SOLUTION_ID%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SOLUTION_ID%%|${SOLUTION_ID}|g" *.yaml || exit 1
+
+  # solution Id (lowercase)
+  local solutionId=$(echo ${SOLUTION_ID} | tr "[:upper:]" "[:lower:]")
+  echo "Updating %%SOLUTION_ID_LOWERCASE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SOLUTION_ID_LOWERCASE%%|${solutionId}|g" *.yaml || exit 1
 
   # solution version
-  echo "Updating %VERSION% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%VERSION%|${VERSION}|g" *.yaml || exit 1
+  echo "Updating %%VERSION%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%VERSION%%|${VERSION}|g" *.yaml || exit 1
 
   # deployment bucket name
-  echo "Updating %BUCKET% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%BUCKET%|${BUCKET}|g" *.yaml || exit 1
+  echo "Updating %%BUCKET_NAME%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%BUCKET_NAME%%|${BUCKET_NAME}|g" *.yaml || exit 1
 
   # key prefix name
   local keyprefix="${SOLUTION}/${VERSION}"
-  echo "Updating %KEYPREFIX% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%KEYPREFIX%|${keyprefix}|g" *.yaml || exit 1
+  echo "Updating %%KEYPREFIX%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%KEYPREFIX%%|${keyprefix}|g" *.yaml || exit 1
 
   # web package name
-  echo "Updating %PKG_WEBAPP% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_WEBAPP%|${PKG_WEBAPP}|g" *.yaml || exit 1
+  echo "Updating %%PKG_WEBAPP%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_WEBAPP%%|${PKG_WEBAPP}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_API%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_API%%|${PKG_API}|g" *.yaml || exit 1
 
   # layer aws-sdk name
-  echo "Updating %LAYER_AWSSDK% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_AWSSDK%|${LAYER_AWSSDK}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_AWSSDK%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_AWSSDK%%|${LAYER_AWSSDK}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_CORE_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_CORE_LIB%|${LAYER_CORE_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_CORE_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_CORE_LIB%%|${LAYER_CORE_LIB}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_MEDIAINFO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_MEDIAINFO%|${LAYER_MEDIAINFO}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_MEDIAINFO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_MEDIAINFO%%|${LAYER_MEDIAINFO}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_IMAGE_PROCESS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_IMAGE_PROCESS%|${LAYER_IMAGE_PROCESS}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_IMAGE_PROCESS%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_IMAGE_PROCESS%%|${LAYER_IMAGE_PROCESS}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_FIXITY_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_FIXITY_LIB%|${LAYER_FIXITY_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_FIXITY_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_FIXITY_LIB%%|${LAYER_FIXITY_LIB}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_CANVAS_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_CANVAS_LIB%|${LAYER_CANVAS_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_CANVAS_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_CANVAS_LIB%%|${LAYER_CANVAS_LIB}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_PDF_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_PDF_LIB%|${LAYER_PDF_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_PDF_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_PDF_LIB%%|${LAYER_PDF_LIB}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_BACKLOG% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_BACKLOG%|${LAYER_BACKLOG}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_BACKLOG%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_BACKLOG%%|${LAYER_BACKLOG}|g" *.yaml || exit 1
 
   # custom resource name
-  echo "Updating %PKG_CUSTOM_RESOURCES% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_CUSTOM_RESOURCES%|${PKG_CUSTOM_RESOURCES}|g" *.yaml || exit 1
+  echo "Updating %%PKG_CUSTOM_RESOURCES%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_CUSTOM_RESOURCES%%|${PKG_CUSTOM_RESOURCES}|g" *.yaml || exit 1
 
   # package name
-  echo "Updating %PKG_INGEST_MAIN% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_MAIN%|${PKG_INGEST_MAIN}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_MAIN%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_MAIN%%|${PKG_INGEST_MAIN}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_FIXITY% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_FIXITY%|${PKG_INGEST_FIXITY}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_FIXITY%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_FIXITY%%|${PKG_INGEST_FIXITY}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_VIDEO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_VIDEO%|${PKG_INGEST_VIDEO}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_VIDEO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_VIDEO%%|${PKG_INGEST_VIDEO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_AUDIO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_AUDIO%|${PKG_INGEST_AUDIO}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_AUDIO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_AUDIO%%|${PKG_INGEST_AUDIO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_IMAGE% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_IMAGE%|${PKG_INGEST_IMAGE}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_IMAGE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_IMAGE%%|${PKG_INGEST_IMAGE}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_DOCUMENT% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_DOCUMENT%|${PKG_INGEST_DOCUMENT}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_DOCUMENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_DOCUMENT%%|${PKG_INGEST_DOCUMENT}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_S3EVENT% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_S3EVENT%|${PKG_INGEST_S3EVENT}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_STATUS_UPDATER%%|${PKG_INGEST_STATUS_UPDATER}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST_STATUS_UPDATER% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST_STATUS_UPDATER%|${PKG_INGEST_STATUS_UPDATER}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_MAIN%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_MAIN%%|${PKG_ANALYSIS_MAIN}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_MAIN% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_MAIN%|${PKG_ANALYSIS_MAIN}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_AUDIO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_AUDIO%%|${PKG_ANALYSIS_AUDIO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_AUDIO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_AUDIO%|${PKG_ANALYSIS_AUDIO}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_VIDEO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_VIDEO%%|${PKG_ANALYSIS_VIDEO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_VIDEO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_VIDEO%|${PKG_ANALYSIS_VIDEO}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_IMAGE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_IMAGE%%|${PKG_ANALYSIS_IMAGE}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_IMAGE% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_IMAGE%|${PKG_ANALYSIS_IMAGE}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_DOCUMENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_DOCUMENT%%|${PKG_ANALYSIS_DOCUMENT}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_DOCUMENT% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_DOCUMENT%|${PKG_ANALYSIS_DOCUMENT}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_STATUS_UPDATER%%|${PKG_ANALYSIS_STATUS_UPDATER}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_STATUS_UPDATER% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_STATUS_UPDATER%|${PKG_ANALYSIS_STATUS_UPDATER}|g" *.yaml || exit 1
+  # Backlog Service Workflow
+  echo "Updating %%PKG_BACKLOG_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_STATUS_UPDATER%%|${PKG_BACKLOG_STATUS_UPDATER}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_BACKLOG_STATUS_UPDATER% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_BACKLOG_STATUS_UPDATER%|${PKG_BACKLOG_STATUS_UPDATER}|g" *.yaml || exit 1
+  echo "Updating %%PKG_BACKLOG_STREAM_CONNECTOR%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_STREAM_CONNECTOR%%|${PKG_BACKLOG_STREAM_CONNECTOR}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_BACKLOG_STREAM_CONNECTOR% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_BACKLOG_STREAM_CONNECTOR%|${PKG_BACKLOG_STREAM_CONNECTOR}|g" *.yaml || exit 1
+  echo "Updating %%PKG_BACKLOG_CUSTOMLABELS%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_CUSTOMLABELS%%|${PKG_BACKLOG_CUSTOMLABELS}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_BACKLOG_CUSTOMLABELS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_BACKLOG_CUSTOMLABELS%|${PKG_BACKLOG_CUSTOMLABELS}|g" *.yaml || exit 1
+  ## Main Workflow
+  echo "Updating %%PKG_ERROR_HANDLER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ERROR_HANDLER%%|${PKG_ERROR_HANDLER}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ERROR_HANDLER% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ERROR_HANDLER%|${PKG_ERROR_HANDLER}|g" *.yaml || exit 1
+  echo "Updating %%PKG_MAIN_S3EVENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_MAIN_S3EVENT%%|${PKG_MAIN_S3EVENT}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_API% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_API%|${PKG_API}|g" *.yaml || exit 1
+  ## Misc.
+  echo "Updating %%ANONYMOUS_DATA%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%ANONYMOUS_DATA%%|${ANONYMOUS_DATA}|g" *.yaml || exit 1
 
-  echo "Updating %ANONYMOUS_DATA% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%ANONYMOUS_DATA%|${ANONYMOUS_DATA}|g" *.yaml || exit 1
-
-  echo "Updating %SINGLE_REGION% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%SINGLE_REGION%|${SINGLE_REGION}|g" *.yaml || exit 1
+  echo "Updating %%SINGLE_REGION%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SINGLE_REGION%%|${SINGLE_REGION}|g" *.yaml || exit 1
 
   # remove .bak
   runcmd rm -v *.bak
@@ -1047,7 +1062,6 @@ function on_complete() {
   echo "** PKG_INGEST_AUDIO=${PKG_INGEST_AUDIO} **"
   echo "** PKG_INGEST_IMAGE=${PKG_INGEST_IMAGE} **"
   echo "** PKG_INGEST_DOCUMENT=${PKG_INGEST_DOCUMENT} **"
-  echo "** PKG_INGEST_S3EVENT=${PKG_INGEST_S3EVENT} **"
   ## Analysis Workflow ##
   echo "** PKG_ANALYSIS_MAIN=${PKG_ANALYSIS_MAIN} **"
   echo "** PKG_ANALYSIS_AUDIO=${PKG_ANALYSIS_AUDIO} **"
@@ -1055,11 +1069,14 @@ function on_complete() {
   echo "** PKG_ANALYSIS_IMAGE=${PKG_ANALYSIS_IMAGE} **"
   echo "** PKG_ANALYSIS_DOCUMENT=${PKG_ANALYSIS_DOCUMENT} **"
   echo "** PKG_ANALYSIS_STATUS_UPDATER=${PKG_ANALYSIS_STATUS_UPDATER} **"
-  ## Misc. ##
-  echo "** PKG_CUSTOM_RESOURCES=${PKG_CUSTOM_RESOURCES} **"
+  ## Main Workflow ##
   echo "** PKG_ERROR_HANDLER=${PKG_ERROR_HANDLER} **"
+  echo "** PKG_MAIN_S3EVENT=${PKG_MAIN_S3EVENT} **"
+  ## WebApp ##
   echo "** PKG_API=${PKG_API} **"
   echo "** PKG_WEBAPP=${PKG_WEBAPP} **"
+  ## Misc. ##
+  echo "** PKG_CUSTOM_RESOURCES=${PKG_CUSTOM_RESOURCES} **"
 }
 
 #

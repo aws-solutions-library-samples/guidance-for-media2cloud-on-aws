@@ -26,24 +26,63 @@
                     "BackoffRate": 1.2
                 }
             ],
-            "Next": "Got transcription data?"
-        },
-        "Got transcription data?": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.status",
-                    "StringEquals": "NO_DATA",
-                    "Next": "Analysis completed"
-                }
-            ],
-            "Default": "Collect transcribe results"
+            "Next": "Collect transcribe results"
         },
         "Collect transcribe results": {
             "Type": "Task",
             "Resource": "${x0}",
             "Parameters": {
                 "operation": "collect-transcribe-results",
+                "uuid.$": "$.uuid",
+                "status": "NOT_STARTED",
+                "progress": 0,
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "Got transcription data?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Got transcription data?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.data.transcribe",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.transcribe.languageCode",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.transcribe.output",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.transcribe.vtt",
+                            "IsPresent": true
+                        }
+                    ],
+                    "Next": "Index transcribe results"
+                }
+            ],
+            "Default": "Analysis completed"
+        },
+        "Index transcribe results": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "index-transcribe-results",
                 "uuid.$": "$.uuid",
                 "status": "NOT_STARTED",
                 "progress": 0,
@@ -66,9 +105,9 @@
             "Type": "Parallel",
             "Branches": [
                 {
-                    "StartAt": "Start entity",
+                    "StartAt": "Batch detect entities",
                     "States": {
-                        "Start entity": {
+                        "Batch detect entities": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
@@ -79,7 +118,7 @@
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
-                            "Next": "Got entity data?",
+                            "Next": "Index entity results",
                             "Retry": [
                                 {
                                     "ErrorEquals": [
@@ -91,25 +130,14 @@
                                 }
                             ]
                         },
-                        "Got entity data?" : {
-                            "Type": "Choice",
-                            "Choices": [
-                                {
-                                    "Variable": "$.status",
-                                    "StringEquals": "NO_DATA",
-                                    "Next": "Entity skipped"
-                                }
-                            ],
-                            "Default": "Create entity track"
-                        },
-                        "Create entity track": {
+                        "Index entity results": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
                                 "progress": 0,
-                                "operation": "create-entity-track",
+                                "operation": "index-entity-results",
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
@@ -124,16 +152,13 @@
                                     "BackoffRate": 1.1
                                 }
                             ]
-                        },
-                        "Entity skipped": {
-                            "Type": "Succeed"
                         }
                     }
                 },
                 {
-                    "StartAt": "Start keyphrase",
+                    "StartAt": "Batch detect keyphrases",
                     "States": {
-                        "Start keyphrase": {
+                        "Batch detect keyphrases": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
@@ -144,7 +169,7 @@
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
-                            "Next": "Got keyphrase data?",
+                            "Next": "Index keyphrase results",
                             "Retry": [
                                 {
                                     "ErrorEquals": [
@@ -156,25 +181,14 @@
                                 }
                             ]
                         },
-                        "Got keyphrase data?" : {
-                            "Type": "Choice",
-                            "Choices": [
-                                {
-                                    "Variable": "$.status",
-                                    "StringEquals": "NO_DATA",
-                                    "Next": "Keyphrase skipped"
-                                }
-                            ],
-                            "Default": "Create keyphrase track"
-                        },
-                        "Create keyphrase track": {
+                        "Index keyphrase results": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
                                 "progress": 0,
-                                "operation": "create-keyphrase-track",
+                                "operation": "index-keyphrase-results",
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
@@ -189,16 +203,13 @@
                                     "BackoffRate": 1.1
                                 }
                             ]
-                        },
-                        "Keyphrase skipped": {
-                            "Type": "Succeed"
                         }
                     }
                 },
                 {
-                    "StartAt": "Start sentiment",
+                    "StartAt": "Batch detect sentiments",
                     "States": {
-                        "Start sentiment": {
+                        "Batch detect sentiments": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
@@ -209,7 +220,7 @@
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
-                            "Next": "Got sentiment data?",
+                            "Next": "Index sentiment results",
                             "Retry": [
                                 {
                                     "ErrorEquals": [
@@ -221,25 +232,14 @@
                                 }
                             ]
                         },
-                        "Got sentiment data?" : {
-                            "Type": "Choice",
-                            "Choices": [
-                                {
-                                    "Variable": "$.status",
-                                    "StringEquals": "NO_DATA",
-                                    "Next": "Sentiment skipped"
-                                }
-                            ],
-                            "Default": "Create sentiment track"
-                        },
-                        "Create sentiment track": {
+                        "Index sentiment results": {
                             "Type": "Task",
                             "Resource": "${x0}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
                                 "progress": 0,
-                                "operation": "create-sentiment-track",
+                                "operation": "index-sentiment-results",
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
@@ -254,9 +254,6 @@
                                     "BackoffRate": 1.1
                                 }
                             ]
-                        },
-                        "Sentiment skipped": {
-                            "Type": "Succeed"
                         }
                     }
                 },
@@ -290,14 +287,26 @@
                             "Type": "Choice",
                             "Choices": [
                                 {
-                                    "Variable": "$.status",
-                                    "StringEquals": "NO_DATA",
-                                    "Next": "Custom entity skipped"
+                                    "And": [
+                                        {
+                                            "Variable": "$.data.comprehend",
+                                            "IsPresent": true
+                                        },
+                                        {
+                                            "Variable": "$.data.comprehend.customentity",
+                                            "IsPresent": true
+                                        },
+                                        {
+                                            "Variable": "$.data.comprehend.customentity.prefix",
+                                            "IsPresent": true
+                                        }
+                                    ],
+                                    "Next": "Start and wait custom entity"
                                 }
                             ],
-                            "Default": "Start custom entity"
+                            "Default": "Custom entity skipped"
                         },
-                        "Start custom entity": {
+                        "Start and wait custom entity": {
                             "Type": "Task",
                             "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
                             "Parameters": {
@@ -367,7 +376,7 @@
                                             "StringEquals": "ERROR"
                                         }
                                     ],
-                                    "Next": "No custom entity detected"
+                                    "Next": "Custom entity skipped"
                                 },
                                 {
                                     "Variable": "$.status",
@@ -388,7 +397,7 @@
                                 "input.$": "$.input",
                                 "data.$": "$.data"
                             },
-                            "End": true,
+                            "Next": "Index custom entity results",
                             "Retry": [
                                 {
                                     "ErrorEquals": [
@@ -400,10 +409,30 @@
                                 }
                             ]
                         },
-                        "Custom entity skipped": {
-                            "Type": "Succeed"
+                        "Index custom entity results": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "operation": "index-custom-entity-results",
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
                         },
-                        "No custom entity detected": {
+                        "Custom entity skipped": {
                             "Type": "Succeed"
                         }
                     }
@@ -416,9 +445,7 @@
             "Resource": "${x0}",
             "Parameters": {
                 "operation": "job-completed",
-                "startTime.$": "$$.Execution.StartTime",
-                "executionArn.$": "$$.Execution.Id",
-                "stateName.$": "$$.State.Name",
+                "stateExecution.$": "$$.Execution",
                 "parallelStateOutputs.$": "$"
             },
             "End": true,

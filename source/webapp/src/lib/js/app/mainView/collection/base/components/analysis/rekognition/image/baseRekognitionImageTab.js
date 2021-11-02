@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../../shared/localization.js';
 import AnalysisTypes from '../../../../../../../shared/analysis/analysisTypes.js';
 import BaseAnalysisTab from '../../base/baseAnalysisTab.js';
@@ -37,7 +40,7 @@ export default class BaseRekognitionImageTab extends BaseAnalysisTab {
   }
 
   async createContent() {
-    const col = $('<div/>').addClass('col-9 my-4');
+    const col = $('<div/>').addClass('col-9 my-4 max-h36r');
     const canvases = this.createCanvasButtons(this.category);
     if (!canvases.length) {
       return super.createContent();
@@ -64,6 +67,7 @@ export default class BaseRekognitionImageTab extends BaseAnalysisTab {
           trigger: 'hover',
         });
       btn.off('click').on('click', async (event) => {
+        btn.tooltip('hide');
         const enableNow = btn.attr('aria-pressed') === 'false';
         return this.previewComponent.canvasToggle(canvas.id, enableNow);
       });

@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import ApiHelper from '../apiHelper.js';
 import S3Utils from '../s3utils.js';
 import VideoMedia from './videoMedia.js';
@@ -49,16 +52,16 @@ export default class MediaFactory {
     return media;
   }
 
-  static async createPreviewComponent(media) {
+  static async createPreviewComponent(media, optionalSearchResults) {
     await media.getAnalysisResults();
     return media.type === MediaTypes.Video
-      ? new VideoPreview(media)
+      ? new VideoPreview(media, optionalSearchResults)
       : media.type === MediaTypes.Audio
-        ? new PodcastPreview(media)
+        ? new PodcastPreview(media, optionalSearchResults)
         : media.type === MediaTypes.Image
-          ? (new PhotoPreview(media)).preload()
+          ? (new PhotoPreview(media, optionalSearchResults)).preload()
           : media.type === MediaTypes.Document
-            ? (new DocumentPreview(media)).preload()
+            ? (new DocumentPreview(media, optionalSearchResults)).preload()
             : undefined;
   }
 

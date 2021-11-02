@@ -1,23 +1,28 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../shared/localization.js';
 import AppUtils from '../shared/appUtils.js';
 import ApiHelper from '../shared/apiHelper.js';
 import ServiceAvailability from '../shared/serviceAvailability.js';
+import FaceManager from '../shared/faceManager/index.js';
 import ServiceNames from '../shared/serviceNames.js';
 import LanguageCodes from '../shared/languageCodes.js';
 import SettingStore from '../shared/localCache/settingStore.js';
 import mxSpinner from './mxSpinner.js';
 
 /* rekognition options */
-const OPT_CELEB = 'celeb';
-const OPT_FACE = 'face';
-const OPT_FACEMATCH = 'facematch';
-const OPT_LABEL = 'label';
-const OPT_MODERATION = 'moderation';
-const OPT_PERSON = 'person';
-const OPT_TEXT = 'text';
-const OPT_SEGMENT = 'segment';
-const OPT_CUSTOMLABEL = 'customlabel';
+const OPT_CELEB = SolutionManifest.AnalysisTypes.Rekognition.Celeb;
+const OPT_FACE = SolutionManifest.AnalysisTypes.Rekognition.Face;
+const OPT_FACEMATCH = SolutionManifest.AnalysisTypes.Rekognition.FaceMatch;
+const OPT_LABEL = SolutionManifest.AnalysisTypes.Rekognition.Label;
+const OPT_MODERATION = SolutionManifest.AnalysisTypes.Rekognition.Moderation;
+const OPT_PERSON = SolutionManifest.AnalysisTypes.Rekognition.Person;
+const OPT_TEXT = SolutionManifest.AnalysisTypes.Rekognition.Text;
+const OPT_SEGMENT = SolutionManifest.AnalysisTypes.Rekognition.Segment;
+const OPT_CUSTOMLABEL = SolutionManifest.AnalysisTypes.Rekognition.CustomLabel;
+/* >> advanced rekognition settings */
 const OPT_MINCONFIDENCE = 'minConfidence';
 const OPT_FACECOLLECTIONID = 'faceCollectionId';
 const OPT_CUSTOMLABELMODELS = 'customLabelModels';
@@ -25,18 +30,20 @@ const OPT_FRAMECATPUREMODE = 'frameCaptureMode';
 const OPT_TEXTROI = 'textROI';
 const OPT_FRAMEBASED = 'framebased';
 /* comprehend options */
-const OPT_ENTITY = 'entity';
-const OPT_KEYPHRASE = 'keyphrase';
-const OPT_SENTIMENT = 'sentiment';
-const OPT_TOPIC = 'topic';
+const OPT_ENTITY = SolutionManifest.AnalysisTypes.Comprehend.Entity;
+const OPT_KEYPHRASE = SolutionManifest.AnalysisTypes.Comprehend.Keyphrase;
+const OPT_SENTIMENT = SolutionManifest.AnalysisTypes.Comprehend.Sentiment;
+const OPT_CUSTOMENTITY = SolutionManifest.AnalysisTypes.Comprehend.CustomEntity;
+/* >> advanced comprehend settings */
 const OPT_CUSTOMENTITYRECOGNIZER = 'customEntityRecognizer';
 /* transcribe options */
-const OPT_TRANSCRIBE = 'transcribe';
+const OPT_TRANSCRIBE = SolutionManifest.AnalysisTypes.Transcribe;
+/* >> advanced transcribe settings */
 const OPT_LANGUAGECODE = 'languageCode';
 const OPT_CUSTOMLANGUAGEMODEL = 'customLanguageModel';
 const OPT_CUSTOMVOCABULARY = 'customVocabulary';
 /* textract options */
-const OPT_TEXTRACT = 'textract';
+const OPT_TEXTRACT = SolutionManifest.AnalysisTypes.Textract;
 /* misc */
 const REKOGNITION_BASIC_OPTIONS = [
   OPT_CELEB,
@@ -61,9 +68,9 @@ const COMPREHEND_BASIC_OPTIONS = [
   OPT_ENTITY,
   OPT_KEYPHRASE,
   OPT_SENTIMENT,
-  OPT_TOPIC,
 ];
 const COMPREHEND_ADVANCED_OPTIONS = [
+  OPT_CUSTOMENTITY,
   OPT_CUSTOMENTITYRECOGNIZER,
 ];
 const TRANSCRIBE_BASIC_OPTIONS = [
@@ -671,6 +678,7 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       label: Localization.Messages.CustomEntityRecognizer,
       tooltip: Localization.Tooltips.CustomEntityRecognizer,
       default: Localization.Messages.SelectModel,
+      onChange: this.onEntityRecognizerChange.bind(this),
     });
   }
 
@@ -699,6 +707,9 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
         : /^[0-9]+$/.test(val)
           ? Number.parseInt(val, 10)
           : val;
+      if (typeof custom.onChange === 'function') {
+        await custom.onChange(custom.name, this.aiOptions[custom.name]);
+      }
       await this.putItem(custom.name, this.aiOptions[custom.name]);
     });
 
@@ -808,6 +819,14 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
     return this.putItem(OPT_CUSTOMLABEL, this.aiOptions[OPT_CUSTOMLABEL]);
   }
 
+  async onEntityRecognizerChange(opt, val) {
+    if (opt === OPT_CUSTOMENTITYRECOGNIZER) {
+      this.aiOptions[OPT_CUSTOMENTITY] = !!val;
+      return this.putItem(OPT_CUSTOMENTITY, this.aiOptions[OPT_CUSTOMENTITY]);
+    }
+    return undefined;
+  }
+
   async ensureFrameCaptureMode(frameCaptureMode) {
     const select = this.parentContainer.find(`select[data-type=${OPT_FRAMECATPUREMODE}]`);
     const from = select.children('option:selected').first();
@@ -835,7 +854,7 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
 
   async getAvailableFaceCollections() {
     return (this.serviceAvailability[ServiceNames.Rekognition])
-      ? ApiHelper.getRekognitionFaceCollections()
+      ? FaceManager.getSingleton().getCollections()
       : undefined;
   }
 
@@ -878,9 +897,9 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       {
         name: OPT_FACECOLLECTIONID,
         options: (this.availableFaceCollections || []).map(x => ({
-          name: `${x.name} (${x.faceCount} faces)`,
+          name: `${x.name} (${x.faces} faces)`,
           value: x.name,
-          canUse: x.canUse,
+          canUse: (x.faces > 0),
         })),
       },
       {

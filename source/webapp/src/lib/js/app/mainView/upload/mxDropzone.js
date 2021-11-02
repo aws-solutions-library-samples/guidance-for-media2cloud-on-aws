@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import FileItem from './fileItem.js';
 
 export default Base => class extends Base {
@@ -50,7 +53,6 @@ export default Base => class extends Base {
       return Promise.all(files.map(x =>
         this.processEachFileItem(x)));
     } catch (e) {
-      console.error(e);
       return undefined;
     } finally {
       if (typeof this.loading === 'function') {
@@ -94,10 +96,12 @@ export default Base => class extends Base {
     });
   }
 
-  async readDirectoryEntry(dir) {
-    const promise = await new Promise((resolve, reject) => {
-      const reader = dir.createReader();
+  async readEntries(reader) {
+    return new Promise((resolve) => {
       reader.readEntries((entries) => {
+        if (entries.length === 0) {
+          return resolve(undefined);
+        }
         const promiseFiles = [];
         const promiseDirs = [];
         while (entries.length) {
@@ -108,14 +112,28 @@ export default Base => class extends Base {
             promiseDirs.push(this.readDirectoryEntry(entry));
           }
         }
-        resolve({
+        return resolve({
           files: promiseFiles,
           dirs: promiseDirs,
         });
       });
     });
-    const files = await Promise.all(promise.files);
-    const dirs = await Promise.all(promise.dirs);
+  }
+
+  async readDirectoryEntry(dir) {
+    const reader = dir.createReader();
+    const promiseFiles = [];
+    const promiseDirs = [];
+    let items;
+    do {
+      items = await this.readEntries(reader);
+      if (items) {
+        promiseFiles.splice(promiseFiles.length, 0, ...items.files);
+        promiseDirs.splice(promiseDirs.length, 0, ...items.dirs);
+      }
+    } while (items !== undefined);
+    const files = await Promise.all(promiseFiles);
+    const dirs = await Promise.all(promiseDirs);
     return dirs.reduce((acc, cur) => acc.concat(cur), files);
   }
 

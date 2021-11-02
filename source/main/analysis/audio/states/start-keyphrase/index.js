@@ -1,9 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-const AWS = require('aws-sdk');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
+const {
+  Environment,
+} = require('core-lib');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const SUB_CATEGORY = 'keyphrase';
@@ -12,6 +20,7 @@ class StateStartKeyphrase extends BaseStateStartComprehend {
   constructor(stateData) {
     const comprehend = new AWS.Comprehend({
       apiVersion: '2017-11-27',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
     super(stateData, {
       subCategory: SUB_CATEGORY,
@@ -23,10 +32,25 @@ class StateStartKeyphrase extends BaseStateStartComprehend {
     return 'StateStartKeyphrase';
   }
 
-  parseJobResults(responses) {
-    return responses.reduce((a0, c0) =>
-      a0.concat(c0.ResultList.map(x =>
-        x.KeyPhrases)), []);
+  parseJobResults(results, reference) {
+    if (!((results || {}).ResultList || []).length) {
+      return undefined;
+    }
+    const parsed = [];
+    while (results.ResultList.length) {
+      const result = results.ResultList.shift();
+      while (result.KeyPhrases.length) {
+        const keyphrase = result.KeyPhrases.shift();
+        const timecode = reference[result.Index].timecodes[0];
+        parsed.push({
+          text: keyphrase.Text,
+          confidence: Number(Number(keyphrase.Score * 100).toFixed(2)),
+          begin: timecode.begin,
+          end: timecode.end,
+        });
+      }
+    }
+    return parsed;
   }
 }
 

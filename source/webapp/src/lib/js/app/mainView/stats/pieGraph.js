@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import mxReadable from '../../mixins/mxReadable.js';
 import AppUtils from '../../shared/appUtils.js';
 
@@ -111,7 +114,6 @@ export default class PieGraph extends mxReadable(class {}) {
   }
 
   onRenderedEvent(graph) {
-    console.log(`graph wxh = ${graph.getWidth()}x${graph.getHeight()}`);
     if (graph.getWidth() <= 0 || graph.getHeight() <= 0) {
       setTimeout(() => graph.resize(), 200);
     } else {

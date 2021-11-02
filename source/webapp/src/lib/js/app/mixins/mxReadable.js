@@ -1,12 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
 class R0 {
   static readable(num, base, units) {
     const size = Number.parseInt(num || 0, 10);
@@ -24,23 +18,26 @@ class R0 {
  */
 const mxReadable = Base => class extends Base {
   static readableFileSize(size) {
-    return R0.readable(size, 1000, [
+    return R0.readable(size, 1024, [
       'B', 'KB', 'MB', 'GB', 'TB', 'PB',
     ]);
   }
 
   static readableBitrate(bitrate) {
-    return R0.readable(bitrate, 1000, [
+    return R0.readable(bitrate, 1024, [
       'bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps', 'Pbps',
     ]);
   }
 
-  static readableDuration(durationInMs = 0) {
+  static readableDuration(durationInMs = 0, hhmmss = false) {
     const HH = Math.floor(durationInMs / 3600000);
     const MM = Math.floor((durationInMs % 3600000) / 60000);
     const SS = Math.floor((durationInMs % 60000) / 1000);
     const mmm = Math.ceil(durationInMs % 1000);
-    return `${HH.toString().padStart(2, '0')}:${MM.toString().padStart(2, '0')}:${SS.toString().padStart(2, '0')}.${mmm.toString().padStart(3, '0')}`;
+    const duration = `${HH.toString().padStart(2, '0')}:${MM.toString().padStart(2, '0')}:${SS.toString().padStart(2, '0')}`;
+    return (hhmmss)
+      ? duration
+      : `${duration}.${mmm.toString().padStart(3, '0')}`;
   }
 
   static capitalize(name) {

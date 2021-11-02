@@ -1,3 +1,6 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../localization.js';
 import AppUtils from '../../appUtils.js';
 import BasePreview from './basePreview.js';
@@ -17,8 +20,8 @@ const TYPE_KEYVAL = 'keyval';
 const TYPE_CELL = 'cell';
 
 export default class DocumentPreview extends BasePreview {
-  constructor(media) {
-    super(media);
+  constructor(media, optionSearchResults) {
+    super(media, optionSearchResults);
     this.$slide = undefined;
     this.$pageControlContainer = undefined;
     this.$ids = {

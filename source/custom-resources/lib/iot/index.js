@@ -1,14 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
-
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
@@ -28,6 +28,7 @@ exports.IotEndpoint = async (event, context) => {
 
     const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
     const response = await iot.describeEndpoint({
       endpointType: 'iot:Data-ATS',
@@ -67,6 +68,7 @@ exports.IotDetachPolices = async (event, context) => {
 
     const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
     const {
       targets = [],

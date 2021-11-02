@@ -1,13 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
 class SNS extends mxBaseResponse(class {}) {
@@ -56,6 +57,7 @@ class SNS extends mxBaseResponse(class {}) {
 
     const sns = new AWS.SNS({
       apiVersion: '2010-03-31',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
     const response = await Promise.all(this.emailList.map(email =>
       sns.subscribe({

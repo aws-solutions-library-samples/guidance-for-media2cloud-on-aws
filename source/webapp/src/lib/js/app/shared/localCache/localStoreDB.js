@@ -1,6 +1,9 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import StoreDefinitions from './storeDefs.js';
 
-const DATABASE_NAME = 'm2cv3';
+const DATABASE_NAME = 'm2cv3-0';
 const DATABASE_VERSION = 1;
 const RW = 'readwrite';
 
@@ -62,7 +65,6 @@ export default class LocalStoreDB {
 
       request.onsuccess = async () => {
         const names = Object.values(StoreDefinitions.Stores);
-        console.log(`onsuccess: ${names.join(', ')}`);
         const db = request.result;
         await Promise.all(names.map(name =>
           this.removeExpired(db, name)
@@ -75,7 +77,6 @@ export default class LocalStoreDB {
 
       request.onupgradeneeded = (event) => {
         const names = Object.values(StoreDefinitions.Stores);
-        console.log(`onupgradeneeded: ${names.join(',')}`);
         const ttl = StoreDefinitions.TimeToLive.Name;
         const db = request.result;
         names.map(name =>
@@ -151,11 +152,6 @@ export default class LocalStoreDB {
       } catch (e) {
         return reject(e);
       }
-      /*
-      if (!transaction) {
-        return resolve(db);
-      }
-      */
       const ttl = StoreDefinitions.TimeToLive.Name;
       const index = transaction.objectStore(name).index(ttl);
       const range = IDBKeyRange.upperBound(new Date());
@@ -171,5 +167,19 @@ export default class LocalStoreDB {
       };
       return db;
     });
+  }
+
+  async clearAllStores() {
+    const names = Object.values(StoreDefinitions.Stores);
+    return Promise.all(names.map((name) =>
+      this.cleanStore(name)));
+  }
+
+  async cleanStore(name) {
+    if (!name) {
+      return undefined;
+    }
+    const store = await this.openStore(name);
+    return store.clear();
   }
 }

@@ -1,13 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
@@ -28,6 +29,7 @@ exports.MediaConvertEndpoint = async (event, context) => {
 
     const instance = new AWS.MediaConvert({
       apiVersion: '2017-08-29',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
 
     const {

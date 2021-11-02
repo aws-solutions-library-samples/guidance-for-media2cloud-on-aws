@@ -1,6 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: MIT-0
-const AWS = require('aws-sdk');
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   Retry,
   BacklogClient: {
@@ -9,6 +17,11 @@ const {
   Environment: {
     StateMachines: {
       States,
+    },
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
     },
   },
 } = require('service-backlog-lib');
@@ -51,6 +64,7 @@ class CustomLabelsStateMachineStatus {
     const state = States.DetectCustomLabels;
     const step = new AWS.StepFunctions({
       apiVersion: '2016-11-23',
+      customUserAgent: CustomUserAgent,
     });
     const fn = step.describeExecution.bind(step);
     const output = await Retry.run(fn, {

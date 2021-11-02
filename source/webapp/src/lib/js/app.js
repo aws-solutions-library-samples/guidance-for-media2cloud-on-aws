@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import AppUtils from './app/shared/appUtils.js';
 import LocalStoreDB from './app/shared/localCache/localStoreDB.js';
 import MainView from './app/mainView.js';
@@ -73,10 +71,8 @@ $(document).ready(async () => {
   const demoApp = new DemoApp();
   demoApp.appendTo($(ID_DEMOAPP));
   await demoApp.show();
-  console.log('app loaded');
 
   $(window).on('unload', async () => {
-    console.log('app unloading...');
     await demoApp.hide();
   });
 });

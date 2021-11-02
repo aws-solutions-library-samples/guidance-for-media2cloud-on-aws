@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const {
   Environment,
   StateData,
@@ -20,12 +18,13 @@ const StatePrepareCustomDetectionIterators = require('./states/prepare-custom-de
 const StateStartDetectionIterator = require('./states/start-detection-iterator');
 const StateCollectResultsIterator = require('./states/collect-results-iterator');
 const StateCreateTrackIterator = require('./states/create-track-iterator');
+const StateIndexAnalysisIterator = require('./states/index-analysis-iterator');
 /* job completed */
 const StateJobCompleted = require('./states/job-completed');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
@@ -36,21 +35,31 @@ const REQUIRED_ENVS = [
   'ENV_BACKLOG_TABLE',
   'ENV_BACKLOG_TOPIC_ARN',
   'ENV_BACKLOG_TOPIC_ROLE_ARN',
+  'ENV_ES_DOMAIN_ENDPOINT',
 ];
 const CATEGORY = 'rekognition';
 
-function createFromParallelStateOutputs(stateMachine, event, context) {
+function parseEvent(event, context) {
+  const stateMachine = Environment.StateMachines.VideoAnalysis;
   let parsed = event;
-  const parallelStateOutputs = parsed.parallelStateOutputs.splice(0);
+  if (!parsed.parallelStateOutputs) {
+    return new StateData(stateMachine, parsed, context);
+  }
+  if (!parsed.stateExecution) {
+    throw new Error('fail to parse event.stateExecution');
+  }
+  /* parse execution input object */
+  const uuid = parsed.stateExecution.Input.uuid;
+  const input = parsed.stateExecution.Input.input;
+  const startTime = parsed.stateExecution.StartTime;
+  const executionArn = parsed.stateExecution.Id;
+  delete parsed.stateExecution;
+  if (!uuid || !input) {
+    throw new Error('fail to find uuid or input from event.stateExecution');
+  }
+  /* parse parallel state outputs */
+  const parallelStateOutputs = parsed.parallelStateOutputs;
   delete parsed.parallelStateOutputs;
-  const input = (parallelStateOutputs.find(x => x.input) || {}).input;
-  if (!input) {
-    throw new Error('fail to parse parallelStateOutputs.input');
-  }
-  const uuid = input.uuid || (parallelStateOutputs.find(x => x.uuid) || {}).uuid;
-  if (!uuid) {
-    throw new Error('fail to parse parallelStateOutputs.uuid');
-  }
   /* merge all subcategories */
   /* note: could have multiple items in a single subcategory */
   /* i.e., customlabel */
@@ -76,9 +85,11 @@ function createFromParallelStateOutputs(stateMachine, event, context) {
   parsed = {
     ...parsed,
     uuid,
+    input,
+    startTime,
+    executionArn,
     status: StateData.Statuses.NotStarted,
     progress: 0,
-    input,
     data: {
       [CATEGORY]: {
         ...merged,
@@ -96,9 +107,7 @@ exports.handler = async (event, context) => {
       throw new AnalysisError(`missing enviroment variables, ${missing.join(', ')}`);
     }
     /* merge parallel state outputs */
-    const stateData = (event.parallelStateOutputs)
-      ? createFromParallelStateOutputs(Environment.StateMachines.VideoAnalysis, event, context)
-      : new StateData(Environment.StateMachines.VideoAnalysis, event, context);
+    const stateData = parseEvent(event, context);
     /* state routing */
     let instance;
     switch (stateData.operation) {
@@ -129,6 +138,9 @@ exports.handler = async (event, context) => {
         break;
       case StateData.States.CreateTrackIterator:
         instance = new StateCreateTrackIterator(stateData);
+        break;
+      case StateData.States.IndexAnalysisResults:
+        instance = new StateIndexAnalysisIterator(stateData);
         break;
       case StateData.States.JobCompleted:
         instance = new StateJobCompleted(stateData);

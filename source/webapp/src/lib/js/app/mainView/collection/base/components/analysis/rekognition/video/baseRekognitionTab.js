@@ -1,5 +1,7 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 import Localization from '../../../../../../../shared/localization.js';
-import AppUtils from '../../../../../../../shared/appUtils.js';
 import DatasetStore from '../../../../../../../shared/localCache/datasetStore.js';
 import ScatterGraph from '../../base/scatterGraph.js';
 import BaseRekognitionImageTab from '../image/baseRekognitionImageTab.js';
@@ -29,7 +31,7 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   }
 
   async createContent() {
-    const col = $('<div/>').addClass(`${COL_TAB} my-4`);
+    const col = $('<div/>').addClass('col-9 my-4 max-h36r');
     this.delayContentLoad(col);
     return col;
   }
@@ -99,7 +101,7 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   async downloadDatasets(prefix, names) {
     let datasets = await this.datasetStore.getItem(prefix)
       .catch(() => undefined);
-    if (datasets) {
+    if (datasets && datasets[0].duration !== undefined) {
       return datasets;
     }
     const responses = await Promise.all(names.map(name =>
@@ -149,7 +151,6 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   }
 
   async onDataPointSelected(datapoint) {
-    console.log(JSON.stringify(datapoint, null, 2));
     this.previewComponent.pause();
     this.previewComponent.seek(datapoint.x / 1000);
     const dimension = this.previewComponent.getContainerDimensions();
@@ -187,7 +188,6 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   }
 
   async onLegendChanged(legends) {
-    console.log(JSON.stringify(legends, null, 2));
     const canvasView = this.previewComponent.getCanvasView();
     canvasView.children().remove();
     return legends.filter(x => x.basename).map(x =>

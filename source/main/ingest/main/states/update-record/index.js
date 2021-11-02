@@ -1,8 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+
 const PATH = require('path');
 const {
   DB,
@@ -52,28 +50,44 @@ class StateUpdateRecord {
     const proxies = [];
     while (ots.length) {
       const ot = ots.shift();
-      const responses = await CommonUtils.listObjects(bucket, PATH.join(dst, ot));
-      while (responses.length) {
-        const response = responses.shift();
-        const mime = CommonUtils.getMime(response.Key);
-        proxies.push({
-          ...this.parseObjectProps(response),
-          key: response.Key,
-          outputType: ot,
-          mime,
-          type: CommonUtils.parseMimeType(mime),
-        });
-      }
+      const prefix = PATH.join(dst, ot, '/');
+      let response;
+      do {
+        response = await CommonUtils.listObjects(bucket, prefix, {
+          ContinuationToken: (response || {}).NextContinuationToken,
+          MaxKeys: 300,
+        }).catch((e) =>
+          console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+        if (response && response.Contents) {
+          while (response.Contents.length) {
+            const content = response.Contents.shift();
+            const mime = CommonUtils.getMime(content.Key);
+            proxies.push({
+              ...this.parseObjectProps(content),
+              key: content.Key,
+              outputType: ot,
+              mime,
+              type: CommonUtils.parseMimeType(mime),
+            });
+          }
+        }
+      } while ((response || {}).NextContinuationToken);
     }
 
     /* Find the largest JPG frame capture image */
-    let frameCaptures = await CommonUtils.listObjects(bucket, PATH.join(dst, OUTPUT_TYPE_PROXY));
-    if (frameCaptures.length > 0) {
-      frameCaptures = frameCaptures.sort((a, b) => b.Size - a.Size).shift();
-      const mime = CommonUtils.getMime(frameCaptures.Key);
+    const prefix = PATH.join(dst, OUTPUT_TYPE_PROXY, '/');
+    const frameCapture = await CommonUtils.listObjects(bucket, prefix, {
+      MaxKeys: 100,
+    }).then((res) =>
+      res.Contents.sort((a, b) =>
+        b.Size - a.Size).shift())
+      .catch((e) =>
+        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+    if (frameCapture) {
+      const mime = CommonUtils.getMime(frameCapture.Key);
       proxies.push({
-        ...this.parseObjectProps(frameCaptures),
-        key: frameCaptures.Key,
+        ...this.parseObjectProps(frameCapture),
+        key: frameCapture.Key,
         outputType: OUTPUT_TYPE_PROXY,
         mime,
         type: CommonUtils.parseMimeType(mime),
