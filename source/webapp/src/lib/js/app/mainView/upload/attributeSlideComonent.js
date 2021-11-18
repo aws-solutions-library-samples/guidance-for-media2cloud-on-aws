@@ -143,7 +143,7 @@ export default class AttributeSlideComponent extends BaseUploadSlideComponent {
       .html(Localization.Messages.GroupDesc);
     const name = $('<input/>').addClass('form-control mr-2')
       .attr('id', this.ids.groupName)
-      .attr('pattern', '^[a-zA-Z0-9_-]{0,}$')
+      .attr('pattern', '^[a-zA-Z0-9_-]{0,128}$')
       .attr('placeholder', '(Blank)');
     const form = $('<form/>').addClass('col-4 px-0 needs-validation')
       .attr('novalidate', 'novalidate')
@@ -219,12 +219,12 @@ export default class AttributeSlideComponent extends BaseUploadSlideComponent {
       .attr('data-attr-type', 'key')
       .attr('type', 'text')
       .attr('placeholder', '(Key)')
-      .attr('pattern', '^[a-zA-Z0-9_-]{0,}$');
+      .attr('pattern', '^[a-zA-Z0-9_-]{0,128}$');
     const value = $('<input/>').addClass('form-control')
       .attr('data-attr-type', 'value')
       .attr('type', 'text')
       .attr('placeholder', '(Value)')
-      .attr('pattern', '^[a-zA-Z0-9_%., -]{0,}$');
+      .attr('pattern', '^[a-zA-Z0-9_%., -]{0,255}$');
     const removeBtn = $('<button/>').addClass('btn btn-secondary ml-1')
       .append($('<i/>').addClass('far fa-times-circle'));
 

@@ -392,8 +392,8 @@ export default class Localization {
           FileTypeNotSupported: 'File type is not supported',
           FileCannotImported: 'A few files cannot be imported.',
           /* attribute component */
-          InvalidGroupName: 'Invalid group name. Make sure the group name contains only alphnumeric, dash, and underscore characters.',
-          InvalidKeyValue: 'Invalid key or value. Make sure Key contains only alphnumeric, dash, and underscore characters and Value contains only alphanumeric, dash, underscore, comma, period, or percent sign characters',
+          InvalidGroupName: 'Invalid group name. <strong>Group Name</strong> can contain alphnumeric, dash, or underscore characters and must be less than 128 characters.',
+          InvalidKeyValue: 'Invalid key or value. <strong>Key</strong> can contain alphnumeric, dash, or underscore characters and must be less than 128 characters. <strong>Value</strong> can contain alphanumeric, dash, underscore, comma, period, or percent sign characters and must be less than 255 characters',
           MaxNumOfAttrs: 'You can add at most 20 attributes.',
           CreateUuidError: 'fail to create an unique uuid...',
           ComputeChecksumError: 'fail to compute MD5 checksum...',
