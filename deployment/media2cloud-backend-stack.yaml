@@ -2668,7 +2668,7 @@ Resources:
                 - Node
                 - Runtime
                 - Version
-            MemorySize: 1024
+            MemorySize: 3072
             Timeout: 900
             Handler: index.handler
             Role: !GetAtt IngestImageRole.Arn
