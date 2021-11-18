@@ -6,6 +6,7 @@ const AWS = (() => {
     const AWSXRay = require('aws-xray-sdk');
     return AWSXRay.captureAWS(require('aws-sdk'));
   } catch (e) {
+    console.log('aws-xray-sdk not loaded');
     return require('aws-sdk');
   }
 })();

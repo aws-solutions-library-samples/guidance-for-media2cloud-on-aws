@@ -6,6 +6,7 @@ const HTTPS = (() => {
     const AWSXRay = require('aws-xray-sdk');
     return AWSXRay.captureHTTPs(require('https'));
   } catch (e) {
+    console.log('aws-xray-sdk not loaded');
     return require('https');
   }
 })();
