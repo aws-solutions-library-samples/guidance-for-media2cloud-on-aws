@@ -16,4 +16,4 @@ __
 
 __
 
-Back to [Video Analysis state machine](../../main/analysis/video/README.md) | Back tp [Analysis State Machine](../../main/README.md) | Back to [README](../../../README.md)
+Back to [Video Analysis state machine](../../main/analysis/video/README.md) | Back to [Analysis State Machine](../../main/README.md) | Back to [Table of contents](../../../README.md#table-of-contents)

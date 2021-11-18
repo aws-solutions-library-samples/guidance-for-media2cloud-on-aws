@@ -52,4 +52,4 @@ Custom detection branch is currently used for detection custom labels using [Ama
 __
 
 
-Next to [Custom Labels state machine](../../../backlog/custom-labels/README.md) | Back to [Analysis State Machine](../main/README.md) | Back to [README](../../../../README.md)
+Next to [Custom Labels state machine](../../../backlog/custom-labels/README.md) | Back to [Analysis State Machine](../main/README.md) | Back to [Table of contents](../../../../README.md#table-of-contents)

@@ -1,5 +1,18 @@
 # AWS Media2Cloud Solution Version 3
 
+## Table of contents
+* [What's new in V3](#whats-new-in-v3)
+* [Introduction](#introduction)
+* [Architecture overview](#architecture-overview)
+  * [Main workflow](./source/main/README.md)
+  * [Ingest workflow](./source/main/ingest/main/README.md)
+  * [Analysis workflow](./source/main/analysis/main/README.md)
+  * [Frontend webapp](./source/webapp/README.md)
+* [Installation](#installation)
+* [Building and customizing the solution](#building-and-customizing-the-solution)
+* [Code structure](#code-structure)
+* [License](#license)
+
 __
 
 ## What's new in V3?
@@ -133,26 +146,16 @@ __
 | [source/main](./source/main/README.md) | main state machine |
 | [source/main/ingest](./source/main/ingest/README.md) | ingest state machine implementation |
 | [source/main/analysis](./source/main/analysis/README.md) | analysis state machine implementation |
-| source/main/automation | triggers and automations of workflows |
+| [source/main/automation](./source/main/automation/README.md) | triggers and automations of workflows |
 | WEBAPP | -- |
 | [source/webapp](./source/webapp/README.md) | implementation of webapp |
-
-__
-
-## TODO
-
-* Support Amazon Rekognition Custom Labels feature for Image analysis state machine 
-* Amazon Elasticsearch engine enhancement - creating indexes for each type of detections
-* Enhancing webapp Statistics page to display AI/ML metadata stats
-* Unit tests!
-
 
 __
 
 
 ## License
 
-Copyright 2019 Amazon.com, Inc. and its affiliates. All Rights Reserved.
+Copyright Amazon.com, Inc. and its affiliates. All Rights Reserved.
 
 SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
 

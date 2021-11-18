@@ -179,5 +179,5 @@ Once nginx started, you should be able to open http://localhost on Chrome or Fir
 
 ___
 
-Back to [README](../../README.md)
+Back to [Table of contents](../../README.md#table-of-contents)
 
