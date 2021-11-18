@@ -60,7 +60,7 @@ Mappings:
             Name: main
         StateMachineErrorHandler:
             Package: "%%PKG_ERROR_HANDLER%%"
-            Name: error-handler
+            Name: main-error-handler
         IngestS3Event:
             Package: "%%PKG_MAIN_S3EVENT%%"
             Name: main-s3event
@@ -1937,11 +1937,6 @@ Resources:
                                     - s3:PutObjectVersionTagging
                                     - s3:RestoreObject
                                 Resource: !Sub arn:aws:s3:::${IngestBucket}/*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
     IngestFixityLambda:
         Type: AWS::Lambda::Function
@@ -2235,11 +2230,6 @@ Resources:
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
     IngestVideoLambda:
         Type: AWS::Lambda::Function
@@ -2454,11 +2444,6 @@ Resources:
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
     IngestAudioLambda:
         Type: AWS::Lambda::Function
@@ -2659,11 +2644,6 @@ Resources:
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
     IngestImageLambda:
         Type: AWS::Lambda::Function
@@ -2843,11 +2823,6 @@ Resources:
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
 
     IngestDocumentLambda:
         Type: AWS::Lambda::Function
@@ -5684,7 +5659,6 @@ Resources:
                                     "Parameters": {
                                         "operation": "prepare-analysis",
                                         "executionArn.$": "$$.Execution.Id",
-                                        "uuid.$": "$.uuid",
                                         "status": "NOT_STARTED",
                                         "progress": 0,
                                         "input.$": "$.input"
@@ -6285,7 +6259,6 @@ Resources:
                                     "Resource": "arn:aws:states:::states:startExecution.sync",
                                     "Parameters": {
                                         "Input": {
-                                            "uuid.$": "$.ingestOutput.input.uuid",
                                             "input.$": "$.ingestOutput.input"
                                         },
                                         "StateMachineArn": "${AnalysisStateMachine}"

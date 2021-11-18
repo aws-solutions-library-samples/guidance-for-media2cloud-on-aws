@@ -21,7 +21,6 @@
             "Resource": "arn:aws:states:::states:startExecution.sync",
             "Parameters": {
                 "Input": {
-                    "uuid.$": "$.ingestOutput.input.uuid",
                     "input.$": "$.ingestOutput.input"
                 },
                 "StateMachineArn": "${AnalysisStateMachine}"

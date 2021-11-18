@@ -7,7 +7,6 @@
             "Parameters": {
                 "operation": "prepare-analysis",
                 "executionArn.$": "$$.Execution.Id",
-                "uuid.$": "$.uuid",
                 "status": "NOT_STARTED",
                 "progress": 0,
                 "input.$": "$.input"
