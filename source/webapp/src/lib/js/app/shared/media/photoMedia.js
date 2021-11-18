@@ -4,6 +4,8 @@
 import S3Utils from '../s3utils.js';
 import BaseMedia from './baseMedia.js';
 
+const SUFFIX = '_thumbnail';
+
 export default class PhotoMedia extends BaseMedia {
   get width() {
     return (this.imageinfo || {}).ImageWidth;
@@ -20,7 +22,18 @@ export default class PhotoMedia extends BaseMedia {
     if (!images.length) {
       return this.defaultImage;
     }
-    return await this.store.getImageURL(this.uuid, this.proxyBucket, images[0].key).catch(() => undefined)
-      || S3Utils.signUrl(this.proxyBucket, images[0].key);
+    let blob;
+    const lastIdx = images[0].key.lastIndexOf('.jpg');
+    if (lastIdx > 0) {
+      let key = images[0].key.substring(0, lastIdx);
+      key = `${key}${SUFFIX}.jpg`;
+      blob = await this.store.getImageURL(`${this.uuid}${SUFFIX}`, this.proxyBucket, key)
+        .catch(() => undefined);
+    }
+    if (!blob) {
+      blob = await this.store.getImageURL(this.uuid, this.proxyBucket, images[0].key)
+        .catch(() => undefined);
+    }
+    return blob || S3Utils.signUrl(this.proxyBucket, images[0].key);
   }
 }
