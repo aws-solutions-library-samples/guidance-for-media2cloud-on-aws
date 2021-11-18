@@ -1,4 +1,4 @@
-# Ingest Worklfow Status Updater
+# Ingest Workflow Status Updater
 
 ## State Machine Service Integration
 
