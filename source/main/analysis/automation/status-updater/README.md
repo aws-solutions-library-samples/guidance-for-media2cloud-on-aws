@@ -11,7 +11,7 @@ The _analysis-status-updater_ lambda function simply calls [StepFunctions.SendTa
 
 The following AWS XRAY trace diagram illustrates the AWS resources this lambda function communicates to.
 
-![Analysis Status Updater Lambda function](../../../../deployment/tutorials/images/analysis-status-updater-lambda.png)
+![Analysis Status Updater Lambda function](../../../../../deployment/tutorials/images/analysis-status-updater-lambda.png)
 
 __
 
