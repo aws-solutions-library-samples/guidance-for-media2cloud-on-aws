@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const {
   SNS,
@@ -11,8 +12,6 @@ const REQUIRED_ENVS = [
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
   'ENV_ANONYMOUS_USAGE',
-  'ENV_IOT_HOST',
-  'ENV_IOT_TOPIC',
   'ENV_INGEST_BUCKET',
   'ENV_PROXY_BUCKET',
   'ENV_SNS_TOPIC_ARN',

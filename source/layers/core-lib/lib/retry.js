@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 class Retry {
   /**
@@ -8,8 +9,10 @@ class Retry {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**

@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const CRYPTO = require('crypto');
 const PATH = require('path');
@@ -39,13 +40,6 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
       },
     };
     this.stateData.setData(CATEGORY, output);
-    /* submit job to backlog */
-    const params = this.makeParams(id);
-    const backlog = new BacklogClient.ComprehendBacklogJob();
-    await backlog.startEntitiesDetectionJob(id, params).catch((e) => {
-      console.error(`ERR: backlog.startEntitiesDetectionJob: ${e.message}`);
-      throw e;
-    });
     /* register service token to get notification when job started */
     await ServiceToken.register(
       id,
@@ -55,6 +49,13 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
       this.stateData.toJSON()
     ).catch((e) => {
       console.error(`ERR: ServiceToken.register: ${e.message}`);
+      throw e;
+    });
+    /* submit job to backlog */
+    const params = this.makeParams(id);
+    const backlog = new BacklogClient.ComprehendBacklogJob();
+    await backlog.startEntitiesDetectionJob(id, params).catch((e) => {
+      console.error(`ERR: backlog.startEntitiesDetectionJob: ${e.message}`);
       throw e;
     });
     return this.stateData.toJSON();

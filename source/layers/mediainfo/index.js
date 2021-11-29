@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const AWS = (() => {
   try {
@@ -11,7 +12,6 @@ const AWS = (() => {
   }
 })();
 const FS = require('fs');
-const URL = require('url');
 const PATH = require('path');
 const CHILD = require('child_process');
 const {
@@ -230,14 +230,14 @@ class MediaInfoCommand {
    * it is 'http' or 'https' and NOT a signed URL
    */
   static escapeS3Character(path) {
-    const url = URL.parse(path, true);
+    const url = new URL(path);
     /* if is a signed url, nothing to do */
-    if (url.query['X-Amz-Algorithm'] === 'AWS4-HMAC-SHA256') {
+    if (url.searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256') {
       return path;
     }
     /* replacing '+' with space character */
     url.pathname = encodeURI(decodeURI(url.pathname).replace(/\s/g, '+'));
-    return URL.format(url);
+    return url.toString();
   }
 
   /**
@@ -266,24 +266,29 @@ class MediaInfoCommand {
   async presign(params) {
     return new Promise((resolve, reject) => {
       if (!params) {
-        return reject(new Error('missing params'));
+        reject(new Error('missing params'));
+        return;
       }
 
       if (typeof params === 'string') {
         if (MediaInfoCommand.isHttpProto(params)) {
-          return resolve(MediaInfoCommand.escapeS3Character(params));
+          resolve(MediaInfoCommand.escapeS3Character(params));
+          return;
         }
         if (FS.existsSync(params)) {
-          return resolve(params);
+          resolve(params);
+          return;
         }
-        return reject(new Error(`invalid filename '${params}' not supported`));
+        reject(new Error(`invalid filename '${params}' not supported`));
+        return;
       }
 
       if (typeof params === 'object' && (!params.Bucket || !params.Key)) {
-        return reject(new Error(`missing Bucket and Key, ${JSON.stringify(params)}`));
+        reject(new Error(`missing Bucket and Key, ${JSON.stringify(params)}`));
+        return;
       }
 
-      return resolve(this.s3.getSignedUrl('getObject', {
+      resolve(this.s3.getSignedUrl('getObject', {
         Bucket: params.Bucket,
         Key: params.Key,
         Expires: 60 * 60 * 2,
@@ -346,16 +351,13 @@ class MediaInfoCommand {
     let ext;
     if (typeof params === 'string') {
       if (MediaInfoCommand.isHttpProto(params)) {
-        const url = URL.parse(params);
-        url.search = undefined;
-        ref = URL.format(url, {
-          fragment: false,
-          auth: false,
-        });
+        const url = new URL(params);
+        ref = `${url.protocol}//${url.hostname}${url.pathname}`;
         ext = PATH.parse(url.pathname).ext.slice(1);
+      } else {
+        ref = params;
+        ext = PATH.parse(params).ext.slice(1);
       }
-      ref = params;
-      ext = PATH.parse(params).ext.slice(1);
     } else {
       ref = `s3://${params.Bucket}/${params.Key}`;
       ext = PATH.parse(params.Key).ext.slice(1);

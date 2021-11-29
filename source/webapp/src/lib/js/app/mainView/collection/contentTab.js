@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import Localization from '../../shared/localization.js';
 import AppUtils from '../../shared/appUtils.js';
@@ -10,7 +11,7 @@ import CategorySlideComponent from './content/categorySlideComponent.js';
 import MediaManager from '../../shared/media/mediaManager.js';
 
 export default class ContentTab extends mxSpinner(BaseTabPlugins) {
-  constructor(defaultTab = false, plugins) {
+  constructor(defaultTab, plugins) {
     super(Localization.Messages.ContentTab, {
       selected: defaultTab,
       fontSize: '1.1rem',

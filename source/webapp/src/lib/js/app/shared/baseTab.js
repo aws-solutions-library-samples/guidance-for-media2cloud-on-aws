@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import AppUtils from './appUtils.js';
 
@@ -17,7 +18,7 @@ export default class BaseTab {
       .attr('role', 'tab')
       .attr('data-toggle', 'tab')
       .attr('aria-controls', this.$contentId)
-      .attr('aria-selected', params.selected || false)
+      .attr('aria-selected', !!(params.selected))
       .css('font-size', params.fontSize || '1.2rem')
       .html(this.$title);
     this.$tabLink = $('<li/>').addClass('nav-item')

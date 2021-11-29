@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import StoreDefinitions from './storeDefs.js';
 
@@ -150,7 +151,8 @@ export default class LocalStoreDB {
       try {
         transaction = db.transaction([name], RW);
       } catch (e) {
-        return reject(e);
+        reject(e);
+        return;
       }
       const ttl = StoreDefinitions.TimeToLive.Name;
       const index = transaction.objectStore(name).index(ttl);
@@ -165,7 +167,6 @@ export default class LocalStoreDB {
         cursor.delete();
         cursor.continue();
       };
-      return db;
     });
   }
 

@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
@@ -10,9 +11,9 @@ import BaseCategorySlideComponent from './baseCategorySlideComponent.js';
 import BasePreviewSlideComponent from './basePreviewSlideComponent.js';
 
 export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
-  constructor(defaultTab = false, tabName, plugins) {
+  constructor(defaultTab, tabName, plugins) {
     super(tabName, {
-      selected: defaultTab,
+      selected: !!(defaultTab),
       fontSize: '1.1rem',
     }, plugins);
     this.$ids = {
@@ -168,7 +169,7 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
         resolve(dialog.remove()));
 
       this.tabContent.append(dialog);
-      return dialog.modal({
+      dialog.modal({
         backdrop: 'static',
         keyboard: false,
         show: true,

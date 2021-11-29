@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const [
   AWS,
@@ -18,7 +19,6 @@ const [
     ];
   }
 })();
-const URL = require('url');
 const ZIP = require('adm-zip');
 const MIME = require('mime');
 const mxBaseResponse = require('../shared/mxBaseResponse');
@@ -32,7 +32,7 @@ class WebContent extends mxBaseResponse(class {}) {
     const data = event.ResourceProperties.Data;
     this.sanityCheck(data);
     this.$data = data;
-    this.$data.packageUrl = URL.parse(`https://${data.Source.Bucket}.s3.amazonaws.com/${data.Source.Key}`);
+    this.$data.packageUrl = new URL(`https://${data.Source.Bucket}.s3.amazonaws.com/${data.Source.Key}`);
   }
 
   sanityCheck(data) {
@@ -86,7 +86,7 @@ class WebContent extends mxBaseResponse(class {}) {
         response.on('data', chunk => buffers.push(chunk));
         response.on('end', () => {
           if (response.statusCode >= 400) {
-            reject(new Error(`${response.statusCode} ${response.statusMessage} ${this.packageUrl.format()}`));
+            reject(new Error(`${response.statusCode} ${response.statusMessage} ${this.packageUrl.toString()}`));
             return;
           }
           resolve(Buffer.concat(buffers));

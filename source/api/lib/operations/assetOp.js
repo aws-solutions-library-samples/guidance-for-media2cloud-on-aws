@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const AWS = (() => {
   try {
@@ -59,6 +60,23 @@ class AssetOp extends BaseOp {
     }
     if ((input.destination || {}).bucket && !CommonUtils.validateBucket(input.destination.bucket)) {
       throw new Error('invalid destination bucket name');
+    }
+    if ((input.group) && !CommonUtils.validateGroupName(input.group)) {
+      throw new Error('invalid group name');
+    }
+    if (input.attributes !== undefined) {
+      const keys = Object.keys(input.attributes);
+      while (keys.length) {
+        if (!CommonUtils.validateAttributeKey(keys.shift())) {
+          throw new Error('invalid attribute key name');
+        }
+      }
+      const values = Object.values(input.attributes);
+      while (values.length) {
+        if (!CommonUtils.validateAttributeValue(values.shift())) {
+          throw new Error('invalid attribute key value');
+        }
+      }
     }
     /* if is JSON file, start batch ingest */
     const response = JsonProvider.isJsonFile(params.input.key)

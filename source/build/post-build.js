@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const FS = require('fs');
 const PATH = require('path');
@@ -150,9 +151,12 @@ async function minifyJSCommand(options) {
     parsed = PATH.join(parsed.dir, parsed.base);
   }
 
-  const files = await new Promise((resolve, reject) =>
+  const files = await new Promise((resolve, reject) => {
     GLOB(PATH.join(parsed, '**/*.js'), (e, data) =>
-      ((e) ? reject(e) : resolve(data))));
+      ((e)
+        ? reject(e)
+        : resolve(data)));
+  });
 
   files.forEach((file) => {
     console.log(`>>> processing ${file}...`);

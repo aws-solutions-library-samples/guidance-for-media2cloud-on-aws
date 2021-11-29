@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const PATH = require('path');
 const {
@@ -92,8 +93,12 @@ class BaseStateStartComprehend {
       const documents = await this.prepareDocuments(doc.data);
       if (documents.length > 0) {
         const response = await this.batchProcess(documents, languageCode);
+        if (!response) {
+          continue;
+        }
         responses.push(response);
-        const parsed = this.parseJobResults(response, documents);
+        const duped = JSON.parse(JSON.stringify(response));
+        const parsed = this.parseJobResults(duped, documents);
         if (parsed && parsed.length) {
           metadata.splice(metadata.length, 0, ...parsed);
         }

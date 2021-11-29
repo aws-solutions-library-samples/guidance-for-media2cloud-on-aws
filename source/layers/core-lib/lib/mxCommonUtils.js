@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const AWS = (() => {
   try {
@@ -10,7 +11,6 @@ const AWS = (() => {
     return require('aws-sdk');
   }
 })();
-const URL = require('url');
 const CRYPTO = require('crypto');
 const MIME = require('mime');
 const ZLIB = require('zlib');
@@ -786,8 +786,10 @@ const mxCommonUtils = Base => class extends Base {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**
@@ -890,8 +892,12 @@ const mxCommonUtils = Base => class extends Base {
         ? target
         : JSON.stringify(target);
 
-    let buf = await new Promise((resolve, reject) =>
-      ZLIB.gzip(t, (err, res) => (err ? reject(err) : resolve(res))));
+    let buf = await new Promise((resolve, reject) => {
+      ZLIB.gzip(t, (err, res) =>
+        ((err)
+          ? reject(err)
+          : resolve(res)));
+    });
 
     buf = buf.toString('base64');
 
@@ -917,8 +923,12 @@ const mxCommonUtils = Base => class extends Base {
     }
 
     const buf = Buffer.from(target.join(''), 'base64');
-    const response = await new Promise((resolve, reject) =>
-      ZLIB.unzip(buf, (err, res) => (err ? reject(err) : resolve(res))));
+    const response = await new Promise((resolve, reject) => {
+      ZLIB.unzip(buf, (err, res) =>
+        ((err)
+          ? reject(err)
+          : resolve(res)));
+    });
 
     try {
       return JSON.parse(response.toString());
@@ -1074,21 +1084,17 @@ const mxValidation = Base => class extends Base {
    * @param {string} val
    */
   static validateS3Uri(val = '') {
-    const {
-      protocol,
-      hostname: bkt,
-    } = URL.parse(val);
-
-    if (!bkt || !protocol || protocol.toLowerCase() !== 's3:') {
+    const url = new URL(val);
+    const bucket = url.hostname;
+    if (!bucket || !url.protocol || url.protocol.toLowerCase() !== 's3:') {
       return false;
     }
-
     return !(
-      (bkt.length < 3 || bkt.length > 63)
-      || /[^a-z0-9-.]/.test(bkt)
-      || /^[^a-z0-9]/.test(bkt)
-      || /\.{2,}/.test(bkt)
-      || /^\d+.\d+.\d+.\d+$/.test(bkt)
+      (bucket.length < 3 || bucket.length > 63)
+      || /[^a-z0-9-.]/.test(bucket)
+      || /^[^a-z0-9]/.test(bucket)
+      || /\.{2,}/.test(bucket)
+      || /^\d+.\d+.\d+.\d+$/.test(bucket)
     );
   }
 
@@ -1122,6 +1128,36 @@ const mxValidation = Base => class extends Base {
    */
   static validateEmailAddress(val = '') {
     return /^(([^<>()[\].,;:\s@"]+(\.[^<>()[\].,;:\s@"]+)*)|(".+"))@(([^<>()[\].,;:\s@"]+\.)+[^<>()[\].,;:\s@"]{2,})$/i.test(val);
+  }
+
+  /**
+   * @static
+   * @function validateGroupName
+   * @description validate group name
+   * @param {string} val
+   */
+  static validateGroupName(val = '') {
+    return /^[a-zA-Z0-9_-]{0,128}$/.test(val);
+  }
+
+  /**
+   * @static
+   * @function validateAttributeKey
+   * @description validate attribute key name
+   * @param {string} val
+   */
+  static validateAttributeKey(val = '') {
+    return /^[a-zA-Z0-9_-]{0,128}$/.test(val);
+  }
+
+  /**
+   * @static
+   * @function validateAttributeValue
+   * @description validate attribute value
+   * @param {string} val
+   */
+  static validateAttributeValue(val = '') {
+    return /^[a-zA-Z0-9_%., -]{0,255}$/.test(val);
   }
 };
 

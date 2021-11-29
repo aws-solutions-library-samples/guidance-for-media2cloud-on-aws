@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../shared/localization.js';
@@ -23,7 +24,7 @@ const CSS_DESCRIPTIONLIST = {
 };
 
 export default class ProcessingTab extends mxSpinner(BaseTab) {
-  constructor(defaultTab = false, plugins) {
+  constructor(defaultTab, plugins) {
     super(Localization.Messages.ProcessingTab, {
       selected: defaultTab,
       fontSize: '1.1rem',

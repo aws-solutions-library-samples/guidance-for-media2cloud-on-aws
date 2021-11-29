@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import SolutionManifest from '/solution-manifest.js';
 import AppUtils from './appUtils.js';
@@ -84,10 +85,14 @@ export default class CognitoConnector {
   async getUserSession(user) {
     return new Promise((resolve, reject) => {
       const currentUser = user || this.user;
-      return (!currentUser)
-        ? reject(new Error('no current user'))
-        : currentUser.getSession((e, session) =>
-          ((e) ? reject(new Error(e)) : resolve(session)));
+      if (!currentUser) {
+        reject(new Error('no current user'));
+        return;
+      }
+      currentUser.getSession((e, session) =>
+        ((e)
+          ? reject(new Error(e))
+          : resolve(session)));
     });
   }
 
@@ -160,11 +165,12 @@ export default class CognitoConnector {
    * @param {string} Password
    */
   async confirmNewPassword(Password) {
-    return new Promise((resolve, reject) =>
+    return new Promise((resolve, reject) => {
       this.user.completeNewPasswordChallenge(Password, {}, {
         onSuccess: this.onSuccess.bind(this, resolve, reject),
         onFailure: this.onFailure.bind(this, resolve, reject),
-      }));
+      });
+    });
   }
 
   /**
@@ -268,9 +274,12 @@ export default class CognitoConnector {
    */
   async refreshSession() {
     const currentSession = await this.getUserSession();
-    await new Promise((resolve, reject) =>
+    await new Promise((resolve, reject) => {
       this.user.refreshSession(currentSession.refreshToken, (e, refresh) =>
-        ((e) ? reject(new Error(e)) : resolve(refresh))));
+        ((e)
+          ? reject(new Error(e))
+          : resolve(refresh)));
+    });
     const credential = await this.getCredentials();
     this.eventSource.trigger(CognitoConnector.Events.Session.Refresh, [credential]);
     return credential;
@@ -342,10 +351,11 @@ export default class CognitoConnector {
    * @param {string} Password
    */
   async confirmPassword(VerificationCode, Password) {
-    return new Promise((resolve, reject) =>
+    return new Promise((resolve, reject) => {
       this.user.confirmPassword(VerificationCode, Password, {
         onSuccess: this.onSuccess.bind(this, resolve, reject),
         onFailure: this.onFailure.bind(this, resolve, reject),
-      }));
+      });
+    });
   }
 }

@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const AWS = (() => {
   try {
@@ -39,16 +40,13 @@ class StateStartTranscribe {
 
   async process() {
     const params = await this.makeParams();
-    console.log(JSON.stringify(params, null, 2));
-    await this.retryStartTranscriptionJob(params);
-
     this.stateData.setData(CATEGORY, {
       jobId: params.TranscriptionJobName,
       output: params.OutputKey,
       startTime: new Date().getTime(),
     });
     this.stateData.setStarted();
-
+    /* register token to dynamodb table */
     await ServiceToken.register(
       params.TranscriptionJobName,
       this.stateData.event.token,
@@ -56,6 +54,8 @@ class StateStartTranscribe {
       CATEGORY,
       this.stateData.toJSON()
     );
+    /* start transcribe */
+    await this.retryStartTranscriptionJob(params);
     return this.stateData.toJSON();
   }
 

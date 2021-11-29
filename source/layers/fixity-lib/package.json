@@ -15,7 +15,7 @@
     "test": "echo \"fixity-lib wraps rusha and spark-md5 packages. skipping unit test...\"",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/fixity-lib",
     "build:copy": "cp -rv index.js package.json dist/nodejs/node_modules/fixity-lib",
-    "build:install": "cd dist/nodejs/node_modules/fixity-lib && npm install --production",
+    "build:install": "cd dist/nodejs/node_modules/fixity-lib && npm install --only=prod --no-optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },

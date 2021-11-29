@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const {
   DB,
@@ -11,6 +12,24 @@ const {
 } = require('core-lib');
 
 const INDEX_INGEST = 'ingest';
+const CORE_ATTRIBUTES = [
+  'overallStatus',
+  'lastModified',
+  'timestamp',
+  'status',
+  'basename',
+  'attributes',
+  'bucket',
+  'group',
+  'fileSize',
+  'mime',
+  'framerate',
+  'uuid',
+  'key',
+  'duration',
+  'type',
+  'md5',
+];
 
 class StateIndexIngestResults {
   constructor(stateData) {
@@ -34,25 +53,7 @@ class StateIndexIngestResults {
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
     const uuid = this.stateData.uuid;
-    const result = await db.fetch(uuid, undefined,
-      [
-        'overallStatus',
-        'lastModified',
-        'timestamp',
-        'status',
-        'basename',
-        'attributes',
-        'bucket',
-        'group',
-        'fileSize',
-        'mime',
-        'framerate',
-        'uuid',
-        'key',
-        'duration',
-        'type',
-        'md5',
-      ]);
+    const result = await db.fetch(uuid, undefined, CORE_ATTRIBUTES);
     const indexer = new Indexer();
     await indexer.indexDocument(INDEX_INGEST, uuid, result)
       .catch((e) =>

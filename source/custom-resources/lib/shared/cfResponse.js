@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const HTTPS = (() => {
   try {
@@ -9,7 +10,6 @@ const HTTPS = (() => {
     return require('https');
   }
 })();
-const URL = require('url');
 
 const SUCCESS = 'SUCCESS';
 const FAILED = 'FAILED';
@@ -109,8 +109,10 @@ class CloudFormationResponse {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**
@@ -174,19 +176,17 @@ class CloudFormationResponse {
       LogicalResourceId: this.logicalResourceId,
       Data: responseData,
     });
-
-    const url = URL.parse(this.responseUrl);
+    const url = new URL(this.responseUrl);
     const params = {
       hostname: url.hostname,
       port: 443,
-      path: url.path,
+      path: `${url.pathname}${url.search}`,
       method: 'PUT',
       headers: {
         'Content-Type': '',
         'Content-Length': responseBody.length,
       },
     };
-
     let response;
     let tries = 0;
     const maxTries = 10;

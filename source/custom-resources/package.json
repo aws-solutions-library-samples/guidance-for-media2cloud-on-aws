@@ -9,15 +9,15 @@
     "test": "mocha *.spec.js",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index*.js package.json lib dist/",
-    "build:install": "cd dist && npm install --production",
+    "build:install": "cd dist && npm install --only=prod --no-optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
   "author": "aws-mediaent-solutions",
   "dependencies": {
     "adm-zip": "^0.4.11",
-    "aws-sdk": "^2.991.0",
-    "aws-xray-sdk": "^3.3.3"
+    "aws-sdk": "^2.1033.0",
+    "aws-xray-sdk": "^3.3.4"
   },
   "devDependencies": {
     "core-lib": "file:../layers/core-lib"

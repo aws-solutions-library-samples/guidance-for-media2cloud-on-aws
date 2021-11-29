@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 class R0 {
   static readable(num, base, units) {
@@ -8,7 +9,7 @@ class R0 {
       return `0 ${units[0]}`;
     }
     const i = Math.floor(Math.log(size) / Math.log(base));
-    return `${(size / Math.pow(base, i)).toFixed(2) * 1} ${units[i]}`;
+    return `${(size / (base ** i)).toFixed(2) * 1} ${units[i]}`;
   }
 }
 

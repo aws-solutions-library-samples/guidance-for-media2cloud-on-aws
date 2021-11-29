@@ -7,7 +7,7 @@
   "author": "aws-mediaent-solutions",
   "license": "ISC",
   "dependencies": {
-    "jimp": "^0.9.6"
+    "jimp": "^0.16.1"
   },
   "scripts": {
     "pretest": "npm install",
@@ -20,7 +20,7 @@
     "exiftool:install": "mv exiftool-12.30/exiftool exiftool-12.30/lib t/exiftool && rm -rf exiftool-12.30/ exiftool.tar.gz",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/image-process-lib",
     "build:copy": "cp -r package.json index.js amazon exiftool t dist/nodejs/node_modules/image-process-lib",
-    "build:install": "cd dist/nodejs/node_modules/image-process-lib && npm install --production",
+    "build:install": "cd dist/nodejs/node_modules/image-process-lib && npm install --only=prod --no-optional",
     "build": "npm-run-all -s perl:clean perl:download perl:install exiftool:clean exiftool:download exiftool:install build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },

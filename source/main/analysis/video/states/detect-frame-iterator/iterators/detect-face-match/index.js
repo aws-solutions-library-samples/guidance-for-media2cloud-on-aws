@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const PATH = require('path');
 const CRYPTO = require('crypto');
@@ -135,11 +136,7 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     /* crop face */
     const canvas = CANVAS.createCanvas(w, h);
     const context = canvas.getContext('2d');
-    context.drawImage(
-      image,
-      l, t, w, h,
-      0, 0, w, h
-    );
+    context.drawImage(image, l, t, w, h, 0, 0, w, h);
     const cropped = canvas.toBuffer('image/jpeg', {
       quality: 1.0,
     });

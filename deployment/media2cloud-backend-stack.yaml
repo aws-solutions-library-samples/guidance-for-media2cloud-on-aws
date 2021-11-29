@@ -5938,11 +5938,6 @@ Resources:
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Publish
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
                             # SNS
                             -
                                 Effect: Allow
@@ -6002,8 +5997,6 @@ Resources:
                     ENV_SOLUTION_UUID: !Ref SolutionUuid
                     ENV_SOLUTION_ID: !Ref SolutionId
                     ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
-                    ENV_IOT_HOST: !Ref IotHost
-                    ENV_IOT_TOPIC: !Ref IotTopic
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_SNS_TOPIC_ARN: !Ref SNSTopic

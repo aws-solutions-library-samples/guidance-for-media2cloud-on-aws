@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 import mxReadable from '../mixins/mxReadable.js';
 import mxZero from '../mixins/mxZero.js';
@@ -183,7 +184,10 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve => setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**
@@ -285,7 +289,8 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
   static async downscale(url, width = THUMBNAIL_W, height = THUMBNAIL_H) {
     return new Promise((resolve, reject) => {
       if (!url) {
-        return reject(new Error('missing url'));
+        reject(new Error('missing url'));
+        return;
       }
       const img = new Image();
       img.onload = () => {
@@ -300,17 +305,12 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
         canvas.width = canvasW;
         canvas.height = canvasH;
         const context = canvas.getContext('2d');
-        context.drawImage(
-          img,
-          0, 0, img.width, img.height,
-          0, 0, canvasW, canvasH
-        );
+        context.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvasW, canvasH);
         const dataUrl = canvas.toDataURL('image/png');
-        return resolve(dataUrl);
+        resolve(dataUrl);
       };
       img.crossOrigin = 'anonymous';
       img.src = url;
-      return img;
     });
   }
 }

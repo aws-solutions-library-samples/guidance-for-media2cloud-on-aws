@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 class Retry {
   static get RetryExceptions() {
@@ -16,8 +17,10 @@ class Retry {
   }
 
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   static async run(fn, params, maxTries = 4) {

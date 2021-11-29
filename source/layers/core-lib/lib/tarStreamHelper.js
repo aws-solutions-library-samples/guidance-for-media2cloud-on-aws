@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const TAR = require('tar-stream');
 const ZLIB = require('zlib');
@@ -13,7 +14,8 @@ class TarStreamHelper {
   static async extract(bucket, key) {
     return new Promise((resolve, reject) => {
       if (!bucket || !key) {
-        return reject(new Error('missing bucket or key'));
+        reject(new Error('missing bucket or key'));
+        return;
       }
       const resultSets = {};
       const readStream = CommonUtils.createReadStream(bucket, key);
@@ -36,7 +38,7 @@ class TarStreamHelper {
       extract.on('error', e =>
         reject(e));
 
-      return readStream.pipe(unzip).pipe(extract);
+      readStream.pipe(unzip).pipe(extract);
     });
   }
 }

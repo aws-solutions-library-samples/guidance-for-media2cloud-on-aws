@@ -26,7 +26,7 @@ __
     "Statement": [
         {
             "Action": "s3:ListBucket",
-            "Resource": "arn:aws:s3:::so0050-06b5e89d3d9b-255655562678-eu-west-1-ingest",
+            "Resource": "INGEST_BUCKET",
             "Effect": "Allow"
         },
         {

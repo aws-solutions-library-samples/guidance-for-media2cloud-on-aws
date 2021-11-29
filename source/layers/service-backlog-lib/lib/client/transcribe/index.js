@@ -1,5 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
+// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
 
 const AWS = (() => {
   try {
@@ -71,7 +72,7 @@ class TranscribeBacklogJob extends BacklogJob {
     };
     if (serviceApi === TranscribeBacklogJob.ServiceApis.StartTranscriptionJob) {
       serviceParams.TranscriptionJobName = id;
-    } else if (serviceApi === TranscribeBacklogJob.ServiceApis.StartTranscriptionJob) {
+    } else if (serviceApi === TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob) {
       serviceParams.MedicalTranscriptionJobName = id;
     }
     if ((serviceParams.JobExecutionSettings || {}).DataAccessRoleArn) {
