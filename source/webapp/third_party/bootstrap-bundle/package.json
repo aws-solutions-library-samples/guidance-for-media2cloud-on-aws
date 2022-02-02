@@ -1,14 +1,14 @@
 {
   "name": "bootstrap-bundle",
-  "version": "4.5.0",
+  "version": "4.6.1",
   "description": "download bootstrap dist for browser",
   "main": "index.js",
   "scripts": {
     "test": "echo \"bundle exists\" && exit 0",
     "build:clean": "rm -rf dist temp && mkdir -p dist/js dist/css temp",
-    "build:download": "cd temp && wget -q --no-check-certificate https://github.com/twbs/bootstrap/releases/download/v4.5.0/bootstrap-4.5.0-dist.zip -O bootstrap.zip",
+    "build:download": "cd temp && wget -q --no-check-certificate https://github.com/twbs/bootstrap/releases/download/v4.6.1/bootstrap-4.6.1-dist.zip -O bootstrap.zip",
     "build:unpack": "cd temp && unzip -q bootstrap.zip",
-    "build:copy": "cp -v temp/bootstrap-4.5.0-dist/css/*.min.css ./dist/css && cp -v temp/bootstrap-4.5.0-dist/js/*.min.js ./dist/js",
+    "build:copy": "cp -v temp/bootstrap-4.6.1-dist/css/*.min.* ./dist/css && cp -v temp/bootstrap-4.6.1-dist/js/*.min.* ./dist/js",
     "build:postbuild": "rm -rf temp",
     "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
   },

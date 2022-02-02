@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (%%SOLUTION_ID%%) Media2Cloud Core Stack - create the core resources that are shared among other stacks included Amazon S3 buckets, AWS Lambda layers, Amazon OpenSearch Service, Amazon CloudFront distribution, AWS IoT Core, and so forth. Version %%VERSION%%
+Description: Media2Cloud Core Stack - create the core resources that are shared among other stacks included Amazon S3 buckets, AWS Lambda layers, Amazon OpenSearch Service, Amazon CloudFront distribution, AWS IoT Core, and so forth. Version %%VERSION%%
 
 Mappings:
     S3:
@@ -118,6 +118,11 @@ Resources:
                         ExpirationInDays: 7
                         AbortIncompleteMultipartUpload:
                             DaysAfterInitiation: 1
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: true
+                BlockPublicPolicy: true
+                IgnorePublicAcls: true
+                RestrictPublicBuckets: true
             Tags:
                 -
                     Key: SolutionId
@@ -217,6 +222,11 @@ Resources:
                         -
                             AccessTier: DEEP_ARCHIVE_ACCESS
                             Days: 180
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: true
+                BlockPublicPolicy: true
+                IgnorePublicAcls: true
+                RestrictPublicBuckets: true
             Tags:
                 -
                     Key: SolutionId
@@ -299,6 +309,11 @@ Resources:
                         NoncurrentVersionExpirationInDays: 7
                         AbortIncompleteMultipartUpload:
                             DaysAfterInitiation: 1
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: true
+                BlockPublicPolicy: true
+                IgnorePublicAcls: true
+                RestrictPublicBuckets: true
             Tags:
                 -
                     Key: SolutionId
@@ -389,6 +404,11 @@ Resources:
                         NoncurrentVersionExpirationInDays: 7
                         AbortIncompleteMultipartUpload:
                             DaysAfterInitiation: 1
+            PublicAccessBlockConfiguration:
+                BlockPublicAcls: true
+                BlockPublicPolicy: true
+                IgnorePublicAcls: true
+                RestrictPublicBuckets: true
             Tags:
                 -
                     Key: SolutionId
@@ -480,7 +500,7 @@ Resources:
                         - CoreLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) m2c core library layer
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     ################################################################################
     #
@@ -613,14 +633,84 @@ Resources:
     # Amazon OpenSearch cluster
     #
     ################################################################################
+    OpenSearchApplicationLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /aws/opensearch/domains/${ResourcePrefix}-storage/opensearch-application-logs
+            RetentionInDays: 7
+
+    OpenSearchSlowLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /aws/opensearch/domains/${ResourcePrefix}-storage/opensearch-slow-logs
+            RetentionInDays: 7
+
+    OpenSearchIndexSlowLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /aws/opensearch/domains/${ResourcePrefix}-storage/opensearch-index-slow-logs
+            RetentionInDays: 7
+
+    OpenSearchLogGroupPolicy:
+        Type: AWS::Logs::ResourcePolicy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-opensearch-loggroup-policy
+            PolicyDocument: !Sub |-
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "OpenSearchLogGroupPolicy",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "es.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "logs:CreateLogStream",
+                                "logs:PutLogEventsBatch",
+                                "logs:PutLogEvents"
+                            ],
+                            "Resource": [
+                                "${OpenSearchApplicationLogGroup.Arn}",
+                                "${OpenSearchSlowLogGroup.Arn}",
+                                "${OpenSearchIndexSlowLogGroup.Arn}"
+                            ]
+                        }
+                    ]
+                }
+
     OpenSearchCluster:
         Type: AWS::OpenSearchService::Domain
+        DependsOn:
+            - OpenSearchLogGroupPolicy
         Metadata:
             cfn_nag:
                 rules_to_suppress:
                     -
                         id: W28
                         reason: Explicitly assign predefined domain name to OpenSearch cluster
+        UpdatePolicy:
+            EnableVersionUpgrade: true
         Properties:
             AccessPolicies:
                 Version: "2012-10-17"
@@ -638,8 +728,16 @@ Resources:
                         Resource:
                             - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage
                             - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-storage/*
-            AdvancedOptions:
-                rest.action.multi.allow_explicit_index: "true"
+            LogPublishingOptions:
+                ES_APPLICATION_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchApplicationLogGroup.Arn
+                    Enabled: true
+                SEARCH_SLOW_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchSlowLogGroup.Arn
+                    Enabled: true
+                INDEX_SLOW_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchIndexSlowLogGroup.Arn
+                    Enabled: true
             DomainEndpointOptions:
                 EnforceHTTPS: true
                 TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07

@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
 
@@ -35,7 +34,7 @@ export default class S3Utils {
     return S3Utils.getInstance().getObject({
       Bucket: bucket,
       Key: key,
-      // ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
+      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
     }).promise();
   }
 
@@ -49,7 +48,7 @@ export default class S3Utils {
         Prefix: prefix,
         MaxKeys: 100,
         ContinuationToken: (response || {}).NextContinuationToken,
-        // ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
+        ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
       }).promise();
       collection.splice(collection.length, 0, ...response.Contents);
     } while ((response || {}).NextContinuationToken);

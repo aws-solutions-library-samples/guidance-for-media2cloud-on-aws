@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 const AWS = (() => {
   try {
@@ -432,10 +431,10 @@ const mxCommonUtils = Base => class extends Base {
   /**
    * @function sanitizedKey
    * @description make sure to trim leading '/' character
-   * @param {string} key
+   * @param {string} str
    */
-  static sanitizedKey(key = '') {
-    return ((key[0] === '/') ? key.slice(1) : key).trim();
+  static sanitizedKey(str = '') {
+    return ((str[0] === '/') ? str.slice(1) : str).trim();
   }
 
   /**
@@ -813,7 +812,7 @@ const mxCommonUtils = Base => class extends Base {
    * @param {number} [max] default to 100
    */
   static random(min = 0, max = 100) {
-    return Math.floor(Math.random() * (max - min)) + min;
+    return CRYPTO.randomInt(Math.max(0, min), Math.max(1, max));
   }
 
   /**

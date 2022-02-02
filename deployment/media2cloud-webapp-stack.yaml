@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (%%SOLUTION_ID%%) Media2Cloud WebApp Stack - create frontend resources such as Amazon API Gateway, Amazon Cognito User Pool, demo portal, and etc. Version %%VERSION%%
+Description: Media2Cloud WebApp Stack - create frontend resources such as Amazon API Gateway, Amazon Cognito User Pool, demo portal, and etc. Version %%VERSION%%
 
 Mappings:
     Workflow:

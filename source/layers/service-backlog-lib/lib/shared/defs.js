@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 const ResourcePrefix = process.env.ENV_RESOURCE_PREFIX;
 const CustomUserAgent = process.env.ENV_CUSTOM_USER_AGENT;

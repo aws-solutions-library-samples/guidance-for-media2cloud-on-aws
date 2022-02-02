@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import S3Utils from '../s3utils.js';
 import BaseMedia from './baseMedia.js';
@@ -24,8 +23,10 @@ export default class PhotoMedia extends BaseMedia {
       return this.defaultImage;
     }
     let blob;
-    const lastIdx = images[0].key.lastIndexOf('.jpg');
-    if (lastIdx > 0) {
+    /* best effort to load thumbnail version of the image. */
+    let lastIdx = images[0].key.lastIndexOf(`${SUFFIX}.jpg`);
+    if (lastIdx < 0) {
+      lastIdx = images[0].key.lastIndexOf('.jpg');
       let key = images[0].key.substring(0, lastIdx);
       key = `${key}${SUFFIX}.jpg`;
       blob = await this.store.getImageURL(`${this.uuid}${SUFFIX}`, this.proxyBucket, key)

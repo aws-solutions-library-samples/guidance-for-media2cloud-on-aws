@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import Localization from './shared/localization.js';
 import IotSubscriber from './shared/iotSubscriber.js';
@@ -170,7 +169,7 @@ export default class SignInFlow {
       if (form[0].checkValidity() === false) {
         event.stopPropagation();
         this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PasswordConformance);
+        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
         return false;
       }
       const username = form.find(`#${this.ids.normal.username}`);
@@ -200,7 +199,7 @@ export default class SignInFlow {
 
   createNewPasswordForm(user) {
     const div = $('<div/>').append($('</p>').addClass('text-muted')
-      .html(Localization.Messages.PasswordRequirement));
+      .html(Localization.Messages.PwdRequirement));
 
     const form = $('<form/>').addClass('form-signin text-center needs-validation')
       .attr('novalidate', 'novalidate')
@@ -215,7 +214,7 @@ export default class SignInFlow {
       if (password01.val() !== password02.val()) {
         event.stopPropagation();
         this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.MismatchPasswords);
+        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.MismatchPwds);
         password02.val('');
         return false;
       }
@@ -223,7 +222,7 @@ export default class SignInFlow {
       if (form[0].checkValidity() === false) {
         event.stopPropagation();
         this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PasswordConformance);
+        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
         password01.val('');
         password02.val('');
         return false;
@@ -234,7 +233,7 @@ export default class SignInFlow {
         const btn = form.find('button[type="submit"]');
         btn.addClass('disabled')
           .attr('disabled', 'disabled');
-        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PasswordConfirmed, 3000);
+        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed, 3000);
         this.firstTimeSignIn = 1;
         this.cognito.signOut();
         password01.val('');
@@ -288,7 +287,7 @@ export default class SignInFlow {
 
   createResetPasswordForm(user) {
     const div = $('<div/>').append($('</p>').addClass('text-muted')
-      .html(Localization.Messages.ResetPassword));
+      .html(Localization.Messages.ResetPwd));
 
     const form = $('<form/>').addClass('form-signin text-center needs-validation')
       .attr('novalidate', 'novalidate')
@@ -303,7 +302,7 @@ export default class SignInFlow {
       if (form[0].checkValidity() === false) {
         event.stopPropagation();
         this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PasswordConformance);
+        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
         code.val('');
         password.val('');
         return false;
@@ -311,7 +310,7 @@ export default class SignInFlow {
 
       try {
         await this.cognito.confirmPassword(code.val(), password.val());
-        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PasswordConfirmed);
+        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed);
         this.firstTimeSignIn = 1;
         this.cognito.signOut();
         code.val('');

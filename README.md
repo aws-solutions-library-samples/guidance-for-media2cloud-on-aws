@@ -12,6 +12,7 @@
 * [Building and customizing the solution](#building-and-customizing-the-solution)
 * [Code structure](#code-structure)
 * [License](#license)
+* [Collection of operational metrics](#collection-of-operational-metrics)
 
 __
 
@@ -53,69 +54,37 @@ __
 
 ## Installation
 
-Media2Cloud uses Amazon CloudFormation service to orchestrate the entire workflow. Follow the steps below to create and install the solution.
-
-**Step 1: Click on the pre-built Amazon CloudFormation template for the region you would like to deploy the solution**
-
-| AWS Region | Amazon CloudFormation template |
-| :--- | :---------- |
-| US East (N. Virginia) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-us-east-1.s3.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
-| US West (Oregon) | <a href="https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
-| Europe (Ireland) | <a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=m2cv3rc&templateURL=https://mediaent-solution-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/v3rc/media2cloud.template" target="_blank">Launch stack</a> |
-
-__
-
-**Step 2: Under 'Specify stack details' page, fill in parameters**
-
-![Specify stack details](./deployment/tutorials/images/cfn-specify-stack-details.png)
-
-| Parameter | Description |
-| :--- | :---------- |
-| Stack name | Specify stack name. Note that the stack name is also used to prefixing resources being created. |
-| Email | Your email address is used to create an user to log in to the web portal using [Amazon Cognito](https://aws.amazon.com/cognito/) service |
-| Price Class | Amazon CloudFront distribution. See more details of different [price classes](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html) |
-| Elasticsearch Cluster | Different options to configure Amazon Elasticsearch Service cluster. Recommended to use _Development and Testing_ if you are simply evaluating Media2Cloud |
-| Analysis Feature(s) | Different default options to configure which detections you would like to run |
-
-__
-
-**Step 3: Next to 'Configure stack options'**
-
-Leave it as is
-
-__
-
-**Step 3: Next to 'Review stack'**
-
-Scroll down to the bottom of the page. Make sure
-* I acknowledge that AWS CloudFormation might create IAM resources with custom names.
-* I acknowledge that AWS CloudFormation might require the following capability: CAPABILITY_AUTO_EXPAND
-
-are checked as shown below.
-
-![Review stack](./deployment/tutorials/images/cfn-review-stack.png)
-
-Click on _Create stack_ will start the stack creation process. It takes approximately 15 minutes to complete. When the stack is created, you should receive an email with a temporary credentials to log in to the web portal.
+Please follow the instructions described in the solution implementation guide, [Automated deployment section](https://docs.aws.amazon.com/solutions/latest/media2cloud/automated-deployment.html).
 
 __
 
 ## Building and customizing the solution
 
-* Create a bucket in the AWS region you would like to deploy the solution. For example, **my-bucket** in us-east-1 region.
-* Make sure to specify **--single-region** in the command line
+* **Prerequisites:** building the solution requires the following tools to be installed on your system.
+  * [NodeJS 14.x](https://nodejs.org/en/download/)
+  * [AWS Command Line Interface (CLI)](https://aws.amazon.com/cli/)
+  * [jq](https://stedolan.github.io/jq/)
+* Create a bucket in the AWS region you would like to deploy the solution. For example, ```media2cloud-template-us-east-1``` in us-east-1 region.
+* Make sure to specify ```--single-region``` in the command line indicating you are deploying the templates in a single region
 
     ```
-    bash ./build-s3-dist.sh --bucket my-bucket --single-region
+    bash ./build-s3-dist.sh --bucket media2cloud-template-us-east-1 --single-region
     ```
+* Ensure that you are owner of the AWS S3 bucket
 
+    ```
+    aws s3api head-bucket \
+    --bucket media2cloud-template-us-east-1 \
+    --expected-bucket-owner YOUR-AWS-ACCOUNT-NUMBER
+    ```
 * Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
 
     ```
-    bash ./deploy-s3-dist.sh --bucket my-bucket --single-region
+    bash ./deploy-s3-dist.sh --bucket media2cloud-template-us-east-1 --single-region
     ```
 
-* Get the HTTPS URL link of **media2cloud.template** after you have uploaded to your Amazon S3 bucket.
-* Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the **media2cloud.template**.
+* Get the HTTPS URL link of ```media2cloud.template``` after you have uploaded to your Amazon S3 bucket.
+* Deploy the solution to your account by launching a new AWS CloudFormation stack using the link of the ```media2cloud.template```.
 
 __
 
@@ -125,23 +94,23 @@ __
 | :--- | :---------- |
 | deployment/ | -- |
 | deployment/build-s3-dist.sh | shell script to build packages |
-| deployment/deploym-s3-dist.sh | shell script to deploy packages to your Amazon S3 bucket |
+| deployment/deploy-s3-dist.sh | shell script to deploy packages to your Amazon S3 bucket |
 | deployment/media2cloud.yaml | main Amazon CloudFormation template to deploy the stack |
 | source/ | -- |
 | source/api | Amazon API Gateway handler |
 | source/backlog | implementation of internal queue management to handle large numbers of Amazon Rekognition Video requests |
-| source/build | build script used by build-s3-dist.sh |
+| source/build | build script used by ```build-s3-dist.sh``` |
 | source/custom-resources | lambda function used by Amazon CloudFormation during stack creation and deletion |
 | LAYERS | -- |
 | source/layers | directory of various AWS Lambda Layers |
 | source/layers/aws-sdk-layer | latest AWS SDK layer |
-| source/layers/canvas-lib | canvas layer for manipulating images |
+| source/layers/canvas-lib | canvas layer for processing images |
 | source/layers/core-lib | core library shared by all lambdas |
 | source/layers/fixity-lib | fixity library to compute MD5/SHA1 |
 | source/layers/image-process-lib | wrapper to exif-tool to extract image metadata |
 | source/layers/mediainfo | mediainfo layer |
 | source/layers/pdf-lib | wrapper of pdfjs package |
-| source/layers/service-backlog-lib | service backlog of internal queu management |
+| source/layers/service-backlog-lib | service backlog of internal queue management |
 | WORKFLOWS | -- |
 | [source/main](./source/main/README.md) | main state machine |
 | [source/main/ingest](./source/main/ingest/README.md) | ingest state machine implementation |
@@ -155,17 +124,24 @@ __
 
 ## License
 
-Copyright Amazon.com, Inc. and its affiliates. All Rights Reserved.
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
-SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-
-Licensed under the Amazon Software License (the "License").
+Licensed under the Apache License, Version 2.0 (the "License").
 You may not use this file except in compliance with the License.
-A copy of the License is located at
+You may obtain a copy of the License at
 
-  http://aws.amazon.com/asl/
+    http://www.apache.org/licenses/LICENSE-2.0
 
-or in the "license" file accompanying this file. This file is distributed
-on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-express or implied. See the License for the specific language governing
-permissions and limitations under the License.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+__
+
+## Collection of operational metrics
+
+This solution collects anonymous operational metrics to help AWS improve the
+quality of features of the solution. For more information, including how to disable
+this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/media2cloud/collection-of-operational-metrics.html).

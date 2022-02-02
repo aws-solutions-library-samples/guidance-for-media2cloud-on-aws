@@ -15,7 +15,6 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "canvas": "^2.6.1",
     "core-lib": "file:../../../layers/core-lib",
     "service-backlog-lib": "file:../../../layers/service-backlog-lib"
   }

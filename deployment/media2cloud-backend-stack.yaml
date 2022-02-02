@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (%%SOLUTION_ID%%) Media2Cloud Backend Stack - create backend resources such as Amazon DynamoDB tables, AWS Step Functions, AWS Lambda functions and layers, Amazon EventBridge, Amazon CloudWatch Events, Amazon SNS, Amazon S3 notification, and so forth. Version %%VERSION%%
+Description: Media2Cloud Backend Stack - create backend resources such as Amazon DynamoDB tables, AWS Step Functions, AWS Lambda functions and layers, Amazon EventBridge, Amazon CloudWatch Events, Amazon SNS, Amazon S3 notification, and so forth. Version %%VERSION%%
 
 Mappings:
     Workflow:
@@ -248,7 +248,7 @@ Resources:
                         - MediaInfoLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) mediainfo library layer
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     ImageProcessLayer:
         Type: AWS::Lambda::LayerVersion
@@ -273,7 +273,7 @@ Resources:
                         - ImageProcessLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) image process library layer (EXIFtool and JIMP)
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     FixityLibLayer:
         Type: AWS::Lambda::LayerVersion
@@ -298,7 +298,7 @@ Resources:
                         - FixityLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) fixity library layer (SPARK and RUSHA)
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     PDFLibLayer:
         Type: AWS::Lambda::LayerVersion
@@ -323,7 +323,7 @@ Resources:
                         - PDFLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) pdf library layer (PDF.JS)
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     CanvasLibLayer:
         Type: AWS::Lambda::LayerVersion
@@ -348,7 +348,7 @@ Resources:
                         - CanvasLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) nodeJS canvas layer
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     BacklogLibLayer:
         Type: AWS::Lambda::LayerVersion
@@ -373,7 +373,7 @@ Resources:
                         - BacklogLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) service backlog queue management library layer
-            LicenseInfo: MIT-0
+            LicenseInfo: Apache-2.0
 
     ################################################################################
     #
@@ -2668,7 +2668,7 @@ Resources:
                 - Node
                 - Runtime
                 - Version
-            MemorySize: 3072
+            MemorySize: 3008
             Timeout: 900
             Handler: index.handler
             Role: !GetAtt IngestImageRole.Arn

@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 const AWS = (() => {
   try {
@@ -137,16 +136,17 @@ class AssetOp extends BaseOp {
       if (input.key && fetched.key && input.key !== fetched.key) {
         throw new Error(`${input.uuid} is already used for other asset`);
       }
+    } else {
+      input.uuid = CommonUtils.uuid4();
     }
     /* #2: make sure s3 object exists */
-    const uuid = input.uuid || CommonUtils.uuid4();
     const bucket = input.bucket || Environment.Ingest.Bucket;
     const key = input.key || fetched.key;
     await CommonUtils.headObject(bucket, key);
     /* #3: make destination params */
     input.destination = {
       bucket: Environment.Proxy.Bucket,
-      prefix: CommonUtils.makeSafeOutputPrefix(uuid, key),
+      prefix: CommonUtils.makeSafeOutputPrefix(input.uuid, key),
       ...input.destination,
     };
     /* #4: start ingest state machine */
@@ -168,7 +168,7 @@ class AssetOp extends BaseOp {
       }),
       stateMachineArn: arn,
     }).promise().then(data => ({
-      uuid: params.uuid,
+      uuid: input.uuid,
       status: StateData.Statuses.Started,
       ...data,
     }));

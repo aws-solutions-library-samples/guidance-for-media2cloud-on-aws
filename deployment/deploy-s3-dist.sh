@@ -1,27 +1,14 @@
 #!/bin/bash
 
-###
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License Version 2.0 (the 'License').
-# You may not use this file except in compliance with the License.
-# A copy of the License is located at
-#
-#         http://www.apache.org/licenses/
-#
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
-# specific language governing permissions and limitations under the License.
-#
-##
-
-###
-# @author aws-mediaent-solutions
-##
+########################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+########################################################################################
 
 # include shared configuration file
 source ./common.sh
 
+ACCOUNTID=
 SOURCE_DIR="../source"
 TEMPLATE_DIST_DIR="global-s3-assets"
 BUID_DIST_DIR="regional-s3-assets"
@@ -116,6 +103,11 @@ done
   usage && \
   exit 1
 
+ACCOUNTID=$(aws sts get-caller-identity | jq .Account | tr -d \")
+[ -z "$ACCOUNTID" ] && \
+  echo "error: fail to get AWS Account ID" && \
+  exit 1
+
 [ -z "$SOLUTION" ] && \
   SOLUTION="media2cloud"
 
@@ -132,33 +124,29 @@ done
 function copy_to_bucket() {
   local source=$1
   local bucket=$2
-  local region=$3
-
-  aws s3api get-bucket-location --bucket ${bucket} > /dev/null 2>&1
-  local status=$?
-  [ $status -ne 0 ] && \
-    echo "bucket '${bucket}' not exists. skipping..." && \
-    return 0
-
-  echo "uploading package to '${bucket}'..."
-  if [ -z "$region" ]; then
-    aws s3 cp $source s3://${bucket}/${SOLUTION}/${VERSION}/ --recursive --acl ${ACL_SETTING}
+  local dest=s3://${bucket}/${SOLUTION}/${VERSION}/
+  # get bucket region and ensure bucket is owned by the same AWS account. LocationConstraint returns null if bucket is in us-east-1 region
+  local location=$(aws s3api get-bucket-location --bucket ${bucket} --expected-bucket-owner ${ACCOUNTID} | jq .LocationConstraint | tr -d \")
+  [ -z "$location" ] && \
+    echo "Bucket '${bucket}' either doesn't exist or doesn't belong to accountId '${ACCOUNTID}'. exiting..." && \
+    exit 1
+  local region="us-east-1"
+  [ "$location" != "null" ] && \
+    region=$location
+  # upload artifacts to the regional bucket
+  echo "== Deploy '${SOLUTION} ($VERSION)' package from '${source}' to '${dest}' in '${region}' [BEGIN] =="
+  if [ "$region" == "us-east-1" ]; then
+    aws s3 cp $source $dest --recursive --acl ${ACL_SETTING}
   else
-    aws s3 cp $source s3://${bucket}/${SOLUTION}/${VERSION}/ --recursive --acl ${ACL_SETTING} --region ${region}
+    aws s3 cp $source $dest --recursive --acl ${ACL_SETTING} --region ${region}
   fi
+  echo "== Deploy '${SOLUTION} ($VERSION)' package from '${source}' to '${dest}' in '${region}' [COMPLETED] =="
 }
 
-if [ "$SINGLE_REGION" == "true" ]; then
-  # deploy to a single region
-  echo "'${SOLUTION} ($VERSION)' package will be deployed to '${BUCKET_NAME}' bucket"
-  copy_to_bucket ${BUID_DIST_DIR} "${BUCKET_NAME}"
-else
-  echo "'${SOLUTION} ($VERSION)' package will be deployed to '${BUCKET_NAME}-[region]' buckets: ${REGIONS[*]} regions"
-  # special case, deploy to main bucket (without region suffix)
-  copy_to_bucket ${BUID_DIST_DIR} "${BUCKET_NAME}" "us-east-1"
-
-  # now, deploy to regional based buckets
+if [ "$SINGLE_REGION" != "true" ]; then
+  # deploy to regional based buckets
   for region in ${REGIONS[@]}; do
-    copy_to_bucket ${BUID_DIST_DIR} "${BUCKET_NAME}-${region}" "${region}"
+    copy_to_bucket ${BUID_DIST_DIR} "${BUCKET_NAME}-${region}"
   done
 fi
+copy_to_bucket ${BUID_DIST_DIR} "${BUCKET_NAME}"

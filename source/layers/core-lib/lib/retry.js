@@ -1,6 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
+const CRYPTO = require('crypto');
 
 class Retry {
   /**
@@ -22,7 +22,7 @@ class Retry {
    * @param {number} [max] default to 100
    */
   static random(min = 0, max = 100) {
-    return Math.floor(Math.random() * (max - min)) + min;
+    return CRYPTO.randomInt(Math.max(0, min), Math.max(1, max));
   }
 
   /**

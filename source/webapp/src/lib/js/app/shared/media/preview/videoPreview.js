@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import AppUtils from '../../appUtils.js';
 import BasePreview from './basePreview.js';
@@ -297,7 +296,7 @@ export default class VideoPreview extends BasePreview {
 
   cueToHtml(track) {
     for (let i = 0; i < track.cues.length; i++) {
-      const cue = $(track.cues[i].getCueAsHTML()).addClass('d-inline')
+      const cue = $(track.cues[i].getCueAsHTML()).addClass('d-inline pr-1')
         .attr('data-cue-index', i);
       /* strip leading '--' characters from Amazon Transcribe */
       cue.text(cue.text().replace(/-{2}\s/g, ' '));

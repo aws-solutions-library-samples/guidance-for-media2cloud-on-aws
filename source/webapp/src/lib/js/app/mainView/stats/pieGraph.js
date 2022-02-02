@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import mxReadable from '../../mixins/mxReadable.js';
 import AppUtils from '../../shared/appUtils.js';
@@ -90,7 +89,11 @@ export default class PieGraph extends mxReadable(class {}) {
         },
         animationType: 'scale',
         animationEasing: 'elasticOut',
-        animationDelay: () => Math.random() * 200,
+        animationDelay: () => {
+          const rand = new Uint32Array(1);
+          (window.crypto || window.msCrypto).getRandomValues(rand);
+          return (rand[0] % 200) + 1;
+        },
       },
     ];
     return {

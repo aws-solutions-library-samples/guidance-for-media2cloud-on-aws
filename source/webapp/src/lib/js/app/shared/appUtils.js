@@ -1,6 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
-// Licensed under the Amazon Software License  http://aws.amazon.com/asl/
+// SPDX-License-Identifier: Apache-2.0
 
 import mxReadable from '../mixins/mxReadable.js';
 import mxZero from '../mixins/mxZero.js';
@@ -255,21 +254,28 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
   }
 
   static randomNumber(max = 1000, min = 0) {
-    return Math.floor((Math.random() * (max - min + 1)) + min);
+    const rand = new Uint32Array(1);
+    (window.crypto || window.msCrypto).getRandomValues(rand);
+    const range = Math.max(1, (max - min + 1));
+    return (rand[0] % range) + min;
   }
 
   static randomRGB() {
-    const r = Math.floor(Math.random() * 255);
-    const g = Math.floor(Math.random() * 255);
-    const b = Math.floor(Math.random() * 255);
+    const rand = new Uint32Array(3);
+    (window.crypto || window.msCrypto).getRandomValues(rand);
+    const r = (rand[0] % 256);
+    const g = (rand[1] % 256);
+    const b = (rand[2] % 256);
     return `rgb(${r}, ${g}, ${b})`;
   }
 
   static randomRGBNumber() {
+    const rand = new Uint32Array(3);
+    (window.crypto || window.msCrypto).getRandomValues(rand);
     return [
-      Math.floor(Math.random() * 255),
-      Math.floor(Math.random() * 255),
-      Math.floor(Math.random() * 255),
+      (rand[0] % 256),
+      (rand[1] % 256),
+      (rand[2] % 256),
     ];
   }
 
