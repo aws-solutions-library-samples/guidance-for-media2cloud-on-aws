@@ -1,61 +1,23 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
 const {
   ApiOps,
   CommonUtils,
-} = require('m2c-core-lib');
+} = require('core-lib');
+const AnalysisOp = require('./operations/analysisOp');
+const AssetOp = require('./operations/assetOp');
+const IotOp = require('./operations/iotOp');
+const SearchOp = require('./operations/searchOp');
+const StepOp = require('./operations/stepOp');
+const RekognitionOp = require('./operations/rekognitionOp');
+const TranscribeOp = require('./operations/transcribeOp');
+const ComprehendOp = require('./operations/comprehendOp');
+const StatsOp = require('./operations/statsOp');
 
-const {
-  AnalysisOp,
-} = require('./operations/analysisOp');
-
-const {
-  AssetOp,
-} = require('./operations/assetOp');
-
-const {
-  LabelingOp,
-} = require('./operations/labelingOp');
-
-const {
-  IotOp,
-} = require('./operations/iotOp');
-
-const {
-  SearchOp,
-} = require('./operations/searchOp');
-
-const {
-  StepOp,
-} = require('./operations/stepOp');
-
-const {
-  WorkteamOp,
-} = require('./operations/workteamOp');
-
-const {
-  FaceCollectionOp,
-} = require('./operations/faceCollectionOp');
-
-const {
-  EditLabelOp,
-} = require('./operations/editLabelOp');
+const OP_REKOGNITION = 'rekognition';
+const OP_TRANSCRIBE = 'transcribe';
+const OP_COMPREHEND = 'comprehend';
 
 class ApiRequest {
   constructor(event, context) {
@@ -127,33 +89,36 @@ class ApiRequest {
   }
 
   getProcessor() {
-    switch ((this.pathParameters || {}).operation) {
-      case ApiOps.AttachPolicy:
-        return new IotOp(this);
-      case ApiOps.Assets:
-        return new AssetOp(this);
-      case ApiOps.Analysis:
-        return new AnalysisOp(this);
-      case ApiOps.Search:
-        return new SearchOp(this);
-      case ApiOps.Labeling:
-        return new LabelingOp(this);
-      case ApiOps.Execution:
-        return new StepOp(this);
-      case ApiOps.Workteam:
-        return new WorkteamOp(this);
-      case ApiOps.IndexFace:
-      case ApiOps.QueueFace:
-      case ApiOps.FaceColection:
-        return new FaceCollectionOp(this);
-      case ApiOps.EditLabel:
-        return new EditLabelOp(this);
-      default:
-        throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
+    const op = this.pathParameters.operation;
+    if (op === ApiOps.AttachPolicy) {
+      return new IotOp(this);
     }
+    if (op === ApiOps.Assets) {
+      return new AssetOp(this);
+    }
+    if (op === ApiOps.Analysis) {
+      return new AnalysisOp(this);
+    }
+    if (op === ApiOps.Search) {
+      return new SearchOp(this);
+    }
+    if (op === ApiOps.Execution) {
+      return new StepOp(this);
+    }
+    if (op === OP_REKOGNITION) {
+      return new RekognitionOp(this);
+    }
+    if (op === OP_TRANSCRIBE) {
+      return new TranscribeOp(this);
+    }
+    if (op === OP_COMPREHEND) {
+      return new ComprehendOp(this);
+    }
+    if (op === ApiOps.Stats) {
+      return new StatsOp(this);
+    }
+    throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
   }
 }
 
-module.exports = {
-  ApiRequest,
-};
+module.exports = ApiRequest;

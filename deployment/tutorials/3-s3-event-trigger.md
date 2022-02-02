@@ -89,7 +89,7 @@ Optionally you can increase the **Memory (MB)** but for our exercise, 128 MB is 
 ### Step 5: Add code to start ingest workflow
 Finally, time to add our logic to start ingest process when we receive a S3 event.
 
-* Download the sample code from [here](https://raw.githubusercontent.com/awslabs/media2cloud/master/deployment/tutorials/samples/start-media2cloud-workflows.js)
+* Download the sample code from [here](https://raw.githubusercontent.com/aws-solutions/media2cloud/master/deployment/tutorials/samples/start-media2cloud-workflows.js)
 * Open your text editor.
 
 **FIVE** places you need to take care of. **Look for:**

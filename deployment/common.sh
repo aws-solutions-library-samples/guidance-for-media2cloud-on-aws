@@ -1,23 +1,9 @@
 #!/bin/bash
 
-###
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License Version 2.0 (the 'License').
-# You may not use this file except in compliance with the License.
-# A copy of the License is located at
-#
-#         http://www.apache.org/licenses/
-#
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
-# specific language governing permissions and limitations under the License.
-#
-##
-
-###
-# @author aws-mediaent-solutions
-##
+########################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+########################################################################################
 
 ######################################################################
 #
@@ -114,9 +100,14 @@ REGIONS=( \
 )
 
 #
-# BUCKET := bucket base name. The 'actual' bucket name will be concatenated
+# BUCKET_NAME := bucket base name. The 'actual' bucket name will be concatenated
 #           with region. The bucket stores cloudformation template and package.
-#           For example, if BUCKET is 'solutions' and is deployed in eu-west-1
+#           For example, if BUCKET_NAME is 'solutions' and is deployed in eu-west-1
 #           Then, the actual deployment bucket will be 'solutions-eu-west-1'.
 #           (Mandatory)
-BUCKET=
+BUCKET_NAME=
+
+#
+# SOLUTION_ID := Solution ID
+#
+SOLUTION_ID=SO0050

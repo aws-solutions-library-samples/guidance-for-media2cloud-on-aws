@@ -1,20 +1,21 @@
 {
   "name": "aws-sdk-layer",
-  "version": "2.0.0",
+  "version": "2.991.0",
   "description": "layer for aws-sdk",
   "main": "index.js",
   "private": true,
   "author": "aws-mediaent-solutions",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.709.0"
+    "aws-sdk": "^2.1033.0",
+    "aws-xray-sdk": "^3.3.4"
   },
   "scripts": {
     "pretest": "npm install",
     "test": "echo \"layer wrapping latest aws-sdk, skipping unit test.\"",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs",
     "build:copy": "cp -rv package.json dist/nodejs",
-    "build:install": "cd dist/nodejs && npm install --production",
+    "build:install": "cd dist/nodejs && npm install --only=prod --no-optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },

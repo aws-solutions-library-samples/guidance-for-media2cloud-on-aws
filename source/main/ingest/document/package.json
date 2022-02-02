@@ -1,0 +1,22 @@
+{
+  "name": "ingest-document",
+  "version": "3.0.0",
+  "description": "Ingest Document nested state machine lambda to run pdf info to extract metadata and convert pages to JPG images",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "pretest": "npm install",
+    "test": "mocha *.spec.js",
+    "build:clean": "rm -rf dist && mkdir -p dist",
+    "build:copy": "cp -rv index.js package.json states dist/",
+    "build:install": "cd dist && npm install --only=prod --no-optional",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "author": "aws-mediaent-solutions",
+  "devDependencies": {
+    "canvas": "file:../../../layers/canvas-lib",
+    "core-lib": "file:../../../layers/core-lib",
+    "pdfjs-dist": "file:../../../layers/pdf-lib"
+  }
+}

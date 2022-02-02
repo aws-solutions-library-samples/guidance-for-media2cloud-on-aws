@@ -1,17 +1,5 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 /**
  * @function CreateCustomVocabulary
@@ -20,17 +8,11 @@
  */
 exports.CreateCustomVocabulary = async (event, context) => {
   try {
-    const {
-      Vocabulary,
-    } = require('./vocabulary');
-
-    const instance = new Vocabulary(event, context);
-
-    const responseData = (instance.isRequestType('delete'))
-      ? await instance.purge()
-      : await instance.create();
-
-    return responseData;
+    const Vocabulary = require('./vocabulary');
+    const vocabulary = new Vocabulary(event, context);
+    return (vocabulary.isRequestType('delete'))
+      ? vocabulary.purge()
+      : vocabulary.create();
   } catch (e) {
     e.message = `Vocabulary: ${e.message}`;
     throw e;

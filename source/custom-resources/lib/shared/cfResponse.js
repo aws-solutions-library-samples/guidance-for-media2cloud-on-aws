@@ -1,22 +1,14 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable no-console */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-const URL = require('url');
-
-const HTTPS = require('https');
+const HTTPS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureHTTPs(require('https'));
+  } catch (e) {
+    return require('https');
+  }
+})();
 
 const SUCCESS = 'SUCCESS';
 const FAILED = 'FAILED';
@@ -39,14 +31,18 @@ class CloudFormationResponse {
 
     /* sanity check on the response */
     let missing = [
-      'StackId', 'RequestId', 'ResponseURL', 'LogicalResourceId',
+      'StackId',
+      'RequestId',
+      'ResponseURL',
+      'LogicalResourceId',
     ].filter(x => this.$event[x] === undefined);
-
     if (missing.length) {
       throw new Error(`event missing ${missing.join(', ')}`);
     }
 
-    missing = ['logStreamName'].filter(x => this.$context[x] === undefined);
+    missing = [
+      'logStreamName',
+    ].filter(x => this.$context[x] === undefined);
     if (missing.length) {
       throw new Error(`context missing ${missing.join(', ')}`);
     }
@@ -112,8 +108,10 @@ class CloudFormationResponse {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**
@@ -152,7 +150,6 @@ class CloudFormationResponse {
       if (body.length > 0) {
         request.write(body);
       }
-
       request.end();
     });
   }
@@ -162,16 +159,9 @@ class CloudFormationResponse {
       responseStatus,
       responseData,
     ] = CloudFormationResponse.parseResponseData(data);
-
     console.log(`parseResponseData = ${JSON.stringify({ responseStatus, responseData }, null, 2)}`);
 
-    /* TODO: remove the testing code */
-    if (this.isUnitTest()) {
-      return responseData;
-    }
-
     let Reason = `See details in CloudWatch Log Stream: ${this.logStreamName}`;
-
     if (responseStatus === FAILED) {
       Reason = `${responseData.Error}. ${Reason}`;
     }
@@ -185,24 +175,20 @@ class CloudFormationResponse {
       LogicalResourceId: this.logicalResourceId,
       Data: responseData,
     });
-
-    const url = URL.parse(this.responseUrl);
-
+    const url = new URL(this.responseUrl);
     const params = {
       hostname: url.hostname,
       port: 443,
-      path: url.path,
+      path: `${url.pathname}${url.search}`,
       method: 'PUT',
       headers: {
         'Content-Type': '',
         'Content-Length': responseBody.length,
       },
     };
-
     let response;
     let tries = 0;
     const maxTries = 10;
-
     do {
       try {
         response = await this.sendRequest(params, responseBody);
@@ -218,4 +204,4 @@ class CloudFormationResponse {
   }
 }
 
-module.exports.CloudFormationResponse = CloudFormationResponse;
+module.exports = CloudFormationResponse;

@@ -1,21 +1,5 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
-
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
 class BaseOp {
   constructor(request) {
@@ -99,18 +83,16 @@ class BaseOp {
 
   onError(e) {
     const payload = {
-      ErrorMessage: `${this.request.method} ${this.request.path} - ${e.message || e.code || 'unknown error'}`,
+      errorCode: 500,
+      errorMessage: `${this.request.method} ${this.request.path} - ${e.code || e.message || 'unknown error'}`,
     };
-
-    console.error(payload.ErrorMessage);
+    console.error(JSON.stringify(payload, null, 2));
     return {
-      statusCode: 400,
+      statusCode: 200,
       headers: this.getCors(payload),
-      body: payload,
+      body: JSON.stringify(payload),
     };
   }
 }
 
-module.exports = {
-  BaseOp,
-};
+module.exports = BaseOp;

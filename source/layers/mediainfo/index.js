@@ -1,22 +1,24 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-const AWS = require('aws-sdk');
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    console.log('aws-xray-sdk not loaded');
+    return require('aws-sdk');
+  }
+})();
 const FS = require('fs');
-const URL = require('url');
 const PATH = require('path');
 const CHILD = require('child_process');
-
 const {
   Parser,
   Builder,
 } = require('xml2js');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 /**
  * @class MediaInfoError
@@ -43,6 +45,7 @@ class MediaInfoCommand {
       computeChecksums: true,
       signatureVersion: 'v4',
       s3DisableBodySigning: false,
+      customUserAgent: CUSTOM_USER_AGENT,
       ...options,
     });
     this.$rawXml = undefined;
@@ -64,6 +67,7 @@ class MediaInfoCommand {
         Options: [
           '--Full',
           '--Output=XML',
+          '--Cover_Data=base64',
         ],
       },
       /* minimum key set to return */
@@ -90,10 +94,12 @@ class MediaInfoCommand {
           'pixelAspectRatio',
           'displayAspectRatio',
           'frameRate',
+          'frameRateNominal', /* wmv framerate */
           'bitDepth',
           'scanType',
           'scanOrder',
           'timeCodeFirstFrame',
+          'iD',
         ],
         Audio: [
           'streamOrder',
@@ -110,6 +116,7 @@ class MediaInfoCommand {
           'samplesPerFrame',
           'samplingRate',
           'language',
+          'iD',
         ],
       },
     };
@@ -222,21 +229,14 @@ class MediaInfoCommand {
    * it is 'http' or 'https' and NOT a signed URL
    */
   static escapeS3Character(path) {
-    const url = URL.parse(path, true);
-
-    const {
-      AWSAccessKeyId,
-      Signature,
-    } = url.query || {};
-
-    /* if is signed url, nothing to do */
-    if (AWSAccessKeyId && Signature) {
+    const url = new URL(path);
+    /* if is a signed url, nothing to do */
+    if (url.searchParams.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256') {
       return path;
     }
-
     /* replacing '+' with space character */
     url.pathname = encodeURI(decodeURI(url.pathname).replace(/\s/g, '+'));
-    return URL.format(url);
+    return url.toString();
   }
 
   /**
@@ -265,24 +265,29 @@ class MediaInfoCommand {
   async presign(params) {
     return new Promise((resolve, reject) => {
       if (!params) {
-        return reject(new Error('missing params'));
+        reject(new Error('missing params'));
+        return;
       }
 
       if (typeof params === 'string') {
         if (MediaInfoCommand.isHttpProto(params)) {
-          return resolve(MediaInfoCommand.escapeS3Character(params));
+          resolve(MediaInfoCommand.escapeS3Character(params));
+          return;
         }
         if (FS.existsSync(params)) {
-          return resolve(params);
+          resolve(params);
+          return;
         }
-        return reject(new Error(`invalid filename '${params}' not supported`));
+        reject(new Error(`invalid filename '${params}' not supported`));
+        return;
       }
 
       if (typeof params === 'object' && (!params.Bucket || !params.Key)) {
-        return reject(new Error(`missing Bucket and Key, ${JSON.stringify(params)}`));
+        reject(new Error(`missing Bucket and Key, ${JSON.stringify(params)}`));
+        return;
       }
 
-      return resolve(this.s3.getSignedUrl('getObject', {
+      resolve(this.s3.getSignedUrl('getObject', {
         Bucket: params.Bucket,
         Key: params.Key,
         Expires: 60 * 60 * 2,
@@ -345,16 +350,13 @@ class MediaInfoCommand {
     let ext;
     if (typeof params === 'string') {
       if (MediaInfoCommand.isHttpProto(params)) {
-        const url = URL.parse(params);
-        url.search = undefined;
-        ref = URL.format(url, {
-          fragment: false,
-          auth: false,
-        });
+        const url = new URL(params);
+        ref = `${url.protocol}//${url.hostname}${url.pathname}`;
         ext = PATH.parse(url.pathname).ext.slice(1);
+      } else {
+        ref = params;
+        ext = PATH.parse(params).ext.slice(1);
       }
-      ref = params;
-      ext = PATH.parse(params).ext.slice(1);
     } else {
       ref = `s3://${params.Bucket}/${params.Key}`;
       ext = PATH.parse(params.Key).ext.slice(1);
@@ -363,11 +365,18 @@ class MediaInfoCommand {
     const modified = Object.assign({}, data);
     modified.mediaInfo.media.$.ref = ref;
 
-    const container = modified.mediaInfo.media.track.find(x =>
-      x.$.type.toLowerCase() === 'general');
-    container.completeName = ref;
-    container.fileNameExtension = ext;
-
+    for (let i = 0; i < modified.mediaInfo.media.track.length; i++) {
+      const track = modified.mediaInfo.media.track[i];
+      if (track.completeName !== undefined) {
+        track.completeName = ref;
+      }
+      if (track.fileNameExtension !== undefined) {
+        track.fileNameExtension = ext;
+      }
+      if (track.fileExtension !== undefined) {
+        track.fileExtension = ext;
+      }
+    }
     return modified;
   }
 

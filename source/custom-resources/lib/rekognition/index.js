@@ -1,27 +1,18 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-extraneous-dependencies */
-const AWS = require('aws-sdk');
-
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   ServiceAvailability,
-} = require('m2c-core-lib');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+} = require('core-lib');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 class X0 extends mxBaseResponse(class {}) {}
 
@@ -33,15 +24,11 @@ class X0 extends mxBaseResponse(class {}) {}
 exports.CreateFaceCollection = async (event, context) => {
   try {
     const x0 = new X0(event, context);
-
-    const params = {
-      CollectionId: ((event || {}).ResourceProperties || {}).CollectionId,
-    };
-    if (!params.CollectionId) {
+    const data = event.ResourceProperties.Data;
+    if (!data.CollectionId) {
       throw new Error('CollectionId is undefined');
     }
-
-    x0.storeResponseData('Id', params.CollectionId);
+    x0.storeResponseData('Id', data.CollectionId);
 
     /* make sure region supports rekognition */
     const supported = await ServiceAvailability.probe('rekognition').catch(() => false);
@@ -52,10 +39,14 @@ exports.CreateFaceCollection = async (event, context) => {
       return x0.responseData;
     }
 
+    const params = {
+      CollectionId: data.CollectionId,
+    };
+
     const instance = new AWS.Rekognition({
       apiVersion: '2016-06-27',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
     });
-
     if (x0.isRequestType('Create')) {
       const response = await instance.createCollection(params).promise().catch((e) => {
         if (e.code !== 'ResourceAlreadyExistsException') {
@@ -70,7 +61,6 @@ exports.CreateFaceCollection = async (event, context) => {
         }
       });
     }
-
     x0.storeResponseData('Status', 'SUCCESS');
     return x0.responseData;
   } catch (e) {

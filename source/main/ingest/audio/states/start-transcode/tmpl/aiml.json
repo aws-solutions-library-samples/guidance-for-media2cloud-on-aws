@@ -1,0 +1,43 @@
+{
+  "CustomName": "aiml",
+  "Name": "File Group",
+  "Outputs": [
+    {
+      "ContainerSettings": {
+        "Container": "MP4",
+        "Mp4Settings": {
+          "CslgAtom": "EXCLUDE",
+          "FreeSpaceBox": "EXCLUDE",
+          "MoovPlacement": "PROGRESSIVE_DOWNLOAD"
+        }
+      },
+      "AudioDescriptions": [
+        {
+          "AudioTypeControl": "FOLLOW_INPUT",
+          "AudioSourceName": "Audio Selector 1",
+          "CodecSettings": {
+            "Codec": "AAC",
+            "AacSettings": {
+              "AudioDescriptionBroadcasterMix": "NORMAL",
+              "Bitrate": 96000,
+              "RateControlMode": "CBR",
+              "CodecProfile": "LC",
+              "CodingMode": "CODING_MODE_2_0",
+              "RawFormat": "NONE",
+              "SampleRate": 48000,
+              "Specification": "MPEG4"
+            }
+          },
+          "LanguageCodeControl": "FOLLOW_INPUT"
+        }
+      ],
+      "Extension": "m4a"
+    }
+  ],
+  "OutputGroupSettings": {
+    "Type": "FILE_GROUP_SETTINGS",
+    "FileGroupSettings": {
+      "Destination": "##PLACEHOLDER"
+    }
+  }
+}

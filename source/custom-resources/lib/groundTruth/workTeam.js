@@ -1,29 +1,17 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable import/no-extraneous-dependencies */
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const FS = require('fs');
 const PATH = require('path');
-const AWS = require('aws-sdk');
-
-const {
-  mxBaseResponse,
-} = require('../shared/mxBaseResponse');
+const mxBaseResponse = require('../shared/mxBaseResponse');
 
 /**
  * @class WorkTeam
@@ -32,15 +20,24 @@ const {
 class WorkTeam extends mxBaseResponse(class {}) {
   constructor(event, context) {
     super(event, context);
-
-    const {
-      ResourceProperties = {},
-    } = event || {};
-
     /* sanity check */
-    const REQUIRED_PROPERTIES = [
-      'ServiceToken',
-      'FunctionName',
+    const data = event.ResourceProperties.Data;
+    this.sanityCheck(data);
+    this.$data = data;
+
+    this.$cognito = new AWS.CognitoIdentityServiceProvider({
+      apiVersion: '2016-04-18',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
+    });
+
+    this.$sagemaker = new AWS.SageMaker({
+      apiVersion: '2017-07-24',
+      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
+    });
+  }
+
+  sanityCheck(data) {
+    const missing = [
       'SolutionId',
       'StackName',
       'UserPool',
@@ -48,50 +45,42 @@ class WorkTeam extends mxBaseResponse(class {}) {
       'AppClientId',
       'TopicArn',
       'UserPoolDomain',
-    ];
-
-    const missing = REQUIRED_PROPERTIES.filter(x =>
-      ResourceProperties[x] === undefined);
-
+    ].filter(x => data[x] === undefined);
     if (missing.length) {
-      throw new Error(`event.ResourceProperties missing ${missing.join(', ')}`);
+      throw new Error(`missing ${missing.join(', ')}`);
     }
+  }
 
-    this.$cognito = new AWS.CognitoIdentityServiceProvider({
-      apiVersion: '2016-04-18',
-    });
-
-    this.$sagemaker = new AWS.SageMaker({
-      apiVersion: '2017-07-24',
-    });
+  get data() {
+    return this.$data;
   }
 
   get solutionId() {
-    return this.event.ResourceProperties.SolutionId;
+    return this.data.SolutionId;
   }
 
   get stackName() {
-    return this.event.ResourceProperties.StackName;
+    return this.data.StackName;
   }
 
   get userPool() {
-    return this.event.ResourceProperties.UserPool;
+    return this.data.UserPool;
   }
 
   get userGroup() {
-    return this.event.ResourceProperties.UserGroup;
+    return this.data.UserGroup;
   }
 
   get clientId() {
-    return this.event.ResourceProperties.AppClientId;
+    return this.data.AppClientId;
   }
 
   get topicArn() {
-    return this.event.ResourceProperties.TopicArn;
+    return this.data.TopicArn;
   }
 
   get userPoolDomain() {
-    return this.event.ResourceProperties.UserPoolDomain;
+    return this.data.UserPoolDomain;
   }
 
   get workteamName() {
@@ -397,6 +386,4 @@ class WorkTeam extends mxBaseResponse(class {}) {
   }
 }
 
-module.exports = {
-  WorkTeam,
-};
+module.exports = WorkTeam;

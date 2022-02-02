@@ -1,22 +1,7 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-
-const {
-  StateMessage,
-} = require('./stateMessage');
-
+const StateMessage = require('./stateMessage');
 const {
   mxCommonUtils,
   mxNeat,
@@ -32,15 +17,39 @@ class StateData extends StateMessage {
   constructor(stateMachine, event, context) {
     super({
       stateMachine,
-      uuid: event.uuid,
+      uuid: event.uuid || (event.input || {}).uuid,
       operation: event.operation,
       status: event.status,
       progress: event.progress,
     });
 
-    this.$event = Object.assign({}, event);
+    this.$input = event.input
+      ? {
+        ...event.input,
+      }
+      : undefined;
+
+    this.$output = event.$output
+      ? {
+        ...event.output,
+      }
+      : undefined;
+
+    this.$data = event.data
+      ? {
+        ...event.data,
+      }
+      : undefined;
+
+    this.$event = {
+      ...event,
+    };
+
     this.$accountId = context.invokedFunctionArn.split(':')[4];
-    this.$fnGetRemainingTime = context.getRemainingTimeInMillis.bind();
+    const fn = (typeof context.getRemainingTimeInMillis === 'function')
+      ? context.getRemainingTimeInMillis
+      : () => StateData.Constants.LambdaTimeoutThreshold * 2;
+    this.$fnGetRemainingTime = fn.bind();
   }
 
   get [Symbol.toStringTag]() {
@@ -62,15 +71,83 @@ class StateData extends StateMessage {
   }
 
   get input() {
-    return this.event.input;
+    return this.$input;
+  }
+
+  set input(val) {
+    this.$input = (typeof val !== 'object')
+      ? val
+      : {
+        ...this.$input,
+        ...val,
+      };
   }
 
   get output() {
-    return this.event.next;
+    return this.$output;
+  }
+
+  set output(val) {
+    this.$output = (typeof val !== 'object')
+      ? val
+      : {
+        ...this.$output,
+        ...val,
+      };
+  }
+
+  get data() {
+    return this.$data;
+  }
+
+  set data(val) {
+    this.$data = (typeof val !== 'object')
+      ? val
+      : {
+        ...this.$data,
+        ...val,
+      };
+  }
+
+  setData(key, val, mergeKey = true) {
+    if (!this.data) {
+      this.data = {};
+    }
+    this.data[key] = (typeof val === 'string')
+      ? val
+      : {
+        ...(mergeKey
+          ? this.data[key]
+          : undefined),
+        ...val,
+      };
+  }
+
+  resetData(key) {
+    if ((this.data || {})[key]) {
+      delete this.data[key];
+    }
+  }
+
+  resetAllData() {
+    this.data = undefined;
+  }
+
+  toJSON() {
+    return X.neat({
+      ...super.toJSON(),
+      input: this.input,
+      data: this.data || {},
+      output: this.output,
+    });
+  }
+
+  miniJSON() {
+    return super.toJSON();
   }
 
   get responseData() {
-    return super.toJSON();
+    return this.miniJSON();
   }
 
   getRemainingTime() {
@@ -80,22 +157,6 @@ class StateData extends StateMessage {
   quitNow() {
     return (this.getRemainingTime() - StateData.Constants.LambdaTimeoutThreshold) <= 0;
   }
-
-  toNextState() {
-    return X.neat({
-      operation: this.operation,
-      status: this.status,
-      progress: (this.status !== StateData.Statuses.InProgress) ? 0 : this.progress,
-      uuid: this.uuid,
-      next: Object.assign({}, this.event.input, this.event.next),
-    });
-  }
-
-  toJSON() {
-    return X.neat(Object.assign({}, this.event, this.responseData));
-  }
 }
 
-module.exports = {
-  StateData,
-};
+module.exports = StateData;

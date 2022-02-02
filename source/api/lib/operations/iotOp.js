@@ -1,31 +1,19 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-const AWS = require('aws-sdk');
-
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
   StateData,
   Environment,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
+} = require('core-lib');
+const BaseOp = require('./baseOp');
 
 class IotOp extends BaseOp {
   async onGET() {
@@ -43,6 +31,7 @@ class IotOp extends BaseOp {
 
     const iot = new AWS.Iot({
       apiVersion: '2015-05-28',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
 
     const response = await iot.attachPolicy({
@@ -56,6 +45,4 @@ class IotOp extends BaseOp {
   }
 }
 
-module.exports = {
-  IotOp,
-};
+module.exports = IotOp;

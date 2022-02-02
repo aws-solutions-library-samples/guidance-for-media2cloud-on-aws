@@ -49,6 +49,19 @@ open-source
 *.env
 *.pem
 *.key
-
-
 *.vtt
+
+### ignore webapp compiled JS files
+source/webapp/common-bundle-dev.js
+source/webapp/solution-manifest.js
+source/webapp/third_party/amazon-cognito-identity.min.js
+source/webapp/third_party/aws-iot-sdk-bundle.min.js
+source/webapp/third_party/cropper.min.css
+source/webapp/third_party/cropper.min.js
+source/webapp/third_party/mime.min.js
+source/webapp/third_party/spark-md5.min.js
+source/webapp/third_party/video-js.min.css
+source/webapp/third_party/video.min.js
+source/webapp/third_party/videojs-markers.min.js
+source/webapp/third_party/videojs.markers.min.css
+source/layers/image-process-lib/wget-log*

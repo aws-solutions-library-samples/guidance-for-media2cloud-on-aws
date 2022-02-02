@@ -1,23 +1,9 @@
 #!/bin/bash
 
-###
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License Version 2.0 (the 'License').
-# You may not use this file except in compliance with the License.
-# A copy of the License is located at
-#
-#         http://www.apache.org/licenses/
-#
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
-# specific language governing permissions and limitations under the License.
-#
-##
-
-###
-# @author aws-mediaent-solutions
-##
+########################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+########################################################################################
 
 # always include the shared configuration file
 source ./common.sh
@@ -40,13 +26,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[ -z "${SOLUTION}" ] && \
-  SOLUTION=$(grep_solution_name "../source/layers/core-lib/lib/index.js")
-
-[ -z "${SOLUTION}" ] && \
-  echo "error: SOLUTION variable is not defined" && \
-  usage && \
-  exit 1
+[ -z "$SOLUTION" ] && \
+  SOLUTION="media2cloud"
 
 echo "------------------------------------------------------------------------------"
 echo "Building open-source Folder"
@@ -110,7 +91,11 @@ function copy_deployment_folder() {
   # copy tutorials folder
   cp -rv "$DEPLOYMENT_DIR"/tutorials "$OPENSRC_DIST_DIR"/deployment/tutorials
   # copy .github PULL_REQUEST_TEMPLATE file
-  cp -rv "$DEPLOYMENT_DIR"/../.github "$OPENSRC_DIST_DIR/"
+  cp -rv \
+  "$DEPLOYMENT_DIR"/../.github \
+  "$DEPLOYMENT_DIR"/../.gitignore \
+  "$DEPLOYMENT_DIR"/../.eslintrc.js \
+  "$OPENSRC_DIST_DIR/"
 }
 
 function copy_standard_documents() {
@@ -154,7 +139,7 @@ function create_github_zip() {
   echo "------------------------------------------------------------------------------"
   cd "$OPENSRC_DIST_DIR" || exit
   # zip -q -r9 ../${SOLUTION}.zip * .github .gitignore .tool-versions
-  zip -q -r9 ../${SOLUTION}.zip * .github
+  zip -q -r9 ../${SOLUTION}.zip * .github .gitignore .eslintrc.js
   cd "$DEPLOYMENT_DIR" || exit
   rm -rf "$OPENSRC_DIST_DIR"
 }

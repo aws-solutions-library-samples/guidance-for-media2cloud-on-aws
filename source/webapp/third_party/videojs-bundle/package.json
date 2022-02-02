@@ -1,0 +1,18 @@
+{
+  "name": "videojs-bundle",
+  "version": "2.0.0",
+  "description": "package videojs for browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist temp && mkdir -p dist/js dist/css temp",
+    "build:download": "cd temp && wget -q --no-check-certificate https://github.com/videojs/video.js/releases/download/v7.6.5/video-js-7.6.5.zip -O videojs.zip",
+    "build:unpack": "cd temp && unzip -q videojs.zip",
+    "build:copy": "cp -v temp/video.min.js ./dist/js && cp -v temp/video-js.min.css ./dist/css",
+    "build:postbuild": "rm -rf temp",
+    "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
+  },
+  "author": "",
+  "license": "Apache 2.0",
+  "devDependencies": {}
+}

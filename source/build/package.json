@@ -1,0 +1,17 @@
+{
+  "name": "post-build",
+  "version": "1.0.0",
+  "description": "post build helper to minimize JS and inject SRI integrity to index.html",
+  "main": "post-build.js",
+  "private": true,
+  "dependencies": {
+    "@rollup/stream": "^2.0.0",
+    "glob": "^7.1.6",
+    "rollup": "^2.35.1",
+    "terser": "^4.7.0"
+  },
+  "scripts": {},
+  "author": "aws-specialist-sa-emea",
+  "license": "MIT-0",
+  "devDependencies": {}
+}

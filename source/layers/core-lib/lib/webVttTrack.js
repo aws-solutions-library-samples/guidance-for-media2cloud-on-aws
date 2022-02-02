@@ -1,26 +1,8 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
+const WebVttCue = require('./webVttCue');
 
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-continue */
-const {
-  WebVttCue,
-} = require('./webVttCue');
-
-/**
- * @class WebVttTrack
- * @description create webvtt track
- */
 class WebVttTrack {
   constructor(unit = WebVttTrack.Constants.UnitInMilliseconds) {
     this.$factor = unit;
@@ -136,6 +118,4 @@ class WebVttTrack {
   }
 }
 
-module.exports = {
-  WebVttTrack,
-};
+module.exports = WebVttTrack;

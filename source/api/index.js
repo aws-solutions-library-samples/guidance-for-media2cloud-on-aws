@@ -1,37 +1,18 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-/* eslint-disable global-require */
-const {
-  ApiRequest,
-} = require('./lib/apiRequest');
+const ApiRequest = require('./lib/apiRequest');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
-  'ENV_STACKNAME',
+  'ENV_RESOURCE_PREFIX',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_IOT_THING_POLICY_NAME',
-  'ENV_WORKTEAM_NAME',
-  'ENV_GSI_INDEX_NAME',
+  'ENV_PROXY_BUCKET',
 ];
 
-/**
- * @function onRequest
- * @description start or get state machine
- */
-exports.onRequest = async (event, context) => {
+exports.handler = async (event, context) => {
   try {
     console.log(`
       event = ${JSON.stringify(event, null, 2)}

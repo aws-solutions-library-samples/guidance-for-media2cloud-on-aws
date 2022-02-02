@@ -1,182 +1,242 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable import/no-extraneous-dependencies */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-/* eslint-disable no-param-reassign */
-/* eslint-disable no-await-in-loop */
-/* eslint no-unused-expressions: ["error", { "allowShortCircuit": true, "allowTernary": true }] */
-const AWS = require('aws-sdk');
-
+const AWS = (() => {
+  try {
+    const AWSXRay = require('aws-xray-sdk');
+    return AWSXRay.captureAWS(require('aws-sdk'));
+  } catch (e) {
+    return require('aws-sdk');
+  }
+})();
 const {
-  BaseIndex,
   CommonUtils,
   DB,
   Environment,
   StateData,
-} = require('m2c-core-lib');
-
-const {
-  BaseOp,
-} = require('./baseOp');
+} = require('core-lib');
+const JsonProvider = require('./jsonProvider');
+const BaseOp = require('./baseOp');
 
 class AssetOp extends BaseOp {
   async onGET() {
     const uuid = (this.request.pathParameters || {}).uuid;
-    /* uuid can be null (meant scanning asset table) */
-    if (uuid && !CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+    /* get specific record */
+    if (uuid) {
+      return super.onGET(await this.onGetByUuid(uuid));
     }
-
-    let {
-      token,
-      pageSize,
-    } = this.request.queryString || {};
-
-    token = token && decodeURIComponent(token);
+    const qs = this.request.queryString || {};
+    const token = qs.token && decodeURIComponent(qs.token);
     if (token && !CommonUtils.validateBase64JsonToken(token)) {
       throw new Error('invalid token');
     }
-
-    pageSize = Number.parseInt(pageSize || Environment.DynamoDB.Ingest.GSI.PageSize, 10);
-
-    const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
-    });
-
-    const response = (uuid)
-      ? await db.fetch(uuid)
-      : await db.scanIndex({
-        Name: Environment.DynamoDB.Ingest.GSI.Name,
-        Key: Environment.DynamoDB.Ingest.GSI.Key,
-        Value: Environment.DynamoDB.Ingest.GSI.Value,
-        PageSize: pageSize,
-        Ascending: false,
-        Token: token,
-      });
-    return super.onGET(response);
+    const pageSize = Number.parseInt(qs.pageSize || Environment.DynamoDB.Ingest.GSI.PageSize, 10);
+    const overallStatus = qs.overallStatus && decodeURIComponent(qs.overallStatus);
+    const type = qs.type && decodeURIComponent(qs.type);
+    /* get records by overallStatus */
+    if (overallStatus) {
+      return super.onGET(await this.onGetByOverallStatus(overallStatus, token, pageSize));
+    }
+    /* get records by specific type */
+    if (type) {
+      return super.onGET(await this.onGetByType(type, token, pageSize));
+    }
+    /* get all records */
+    return super.onGET(await this.onGetAll(token, pageSize));
   }
 
   async onPOST() {
-    let params = this.request.body || {};
-    if (!(params.uuid || (params.bucket && params.key))) {
+    const params = this.request.body || {};
+    const input = params.input;
+    if (!input) {
+      throw new Error('input object must be specified');
+    }
+    if (!(input.uuid || (input.bucket && input.key))) {
       throw new Error('uuid or bucket and key must be specified');
     }
-
-    if (params.uuid && !CommonUtils.validateUuid(params.uuid)) {
+    if (input.uuid && !CommonUtils.validateUuid(input.uuid)) {
       throw new Error('invalid uuid');
     }
-
-    if (params.bucket && !CommonUtils.validateBucket(params.bucket)) {
-      throw new Error('invalid bucket name');
+    if ((input.destination || {}).bucket && !CommonUtils.validateBucket(input.destination.bucket)) {
+      throw new Error('invalid destination bucket name');
     }
-
-    /* #1: make sure there is no uuid collision */
-    let fetched;
-    if (params.uuid) {
-      const db = new DB({
-        Table: Environment.DynamoDB.Ingest.Table,
-        PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
-      });
-      fetched = await db.fetch(params.uuid, undefined, 'key').catch(() => undefined);
-
-      if (params.key && (fetched || {}).key && params.key !== fetched.key) {
-        throw new Error(`${params.uuid} is already used for other asset`);
+    if ((input.group) && !CommonUtils.validateGroupName(input.group)) {
+      throw new Error('invalid group name');
+    }
+    if (input.attributes !== undefined) {
+      const keys = Object.keys(input.attributes);
+      while (keys.length) {
+        if (!CommonUtils.validateAttributeKey(keys.shift())) {
+          throw new Error('invalid attribute key name');
+        }
+      }
+      const values = Object.values(input.attributes);
+      while (values.length) {
+        if (!CommonUtils.validateAttributeValue(values.shift())) {
+          throw new Error('invalid attribute key value');
+        }
       }
     }
-
-    /* #2: make sure s3 object exists */
-    const uuid = params.uuid || CommonUtils.uuid4();
-    const bucket = params.bucket || Environment.Ingest.Bucket;
-    const key = params.key || (fetched || {}).key;
-
-    let response = await CommonUtils.headObject(bucket, key);
-
-    /* #3: start ingest state machine */
-    const arn = [
-      'arn:aws:states',
-      process.env.AWS_REGION,
-      this.request.accountId,
-      'stateMachine',
-      Environment.StateMachines.Ingest,
-    ].join(':');
-
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-    });
-
-    params = Object.assign({}, {
-      uuid,
-      bucket,
-      key,
-    }, params);
-
-    response = await step.startExecution({
-      input: JSON.stringify(params),
-      stateMachineArn: arn,
-    }).promise();
-
-    return super.onPOST(Object.assign({
-      uuid: params.uuid,
-      status: StateData.Statuses.Started,
-    }, response));
+    /* if is JSON file, start batch ingest */
+    const response = JsonProvider.isJsonFile(params.input.key)
+      ? await this.batchStartIngestWorkflow(params)
+      : await this.startIngestWorkflow(params);
+    return super.onPOST(response);
   }
 
   async onDELETE() {
     const uuid = (this.request.pathParameters || {}).uuid;
-
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
       throw new Error('invalid uuid');
     }
-
-    let promises = [];
-    /* #1: remove proxy files */
-    const responses = await CommonUtils.listObjects(Environment.Proxy.Bucket, uuid);
-    promises = promises.concat(responses.map(x =>
-      CommonUtils.deleteObject(Environment.Proxy.Bucket, x.Key).catch(() => undefined)));
-
-    /* #2: remove row from ingest table */
-    let db = new DB({
+    const db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
-
-    const fetched = await db.fetch(uuid, undefined, 'analysis');
-    promises.push(db.purge(uuid).catch(() => undefined));
-
-    /* #3: remove rows from aiml table */
-    db = new DB({
-      Table: Environment.DynamoDB.AIML.Table,
-      PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
-      SortKey: Environment.DynamoDB.AIML.SortKey,
-    });
-    promises = promises.concat(((fetched || {}).analysis || []).map(x =>
-      db.purge(uuid, x).catch(() => undefined)));
-
-    /* #4: remove index from search engine */
-    promises.push((new BaseIndex()).deleteDocument(uuid).catch(e =>
-      console.log(`deleteDocument(${uuid}): ${e.message}`)));
-
-    await Promise.all(promises);
-
+    await db.purge(uuid)
+      .catch((e) =>
+        console.error(`[ERR]: db.purge: ${uuid} ${e.code} ${e.message}`));
     return super.onDELETE({
       uuid,
       status: StateData.Statuses.Removed,
     });
   }
+
+  async batchStartIngestWorkflow(params) {
+    const input = params.input;
+    const provider = await JsonProvider.createProvider(input);
+    provider.parse();
+    const files = provider.getFiles().slice(0);
+
+    return Promise.all(files.map(x =>
+      this.startIngestWorkflow({
+        input: {
+          ...input,
+          ...x,
+          attributes: provider.attributes,
+        },
+      }).catch(e => ({
+        uuid: x.uuid,
+        status: StateData.Statuses.Error,
+        errorMessage: e.message,
+      }))));
+  }
+
+  async startIngestWorkflow(params) {
+    const input = params.input;
+    /* #1: make sure there is no uuid collision */
+    let fetched;
+    if (input.uuid) {
+      const db = new DB({
+        Table: Environment.DynamoDB.Ingest.Table,
+        PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+      });
+      fetched = await db.fetch(input.uuid, undefined, 'key').catch(() => ({}));
+
+      if (input.key && fetched.key && input.key !== fetched.key) {
+        throw new Error(`${input.uuid} is already used for other asset`);
+      }
+    } else {
+      input.uuid = CommonUtils.uuid4();
+    }
+    /* #2: make sure s3 object exists */
+    const bucket = input.bucket || Environment.Ingest.Bucket;
+    const key = input.key || fetched.key;
+    await CommonUtils.headObject(bucket, key);
+    /* #3: make destination params */
+    input.destination = {
+      bucket: Environment.Proxy.Bucket,
+      prefix: CommonUtils.makeSafeOutputPrefix(input.uuid, key),
+      ...input.destination,
+    };
+    /* #4: start ingest state machine */
+    const arn = [
+      'arn:aws:states',
+      process.env.AWS_REGION,
+      this.request.accountId,
+      'stateMachine',
+      Environment.StateMachines.Main,
+    ].join(':');
+
+    const step = new AWS.StepFunctions({
+      apiVersion: '2016-11-23',
+      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
+    });
+    return step.startExecution({
+      input: JSON.stringify({
+        input,
+      }),
+      stateMachineArn: arn,
+    }).promise().then(data => ({
+      uuid: input.uuid,
+      status: StateData.Statuses.Started,
+      ...data,
+    }));
+  }
+
+  async onGetByUuid(uuid) {
+    if (!CommonUtils.validateUuid(uuid)) {
+      throw new Error('invalid uuid');
+    }
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+    return db.fetch(uuid);
+  }
+
+  async onGetByOverallStatus(overallStatus, token, pageSize) {
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+    return db.scanIndex({
+      Name: Environment.DynamoDB.Ingest.GSI.Status.Name,
+      Key: Environment.DynamoDB.Ingest.GSI.Status.Key,
+      Value: overallStatus,
+      Token: token,
+      PageSize: pageSize,
+      Ascending: false,
+    });
+  }
+
+  async onGetByType(type, token, pageSize) {
+    const params = (type === 'group')
+      ? {
+        Name: Environment.DynamoDB.Ingest.GSI.Group.Name,
+        Key: Environment.DynamoDB.Ingest.GSI.Group.Key,
+      }
+      : {
+        Name: Environment.DynamoDB.Ingest.GSI.Type.Name,
+        Key: Environment.DynamoDB.Ingest.GSI.Type.Key,
+      };
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+    return db.scanIndex({
+      ...params,
+      Value: type,
+      Token: token,
+      PageSize: pageSize,
+      Ascending: false,
+    });
+  }
+
+  async onGetAll(token, pageSize) {
+    const db = new DB({
+      Table: Environment.DynamoDB.Ingest.Table,
+      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+    });
+    return db.scanIndex({
+      Name: Environment.DynamoDB.Ingest.GSI.SchemaVersion.Name,
+      Key: Environment.DynamoDB.Ingest.GSI.SchemaVersion.Key,
+      Value: Environment.DynamoDB.Ingest.GSI.SchemaVersion.Value,
+      Token: token,
+      PageSize: pageSize,
+      Ascending: false,
+    });
+  }
 }
 
-module.exports = {
-  AssetOp,
-};
+module.exports = AssetOp;

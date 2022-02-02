@@ -1,22 +1,6 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-console */
-/* eslint-disable import/no-unresolved */
-/* eslint-disable prefer-destructuring */
-/* eslint-disable class-methods-use-this */
-
-/**
- * @class WebVttCue
- * @description simple wrapper class to handle input/ouput data with this state machine
- */
 class WebVttCue {
   constructor(begin, end, text, position, factor = 1) {
     this.$begin = begin;
@@ -75,6 +59,4 @@ class WebVttCue {
   }
 }
 
-module.exports = {
-  WebVttCue,
-};
+module.exports = WebVttCue;

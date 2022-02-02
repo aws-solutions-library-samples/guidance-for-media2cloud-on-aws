@@ -1,23 +1,9 @@
 #!/bin/bash
 
-###
-# Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License Version 2.0 (the 'License').
-# You may not use this file except in compliance with the License.
-# A copy of the License is located at
-#
-#         http://www.apache.org/licenses/
-#
-# or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
-# specific language governing permissions and limitations under the License.
-#
-##
-
-###
-# @author aws-mediaent-solutions
-##
+########################################################################################
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+########################################################################################
 
 # always include the shared configuration file
 source ./common.sh
@@ -33,35 +19,47 @@ This script should be run from the repo's deployment directory
 
 ------------------------------------------------------------------------------
 cd deployment
-bash ./build-s3-dist.sh --bucket DEPLOY_BUCKET_BASENAME [--solution SOLUTION] [--version VERSION]
+bash ./build-s3-dist.sh --bucket DEPLOY_BUCKET_BASENAME [--solution SOLUTION] [--version VERSION] [--single-region]
 
 where
-  --bucket BUCKET_BASENAME    should be the base name for the S3 bucket location where
-                              the template will store the Lambda code from.
-                              This script will append '-[region_name]' to this bucket name.
-                              For example, ./build-s3-dist.sh --bucket solutions
-                              The template will expect the solution code to be located in the
-                              solutions-[region_name] bucket
+  --bucket BUCKET_NAME        specify the bucket name where the templates and packages deployed to.
+                              By default, the script deploys the templates and packages across all regions
+                              where '--bucket' setting is treated as a basename of the bucket and a region
+                              string is automatically appended to the bucket name. For example,
+                              if you specify '--bucket MY_BUCKET', then the actual bucket name(s) become
+                              MY_BUCKET-us-east-1, MY_BUCKET-eu-west-1, and so forth. (All region
+                              deployments require that all regional buckets are already created.
+                              Use '--single-region' flag to deploy to a single region (single bucket). 
 
   --solution SOLUTION         [optional] if not specified, default to 'media2cloud'
 
   --version VERSION           [optional] if not specified, use 'version' field from package.json
+
+  --single-region             [optional] specify if it is to deploy to a single region. This affects
+                              how the solution template looks up the location of the packages. If
+                              '--single-region' is specified, the solution stores templates and
+                              packages in the bucket that you specify in '--bucket' setting.
+                              If '--single-region' is not specified, the solution stores templates
+                              and packages in the bucket that uses region suffix. For example, if
+                              --bucket MY_BUCKET, then the actual bucket name will be 'MY_BUCKET-us-east-1'
+
+  --dev                       [optional] if specified, set template for development
 "
   return 0
 }
 
-
 ######################################################################
 #
-# BUCKET must be defined through commandline option
+# BUCKET_NAME must be defined through commandline option
 #
 # --bucket DEPLOY_BUCKET_BASENAME
 #
+BUILD_ENV=
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
       -b|--bucket)
-      BUCKET="$2"
+      BUCKET_NAME="$2"
       shift # past key
       shift # past value
       ;;
@@ -74,6 +72,14 @@ while [[ $# -gt 0 ]]; do
       VERSION="$2"
       shift # past key
       shift # past value
+      ;;
+      -d|--dev)
+      BUILD_ENV="dev"
+      shift # past key
+      ;;
+      -r|--single-region)
+      SINGLE_REGION=true
+      shift # past key
       ;;
       *)
       shift
@@ -89,13 +95,18 @@ TEMPLATE_DIST_DIR="$DEPLOY_DIR/global-s3-assets"
 BUILD_DIST_DIR="$DEPLOY_DIR/regional-s3-assets"
 TMP_DIR=$(mktemp -d)
 
-[ -z "$BUCKET" ] && \
+[ -z "$SOLUTION_ID" ] && \
+  echo "error: can't find SOLUTION_ID..." && \
+  usage && \
+  exit 1
+
+[ -z "$BUCKET_NAME" ] && \
   echo "error: missing --bucket parameter..." && \
   usage && \
   exit 1
 
 [ -z "$VERSION" ] && \
-  VERSION=$(grep_solution_version "$SOURCE_DIR/layers/core-lib/lib/index.js")
+  VERSION=$(cat "$SOURCE_DIR/layers/core-lib/lib/.version")
 
 [ -z "$VERSION" ] && \
   echo "error: can't find the versioning, please use --version parameter..." && \
@@ -103,18 +114,10 @@ TMP_DIR=$(mktemp -d)
   exit 1
 
 [ -z "$SOLUTION" ] && \
-  SOLUTION=$(grep_solution_name "$SOURCE_DIR/layers/core-lib/lib/index.js")
+  SOLUTION="media2cloud"
 
-[ -z "$SOLUTION" ] && \
-  echo "error: SOLUTION variable is not defined" && \
-  usage && \
-  exit 1
-
-#
-# zip packages
-#
-## Custom resource package
-PKG_CUSTOM_RESOURCES=
+[ -z "$SINGLE_REGION" ] && \
+  SINGLE_REGION=false
 
 ## Lambda layer package(s)
 LAYER_AWSSDK=
@@ -122,30 +125,48 @@ LAYER_MEDIAINFO=
 LAYER_CORE_LIB=
 LAYER_IMAGE_PROCESS=
 LAYER_FIXITY_LIB=
+LAYER_CANVAS_LIB=
+LAYER_PDF_LIB=
+LAYER_BACKLOG=
 # note: core-lib for custom resource
 CORE_LIB_LOCAL_PKG=
 
-## modular workflow package(s)
-PKG_S3EVENT=
-PKG_INGEST=
-PKG_ANALYSIS_MONITOR=
-PKG_AUDIO_ANALYSIS=
-PKG_VIDEO_ANALYSIS=
-PKG_IMAGE_ANALYSIS=
-PKG_DOCUMENT_ANALYSIS=
-PKG_GT_LABELING=
-PKG_API=
+## Ingest Workflow packages ##
+PKG_INGEST_MAIN=
+PKG_INGEST_FIXITY=
+PKG_INGEST_VIDEO=
+PKG_INGEST_AUDIO=
+PKG_INGEST_IMAGE=
+PKG_INGEST_DOCUMENT=
+PKG_INGEST_STATUS_UPDATER=
+## Analysis Workflow packages ##
+PKG_ANALYSIS_MAIN=
+PKG_ANALYSIS_AUDIO=
+PKG_ANALYSIS_VIDEO=
+PKG_ANALYSIS_IMAGE=
+PKG_ANALYSIS_DOCUMENT=
+PKG_ANALYSIS_STATUS_UPDATER=
+PKG_BACKLOG_STATUS_UPDATER=
+PKG_BACKLOG_STREAM_CONNECTOR=
+PKG_BACKLOG_CUSTOMLABELS=
+## Main Workflow ##
 PKG_ERROR_HANDLER=
+PKG_MAIN_S3EVENT=
+## CloudFormation Custom Resource ##
+PKG_CUSTOM_RESOURCES=
+## WebApp packages ##
+PKG_API=
 PKG_WEBAPP=
+
+## anonymous data setting
+ANONYMOUS_DATA="Yes"
+[ "$BUILD_ENV" == "dev" ] && \
+  ANONYMOUS_DATA="No"
+
 
 ## trap exit signal and make sure to remove the TMP_DIR
 trap "rm -rf $TMP_DIR" EXIT
 
-#
-# @function clean_start
-# @description
-#   make sure to have a clean start
-#
 function clean_start() {
   echo "------------------------------------------------------------------------------"
   echo "Rebuild distribution"
@@ -172,26 +193,698 @@ function install_dev_dependencies() {
   npm install -g \
     aws-sdk \
     aws-sdk-mock \
-    browserify \
     chai \
     eslint \
     eslint-config-airbnb-base \
     eslint-plugin-import \
+    browserify \
+    terser \
     mocha \
     nock \
     npm-run-all \
     sinon \
-    sinon-chai \
-    uglify-es
+    sinon-chai
   popd
 }
 
+#####################################################################
 #
-# @function build_cloudformation_templates
-# @description
-#   copy cloudformation templates
-#   replace %PARAMS% variables with real names
+# Lambda Layer packages
 #
+#####################################################################
+function build_layer_packages() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Lambda Layer Packages"
+  echo "------------------------------------------------------------------------------"
+  build_awssdk_layer
+  build_core_lib_layer
+  build_fixity_layer
+  build_mediainfo_layer
+  build_image_process_layer
+  build_canvas_layer
+  build_pdf_layer
+  build_backlog_layer
+}
+
+function build_awssdk_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building aws-sdk layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="aws-sdk-layer"
+  LAYER_AWSSDK="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}/nodejs"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_AWSSDK" .
+  cp -v "./dist/${LAYER_AWSSDK}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_core_lib_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building M2C Core Library layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="core-lib"
+  LAYER_CORE_LIB="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_CORE_LIB" .
+  cp -v "./dist/${LAYER_CORE_LIB}" "$BUILD_DIST_DIR"
+  # also create a local package for custom resource
+  pushd "./dist/nodejs/node_modules/${package}"
+  CORE_LIB_LOCAL_PKG="$(pwd)/$(npm pack)"
+  popd
+  popd
+}
+
+function build_mediainfo_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building mediainfo layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="mediainfo"
+  LAYER_MEDIAINFO="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_MEDIAINFO" .
+  cp -v "./dist/${LAYER_MEDIAINFO}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_image_process_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building image-process layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="image-process-lib"
+  LAYER_IMAGE_PROCESS="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_IMAGE_PROCESS" .
+  cp -v "./dist/${LAYER_IMAGE_PROCESS}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_fixity_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building fixity layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="fixity-lib"
+  LAYER_FIXITY_LIB="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_FIXITY_LIB" .
+  cp -v "./dist/${LAYER_FIXITY_LIB}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_canvas_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Canvas layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="canvas-lib"
+  LAYER_CANVAS_LIB="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm run build
+  npm run move -- "$LAYER_CANVAS_LIB"
+  cp -v "./dist/${LAYER_CANVAS_LIB}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_pdf_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building PDF layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="pdf-lib"
+  LAYER_PDF_LIB="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_PDF_LIB" .
+  cp -v "./dist/${LAYER_PDF_LIB}" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_backlog_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Service Backlog layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="service-backlog-lib"
+  LAYER_BACKLOG="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_BACKLOG" .
+  cp -v "./dist/${LAYER_BACKLOG}" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Service Backlog packages
+#
+#####################################################################
+function build_backlog_packages() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Backlog Service Packages"
+  echo "------------------------------------------------------------------------------"
+  build_backlog_status_updater_package
+  build_backlog_stream_connector_package
+  build_backlog_custom_labels_package
+}
+
+function build_backlog_status_updater_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Backlog Status Updater lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="backlog"
+  local name="status-updater"
+  local package="${workflow}-${name}"
+  PKG_BACKLOG_STATUS_UPDATER="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${workflow}/${name}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_BACKLOG_STATUS_UPDATER" .
+  cp -v "./dist/$PKG_BACKLOG_STATUS_UPDATER" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_backlog_stream_connector_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Backlog DDB Stream Connector lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="backlog"
+  local name="stream-connector"
+  local package="${workflow}-${name}"
+  PKG_BACKLOG_STREAM_CONNECTOR="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${workflow}/${name}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_BACKLOG_STREAM_CONNECTOR" .
+  cp -v "./dist/$PKG_BACKLOG_STREAM_CONNECTOR" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_backlog_custom_labels_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Backlog Custom Labels lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="backlog"
+  local name="custom-labels"
+  local package="${workflow}-${name}"
+  PKG_BACKLOG_CUSTOMLABELS="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${workflow}/${name}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_BACKLOG_CUSTOMLABELS" .
+  cp -v "./dist/$PKG_BACKLOG_CUSTOMLABELS" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Ingest Workflow packages
+#
+#####################################################################
+function build_ingest_workflow_packages() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Workflow Packages"
+  echo "------------------------------------------------------------------------------"
+  # state machine
+  build_ingest_main_package
+  build_ingest_fixity_package
+  build_ingest_video_package
+  build_ingest_audio_package
+  build_ingest_image_package
+  build_ingest_document_package
+  # automation
+  build_ingest_status_updater_package
+}
+
+function build_ingest_main_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Main state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="main"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_MAIN="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_MAIN" .
+  cp -v "./dist/$PKG_INGEST_MAIN" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_fixity_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Fixity nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="fixity"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_FIXITY="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_FIXITY" .
+  cp -v "./dist/$PKG_INGEST_FIXITY" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_video_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Video nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="video"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_VIDEO="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_VIDEO" .
+  cp -v "./dist/$PKG_INGEST_VIDEO" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_audio_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Audio nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="audio"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_AUDIO="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_AUDIO" .
+  cp -v "./dist/$PKG_INGEST_AUDIO" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_image_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Image nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="image"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_IMAGE="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_IMAGE" .
+  cp -v "./dist/$PKG_INGEST_IMAGE" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_document_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Document nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local statemachine="document"
+  local package="${workflow}-${statemachine}"
+  PKG_INGEST_DOCUMENT="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_DOCUMENT" .
+  cp -v "./dist/$PKG_INGEST_DOCUMENT" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_ingest_status_updater_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Ingest Automation Status Updater lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="ingest"
+  local automation="automation"
+  local lambda="status-updater"
+  local package="${workflow}-${automation}-${lambda}"
+  PKG_INGEST_STATUS_UPDATER="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${automation}/${lambda}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_INGEST_STATUS_UPDATER" .
+  cp -v "./dist/$PKG_INGEST_STATUS_UPDATER" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Analysis Workflow packages
+#
+#####################################################################
+function build_analysis_workflow_packages() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Workflow Packages"
+  echo "------------------------------------------------------------------------------"
+  # state machine
+  build_analysis_main_package
+  build_analysis_audio_package
+  build_analysis_video_package
+  build_analysis_image_package
+  build_analysis_document_package
+  # status updater
+  build_analysis_status_updater_package
+}
+
+function build_analysis_main_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Main state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local statemachine="main"
+  local package="${workflow}-${statemachine}"
+  PKG_ANALYSIS_MAIN="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_MAIN" .
+  cp -v "./dist/$PKG_ANALYSIS_MAIN" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_analysis_audio_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Audio nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local statemachine="audio"
+  local package="${workflow}-${statemachine}"
+  PKG_ANALYSIS_AUDIO="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_AUDIO" .
+  cp -v "./dist/$PKG_ANALYSIS_AUDIO" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_analysis_video_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Video nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local statemachine="video"
+  local package="${workflow}-${statemachine}"
+  PKG_ANALYSIS_VIDEO="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_VIDEO" .
+  cp -v "./dist/$PKG_ANALYSIS_VIDEO" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_analysis_image_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Image nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local statemachine="image"
+  local package="${workflow}-${statemachine}"
+  PKG_ANALYSIS_IMAGE="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_IMAGE" .
+  cp -v "./dist/$PKG_ANALYSIS_IMAGE" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_analysis_document_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Document nested state machine lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local statemachine="document"
+  local package="${workflow}-${statemachine}"
+  PKG_ANALYSIS_DOCUMENT="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${statemachine}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_DOCUMENT" .
+  cp -v "./dist/$PKG_ANALYSIS_DOCUMENT" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_analysis_status_updater_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Analysis Automation Status Updater lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="analysis"
+  local automation="automation"
+  local lambda="status-updater"
+  local package="${workflow}-${automation}-${lambda}"
+  PKG_ANALYSIS_STATUS_UPDATER="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/${workflow}/${automation}/${lambda}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ANALYSIS_STATUS_UPDATER" .
+  cp -v "./dist/$PKG_ANALYSIS_STATUS_UPDATER" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Main Workflow packages
+#
+#####################################################################
+function build_main_workflow_packages() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Main Workflow Packages"
+  echo "------------------------------------------------------------------------------"
+  # ingest workflow
+  build_ingest_workflow_packages
+  # analysis workflow
+  build_analysis_workflow_packages
+  # state machine error handler
+  build_workflow_error_handler_package
+  # optional s3event package
+  build_main_automation_s3event_package
+}
+
+function build_workflow_error_handler_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Workflow Error Handler package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="main"
+  local lambda="error-handler"
+  local package="${workflow}-${lambda}"
+  PKG_ERROR_HANDLER="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/automation/${lambda}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_ERROR_HANDLER" .
+  cp -v "./dist/$PKG_ERROR_HANDLER" "$BUILD_DIST_DIR"
+  popd
+}
+
+function build_main_automation_s3event_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Main Automation S3 Event lambda package"
+  echo "------------------------------------------------------------------------------"
+  local workflow="main"
+  local lambda="s3event"
+  local package="${workflow}-${lambda}"
+  PKG_MAIN_S3EVENT="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/main/automation/${lambda}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_MAIN_S3EVENT" .
+  cp -v "./dist/$PKG_MAIN_S3EVENT" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# API package
+#
+#####################################################################
+function build_api_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building API Gateway lambda package"
+  echo "------------------------------------------------------------------------------"
+  local package="api"
+  PKG_API="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$PKG_API" .
+  cp -v "./dist/$PKG_API" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Custom Resource package
+#
+#####################################################################
+function build_custom_resources_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building custom resources Lambda package"
+  echo "------------------------------------------------------------------------------"
+  local package="custom-resources"
+  PKG_CUSTOM_RESOURCES="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${package}"
+  npm install
+  npm run build
+  # explicitly package core-lib in custom resource package
+  pushd dist
+  echo "=== Merging CORE_LIB_LOCAL_PKG = ${CORE_LIB_LOCAL_PKG} ===="
+  npm install --no-save "$CORE_LIB_LOCAL_PKG"
+  popd
+  #
+  npm run zip -- "$PKG_CUSTOM_RESOURCES" .
+  cp -v "./dist/$PKG_CUSTOM_RESOURCES" "$BUILD_DIST_DIR"
+  popd
+}
+
+#####################################################################
+#
+# Web App packages
+#
+#####################################################################
+function build_thirdparty_bundle() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building $1"
+  echo "------------------------------------------------------------------------------"
+  local bundle=$1
+  local bundle_dir="$SOURCE_DIR/webapp/third_party/$bundle"
+
+  pushd "$bundle_dir"
+  npm install --only=prod --no-optional
+  npm run build
+  [ $? -ne 0 ] && exit 1
+  popd
+}
+
+function build_webapp_dependencies() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building webapp dependenceis for browser"
+  echo "------------------------------------------------------------------------------"
+  local bundles=(\
+    "aws-iot-sdk-browser-bundle" \
+    "amazon-cognito-identity-bundle" \
+    "spark-md5-bundle" \
+    "cropper-bundle" \
+    "mime-bundle" \
+    "videojs-bundle" \
+    "videojs-markers-bundle" \
+    "bootstrap-bundle" \
+    "fontawesome-bundle" \
+    "jquery-bundle" \
+    "crypto-js-bundle" \
+    "echarts-js-bundle" \
+  )
+  for bundle in ${bundles[@]}
+  do
+    build_thirdparty_bundle $bundle
+  done;
+
+  # copy all dependencies to webapp/third_party/dist
+  local srcdir="$SOURCE_DIR/webapp/third_party"
+  local dstdir="$SOURCE_DIR/webapp/third_party/dist"
+
+  rm -rf "$dstdir" && mkdir -p "$dstdir"
+  cp -rv "$srcdir"/*/dist/js "$dstdir"
+  cp -rv "$srcdir"/*/dist/css "$dstdir"
+  cp -rv "$srcdir"/*/dist/webfonts "$dstdir"
+}
+
+function rollup_appjs() {
+  echo "------------------------------------------------------------------------------"
+  echo "Rollup and minify Webapp code"
+  echo "------------------------------------------------------------------------------"
+  local infile=$1
+  local outfile=$2
+  pushd "$SOURCE_DIR/build"
+  npm install --only=prod --no-optional
+  node post-build.js rollup --input "$infile" --output "$outfile"
+  [ $? -ne 0 ] && exit 1
+  popd
+}
+
+function build_index_html() {
+  echo "------------------------------------------------------------------------------"
+  echo "Build Index html and Inject Integrity check"
+  echo "------------------------------------------------------------------------------"
+  local file=$1
+  pushd "$SOURCE_DIR/build"
+  npm install --only=prod --no-optional
+  node post-build.js build-html --html "$file"
+  [ $? -ne 0 ] && exit 1
+  popd
+}
+
+function minify_jscript() {
+  echo "------------------------------------------------------------------------------"
+  echo "Minify Webapp code"
+  echo "------------------------------------------------------------------------------"
+  local file=$1
+  pushd "$SOURCE_DIR/build"
+  npm install --only=prod --no-optional
+  node post-build.js minify --dir "$file"
+  [ $? -ne 0 ] && exit 1
+  popd
+}
+
+function compute_jscript_integrity() {
+  echo "------------------------------------------------------------------------------"
+  echo "Compute and Inject Integrity check to webapp"
+  echo "------------------------------------------------------------------------------"
+  local file=$1
+  pushd "$SOURCE_DIR/build"
+  npm install --only=prod --no-optional
+  node post-build.js inject-sri --html "$file"
+  [ $? -ne 0 ] && exit 1
+  popd
+}
+
+function build_webapp_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building webapp package"
+  echo "------------------------------------------------------------------------------"
+  local package="webapp"
+  PKG_WEBAPP="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/${package}"
+  npm install --only=prod --no-optional
+  npm run build
+
+  # start building all third party bundles
+  build_webapp_dependencies
+  # copy all dependencies to webapp/dist/third_party
+  local srcdir="$SOURCE_DIR/${package}/third_party/dist"
+  local dstdir="$SOURCE_DIR/${package}/dist/third_party/dist"
+  mkdir -p "$dstdir"/js "$dstdir"/css "$dstdir"/webfonts
+  cp -rv "$srcdir"/js/* "$dstdir"/js/
+  cp -rv "$srcdir"/css/* "$dstdir"/css/
+  cp -rv "$srcdir"/webfonts/* "$dstdir"/webfonts/
+
+  # rollup and minimize app.js
+  rollup_appjs "$SOURCE_DIR/${package}/dist/src/lib/js/app.js" "$SOURCE_DIR/${package}/dist/app.min.js"
+  # build index html and inject integrity check
+  build_index_html "$SOURCE_DIR/${package}/dist/index.html"
+
+  # now, zip and package all the files
+  npm run zip -- "$PKG_WEBAPP" . -x ./dev**
+  cp -v "./dist/$PKG_WEBAPP" "$BUILD_DIST_DIR"
+
+  popd
+}
+
+#####################################################################
+#
+# CloudFormation templates
+#
+#####################################################################
 function build_cloudformation_templates() {
   echo "------------------------------------------------------------------------------"
   echo "CloudFormation Templates"
@@ -200,77 +893,127 @@ function build_cloudformation_templates() {
   runcmd cp -rv *.yaml "$TEMPLATE_DIST_DIR/"
   pushd "$TEMPLATE_DIST_DIR"
 
-  # solution name
-  echo "Updating %SOLUTION% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%SOLUTION%|${SOLUTION}|g" *.yaml || exit 1
+  # solution Id
+  echo "Updating %%SOLUTION_ID%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SOLUTION_ID%%|${SOLUTION_ID}|g" *.yaml || exit 1
+
+  # solution Id (lowercase)
+  local solutionId=$(echo ${SOLUTION_ID} | tr "[:upper:]" "[:lower:]")
+  echo "Updating %%SOLUTION_ID_LOWERCASE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SOLUTION_ID_LOWERCASE%%|${solutionId}|g" *.yaml || exit 1
 
   # solution version
-  echo "Updating %VERSION% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%VERSION%|${VERSION}|g" *.yaml || exit 1
+  echo "Updating %%VERSION%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%VERSION%%|${VERSION}|g" *.yaml || exit 1
 
   # deployment bucket name
-  echo "Updating %BUCKET% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%BUCKET%|${BUCKET}|g" *.yaml || exit 1
+  echo "Updating %%BUCKET_NAME%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%BUCKET_NAME%%|${BUCKET_NAME}|g" *.yaml || exit 1
 
   # key prefix name
   local keyprefix="${SOLUTION}/${VERSION}"
-  echo "Updating %KEYPREFIX% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%KEYPREFIX%|${keyprefix}|g" *.yaml || exit 1
+  echo "Updating %%KEYPREFIX%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%KEYPREFIX%%|${keyprefix}|g" *.yaml || exit 1
 
   # web package name
-  echo "Updating %PKG_WEBAPP% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_WEBAPP%|${PKG_WEBAPP}|g" *.yaml || exit 1
+  echo "Updating %%PKG_WEBAPP%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_WEBAPP%%|${PKG_WEBAPP}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_API%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_API%%|${PKG_API}|g" *.yaml || exit 1
 
   # layer aws-sdk name
-  echo "Updating %LAYER_AWSSDK% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_AWSSDK%|${LAYER_AWSSDK}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_AWSSDK%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_AWSSDK%%|${LAYER_AWSSDK}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_CORE_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_CORE_LIB%|${LAYER_CORE_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_CORE_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_CORE_LIB%%|${LAYER_CORE_LIB}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_MEDIAINFO% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_MEDIAINFO%|${LAYER_MEDIAINFO}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_MEDIAINFO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_MEDIAINFO%%|${LAYER_MEDIAINFO}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_IMAGE_PROCESS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_IMAGE_PROCESS%|${LAYER_IMAGE_PROCESS}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_IMAGE_PROCESS%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_IMAGE_PROCESS%%|${LAYER_IMAGE_PROCESS}|g" *.yaml || exit 1
 
-  echo "Updating %LAYER_FIXITY_LIB% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%LAYER_FIXITY_LIB%|${LAYER_FIXITY_LIB}|g" *.yaml || exit 1
+  echo "Updating %%LAYER_FIXITY_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_FIXITY_LIB%%|${LAYER_FIXITY_LIB}|g" *.yaml || exit 1
+
+  echo "Updating %%LAYER_CANVAS_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_CANVAS_LIB%%|${LAYER_CANVAS_LIB}|g" *.yaml || exit 1
+
+  echo "Updating %%LAYER_PDF_LIB%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_PDF_LIB%%|${LAYER_PDF_LIB}|g" *.yaml || exit 1
+
+  echo "Updating %%LAYER_BACKLOG%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_BACKLOG%%|${LAYER_BACKLOG}|g" *.yaml || exit 1
 
   # custom resource name
-  echo "Updating %PKG_CUSTOM_RESOURCES% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_CUSTOM_RESOURCES%|${PKG_CUSTOM_RESOURCES}|g" *.yaml || exit 1
+  echo "Updating %%PKG_CUSTOM_RESOURCES%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_CUSTOM_RESOURCES%%|${PKG_CUSTOM_RESOURCES}|g" *.yaml || exit 1
 
   # package name
-  echo "Updating %PKG_S3EVENT% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_S3EVENT%|${PKG_S3EVENT}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_MAIN%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_MAIN%%|${PKG_INGEST_MAIN}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_INGEST% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_INGEST%|${PKG_INGEST}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_FIXITY%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_FIXITY%%|${PKG_INGEST_FIXITY}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ANALYSIS_MONITOR% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ANALYSIS_MONITOR%|${PKG_ANALYSIS_MONITOR}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_VIDEO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_VIDEO%%|${PKG_INGEST_VIDEO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_AUDIO_ANALYSIS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_AUDIO_ANALYSIS%|${PKG_AUDIO_ANALYSIS}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_AUDIO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_AUDIO%%|${PKG_INGEST_AUDIO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_VIDEO_ANALYSIS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_VIDEO_ANALYSIS%|${PKG_VIDEO_ANALYSIS}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_IMAGE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_IMAGE%%|${PKG_INGEST_IMAGE}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_IMAGE_ANALYSIS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_IMAGE_ANALYSIS%|${PKG_IMAGE_ANALYSIS}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_DOCUMENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_DOCUMENT%%|${PKG_INGEST_DOCUMENT}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_DOCUMENT_ANALYSIS% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_DOCUMENT_ANALYSIS%|${PKG_DOCUMENT_ANALYSIS}|g" *.yaml || exit 1
+  echo "Updating %%PKG_INGEST_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_INGEST_STATUS_UPDATER%%|${PKG_INGEST_STATUS_UPDATER}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_GT_LABELING% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_GT_LABELING%|${PKG_GT_LABELING}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_MAIN%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_MAIN%%|${PKG_ANALYSIS_MAIN}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_ERROR_HANDLER% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_ERROR_HANDLER%|${PKG_ERROR_HANDLER}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_AUDIO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_AUDIO%%|${PKG_ANALYSIS_AUDIO}|g" *.yaml || exit 1
 
-  echo "Updating %PKG_API% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%PKG_API%|${PKG_API}|g" *.yaml || exit 1
+  echo "Updating %%PKG_ANALYSIS_VIDEO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_VIDEO%%|${PKG_ANALYSIS_VIDEO}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_ANALYSIS_IMAGE%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_IMAGE%%|${PKG_ANALYSIS_IMAGE}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_ANALYSIS_DOCUMENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_DOCUMENT%%|${PKG_ANALYSIS_DOCUMENT}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_ANALYSIS_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ANALYSIS_STATUS_UPDATER%%|${PKG_ANALYSIS_STATUS_UPDATER}|g" *.yaml || exit 1
+
+  # Backlog Service Workflow
+  echo "Updating %%PKG_BACKLOG_STATUS_UPDATER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_STATUS_UPDATER%%|${PKG_BACKLOG_STATUS_UPDATER}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_BACKLOG_STREAM_CONNECTOR%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_STREAM_CONNECTOR%%|${PKG_BACKLOG_STREAM_CONNECTOR}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_BACKLOG_CUSTOMLABELS%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_BACKLOG_CUSTOMLABELS%%|${PKG_BACKLOG_CUSTOMLABELS}|g" *.yaml || exit 1
+
+  ## Main Workflow
+  echo "Updating %%PKG_ERROR_HANDLER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_ERROR_HANDLER%%|${PKG_ERROR_HANDLER}|g" *.yaml || exit 1
+
+  echo "Updating %%PKG_MAIN_S3EVENT%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%PKG_MAIN_S3EVENT%%|${PKG_MAIN_S3EVENT}|g" *.yaml || exit 1
+
+  ## Misc.
+  echo "Updating %%ANONYMOUS_DATA%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%ANONYMOUS_DATA%%|${ANONYMOUS_DATA}|g" *.yaml || exit 1
+
+  echo "Updating %%SINGLE_REGION%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%SINGLE_REGION%%|${SINGLE_REGION}|g" *.yaml || exit 1
 
   # remove .bak
   runcmd rm -v *.bak
@@ -282,625 +1025,45 @@ function build_cloudformation_templates() {
   popd
 }
 
-#
-# @function build_awssdk_layer
-# @description
-#   build layer packages and copy to deployment/dist folder
-#
-function build_awssdk_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building aws-sdk layer package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/layers/aws-sdk-layer/nodejs" || exit
-  npm install
-  npm run build
-
-  local version=$(grep_package_version "./dist/nodejs/node_modules/aws-sdk/package.json")
-  local package=$(grep_package_name "./dist/nodejs/package.json")
-  LAYER_AWSSDK="${package}_${version}.zip"
-
-  npm run zip -- "$LAYER_AWSSDK" .
-  cp -v "./dist/${LAYER_AWSSDK}" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_core_lib_layer
-# @description
-#   build layer packages and copy to deployment/dist folder
-#
-function build_core_lib_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building M2C Core Library layer package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/layers/core-lib" || exit
-  LAYER_CORE_LIB=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_CORE_LIB" .
-  cp -v "./dist/${LAYER_CORE_LIB}" "$BUILD_DIST_DIR"
-  # also create a local package for custom resource
-  pushd "./dist/nodejs/node_modules/m2c-core-lib"
-  CORE_LIB_LOCAL_PKG="$(pwd)/$(npm pack)"
-  popd
-  popd
-}
-
-#
-# @function build_mediainfo_layer
-# @description
-#   build layer packages and copy to deployment/dist folder
-#
-function build_mediainfo_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building mediainfo layer package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/layers/mediainfo" || exit
-  LAYER_MEDIAINFO=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_MEDIAINFO" .
-  cp -v "./dist/${LAYER_MEDIAINFO}" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_image_process_layer
-# @description
-#   build layer packages and copy to deployment/dist folder
-#
-function build_image_process_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building image-process layer package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/layers/image-process-lib" || exit
-  LAYER_IMAGE_PROCESS=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_IMAGE_PROCESS" .
-  cp -v "./dist/${LAYER_IMAGE_PROCESS}" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_fixity_layer
-# @description
-#   build layer packages and copy to deployment/dist folder
-#
-function build_fixity_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building fixity layer package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/layers/fixity-lib" || exit
-  LAYER_FIXITY_LIB=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_FIXITY_LIB" .
-  cp -v "./dist/${LAYER_FIXITY_LIB}" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_s3event_package
-# @description
-#   build s3event package and copy to deployment/dist folder
-#
-function build_s3event_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building S3 Event trigger package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/s3event" || exit
-  PKG_S3EVENT=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_S3EVENT" .
-  cp -v "./dist/$PKG_S3EVENT" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_ingest_package
-# @description
-#   build the ingest state machine package and copy to deployment/dist folder
-#
-function build_ingest_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Ingest State Machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/ingest" || exit
-  PKG_INGEST=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_INGEST" .
-  cp -v "./dist/$PKG_INGEST" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_analysis_monitor_package
-# @description
-#   build analysis state machine package and copy to deployment/dist folder
-#
-function build_analysis_monitor_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Analysis Monitor state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/analysis-monitor" || exit
-  PKG_ANALYSIS_MONITOR=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_ANALYSIS_MONITOR" .
-  cp -v "./dist/$PKG_ANALYSIS_MONITOR" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_audio_analysis_package
-# @description
-#   build audio analysis state machine package and copy to deployment/dist folder
-#
-function build_audio_analysis_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Audio Analysis state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/audio-analysis" || exit
-  PKG_AUDIO_ANALYSIS=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_AUDIO_ANALYSIS" .
-  cp -v "./dist/$PKG_AUDIO_ANALYSIS" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_video_analysis_package
-# @description
-#   build video analysis state machine package and copy to deployment/dist folder
-#
-function build_video_analysis_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Video Analysis state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/video-analysis" || exit
-  PKG_VIDEO_ANALYSIS=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_VIDEO_ANALYSIS" .
-  cp -v "./dist/$PKG_VIDEO_ANALYSIS" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_image_analysis_package
-# @description
-#   build image analysis state machine package and copy to deployment/dist folder
-#
-function build_image_analysis_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Image Analysis state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/image-analysis" || exit
-  PKG_IMAGE_ANALYSIS=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_IMAGE_ANALYSIS" .
-  cp -v "./dist/$PKG_IMAGE_ANALYSIS" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_document_analysis_package
-# @description
-#   build document analysis state machine package and copy to deployment/dist folder
-#
-function build_document_analysis_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Document Analysis state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/document-analysis" || exit
-  PKG_DOCUMENT_ANALYSIS=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_DOCUMENT_ANALYSIS" .
-  cp -v "./dist/$PKG_DOCUMENT_ANALYSIS" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_gt_labeling_package
-# @description
-#   build audio analysis state machine package and copy to deployment/dist folder
-#
-function build_gt_labeling_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Ground Truth state machine package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/gt-labeling" || exit
-  PKG_GT_LABELING=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_GT_LABELING" .
-  cp -v "./dist/$PKG_GT_LABELING" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_error_handler_package
-# @description
-#   build state machine error handler package and copy to deployment/dist folder
-#
-function build_error_handler_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Error Handler package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/error-handler" || exit
-  PKG_ERROR_HANDLER=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_ERROR_HANDLER" .
-  cp -v "./dist/$PKG_ERROR_HANDLER" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_api_package
-# @description
-#   build api lambda package and copy to deployment/dist folder
-#
-function build_api_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building API Gateway lambda package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/api" || exit
-  PKG_API=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  npm run zip -- "$PKG_API" .
-  cp -v "./dist/$PKG_API" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_custom_resources_package
-# @description
-#   build custom resources package and copy to deployment/dist folder
-#
-function build_custom_resources_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building custom resources Lambda package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/custom-resources" || exit
-  PKG_CUSTOM_RESOURCES=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-  # explicitly package core-lib in custom resource package
-  pushd dist
-  npm install --production --no-save "$CORE_LIB_LOCAL_PKG"
-  popd
-  #
-  npm run zip -- "$PKG_CUSTOM_RESOURCES" .
-  cp -v "./dist/$PKG_CUSTOM_RESOURCES" "$BUILD_DIST_DIR"
-  popd
-}
-
-#
-# @function build_aws_iot_sdk_bundle
-# @see https://github.com/aws/aws-iot-device-sdk-js
-# @description
-#   Build our own version of aws-iot-sdk-bundle with the following aws-sdk services:
-#     * cognitoidentity
-#     * cognitoidentityserviceprovider
-#     * iot
-#     * iotdata
-#     * s3
-#     * dynamodb
-#
-function build_aws_iot_sdk_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building aws-iot-sdk-bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="aws-iot-sdk-browser-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  rm -rf "dist" && mkdir "dist"
-
-  # create a tmp folder to run browserify and uglify processes
-  local tmpdir="$TMP_DIR/$bundle"
-  mkdir -p "$tmpdir"
-  cp -v index.js package.json "$tmpdir"
-  pushd "$tmpdir"
-  echo "nodejs ${NODEJS_VERSION:1}" > .tool-versions
-  npm install
-  npm run browserify
-  [ $? -ne 0 ] && exit 1
-  npm run uglify
-  [ $? -ne 0 ] && exit 1
-  npm run copy -- "$bundle_dir/dist"
-  [ $? -ne 0 ] && exit 1
-  popd
-
-  popd
-}
-
-#
-# @function build_amazon_cognito_identity_bundle
-# @see https://www.npmjs.com/package/amazon-cognito-identity-js
-# @description
-#   Highly recommend to use amplify, https://aws-amplify.github.io/ instead
-#   This project was started before amplify was mature.
-#
-function build_amazon_cognito_identity_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building amazon_cognito_identity"
-  echo "------------------------------------------------------------------------------"
-  local bundle="amazon-cognito-identity-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  npm install
-  npm run copy -- "$bundle_dir"/dist
-  popd
-}
-
-#
-# @function build_spark_md5_bundle
-# @description
-#   build and copy third party bundle to dist
-#      * spark-md5
-#
-function build_spark_md5_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building third party bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="spark-md5-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  rm -rf "dist" && mkdir "dist"
-  npm install --production
-  npm run copy -- "$bundle_dir"/dist
-  popd
-}
-
-#
-# @function build_cropper_bundle
-# @description
-#   build and copy cropper bundle to dist
-#      * cropper
-#
-function build_cropper_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building cropper bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="cropper-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  rm -rf "dist" && mkdir "dist"
-  npm install --production
-  npm run copy -- "$bundle_dir"/dist
-  popd
-}
-
-#
-# @function build_mime_bundle
-# @see https://www.npmjs.com/package/mime
-# @description
-#   browserify mime library
-#
-function build_mime_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building mime-bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="mime-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  rm -rf "dist" && mkdir "dist"
-
-  # create a tmp folder to run browserify and uglify processes
-  local tmpdir="$TMP_DIR/$bundle"
-  mkdir -p "$tmpdir"
-  cp -v index.js package.json "$tmpdir"
-  pushd "$tmpdir"
-  echo "nodejs ${NODEJS_VERSION:1}" > .tool-versions
-  npm install
-  npm run browserify
-  [ $? -ne 0 ] && exit 1
-  npm run uglify
-  [ $? -ne 0 ] && exit 1
-  npm run copy -- "$bundle_dir/dist"
-  [ $? -ne 0 ] && exit 1
-  popd
-
-  popd
-}
-
-function build_videojs_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building videojs bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="videojs-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  npm run build
-  popd
-}
-
-function build_videojs_markers_bundle() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building videojs-markers bundle"
-  echo "------------------------------------------------------------------------------"
-  local bundle="videojs-markers-bundle"
-  local bundle_dir="$SOURCE_DIR/webapp/src/third_party/$bundle"
-
-  pushd "$bundle_dir" || exit
-  npm run build
-  popd
-}
-
-#
-# @function build_webapp_dependencies
-# @description
-#   Build all dependencies that are needed for the webapp
-#
-function build_webapp_dependencies() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building webapp dependenceis for browser"
-  echo "------------------------------------------------------------------------------"
-  build_aws_iot_sdk_bundle
-  build_amazon_cognito_identity_bundle
-  build_spark_md5_bundle
-  build_cropper_bundle
-  build_mime_bundle
-  build_videojs_bundle
-  build_videojs_markers_bundle
-}
-
-#
-# @function compute_jscript_integrity
-# @description
-#   compute SHA384 hash for all JS files and inject hash into <script integrity=hash> attribute
-#
-function compute_jscript_integrity() {
-  echo "------------------------------------------------------------------------------"
-  echo "Compute and Inject Integrity check to webapp"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/webapp/dist" || exit
-  while [ $# -gt 0 ]; do
-    local param=$1
-    local file=$2
-    shift; shift;
-    local hash=$(openssl dgst -sha384 -binary "$file" | openssl base64 -A)
-    echo "Updating $file integrity with $hash in demo.html..."
-    sed -i'.bak' -e "s|${param}|${hash}|g" demo.html || exit 1
-  done
-  runcmd rm -v *.bak
-  popd
-}
-
-#
-# @function build_webapp_package
-# @description
-#   build webapp package and copy to deployment/dist folder
-#
-function build_webapp_package() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building webapp package"
-  echo "------------------------------------------------------------------------------"
-  pushd "$SOURCE_DIR/webapp" || exit
-  PKG_WEBAPP=$(grep_zip_name "./package.json")
-  npm install
-  npm run build
-
-  # create a tmp folder to run browserify and uglify processes
-  local tmpdir="$TMP_DIR/webapp"
-  mkdir -p "$tmpdir"
-
-  # browserify shared libraries
-  local files=
-
-  # grep a list of files that exposes AWSomeNamespace
-  local list=($(grep AWSomeNamespace "$SOURCE_DIR/layers/core-lib/lib/"*.js))
-  for f in "${list[@]}"; do
-    case "$f" in
-      *\.js:)
-        echo "${f%%:}"
-        files=("${files[@]}" ${f%%:})
-        ;;
-    esac
-  done
-
-  local browserify="browserify"
-  $browserify ${files[@]} --exclude aws-sdk -o "$tmpdir/common-bundle.js"
-  [ $? -ne 0 ] && exit 1
-
-  cp -rv ./src/lib/js/* "$tmpdir"/
-
-  # save the uncompressed files to dist/dev
-  mkdir "./dist/dev" && cp -rv "$tmpdir"/ "./dist/dev/"
-
-  # uglify webapp js files
-  local uglify="uglifyjs"
-  $uglify "$tmpdir"/mixins/*.js \
-    "$tmpdir"/shared/*.js \
-    "$tmpdir"/*.js -o \
-    "$tmpdir/app.min.js"
-  [ $? -ne 0 ] && exit 1
-
-  # copy app.min.js to dist/
-  cp -rv "$tmpdir/app.min.js" "./dist/"
-  [ $? -ne 0 ] && exit 1
-
-  # start building all third party bundles
-  build_webapp_dependencies
-
-  # copy all dependencies to webapp/dist/third_party
-  local srcdir="$SOURCE_DIR/webapp/src/third_party"
-  local dstdir="$SOURCE_DIR/webapp/dist/third_party"
-  mkdir -p "$dstdir"
-  cp -rv "$srcdir"/*/dist/*.min.js "$dstdir"
-  cp -rv "$srcdir"/*/dist/*.min.css "$dstdir"
-
-  # compute and insert integrity to webapp
-  # (key1 val1 key2 val2 ... keyN valN)
-  local files=(\
-    "%SRI_APP_JS%" \
-    "app.min.js" \
-    "%SRI_APP_CSS%" \
-    "css/app.css" \
-    "%SRI_COGNITO_IDENTITY_JS%" \
-    "third_party/amazon-cognito-identity.min.js" \
-    "%SRI_IOT_SDK_JS%" \
-    "third_party/aws-iot-sdk-bundle.min.js" \
-    "%SRI_SPARK_MD5_JS%" \
-    "third_party/spark-md5.min.js" \
-    "%SRI_CROPPER_JS%" \
-    "third_party/cropper.min.js" \
-    "%SRI_CROPPER_CSS%" \
-    "third_party/cropper.min.css" \
-    "%SRI_MIME_JS%" \
-    "third_party/mime.min.js" \
-    "%SRI_VIDEOJS_CSS%" \
-    "third_party/video-js.min.css" \
-    "%SRI_VIDEOJS%" \
-    "third_party/video.min.js" \
-    "%SRI_VIDEOJS_MARKERS_CSS%" \
-    "third_party/videojs.markers.min.css" \
-    "%SRI_VIDEOJS_MARKERS%" \
-    "third_party/videojs-markers.min.js" \
-  )
-  compute_jscript_integrity ${files[@]}
-
-  # now, zip and package all the files
-  npm run zip -- "$PKG_WEBAPP" . -x ./dev**
-  cp -v "./dist/$PKG_WEBAPP" "$BUILD_DIST_DIR"
-  popd
-}
-
 function on_complete() {
   echo "------------------------------------------------------------------------------"
   echo "S3 Packaging Complete. (${SOLUTION} ${VERSION})"
   echo "------------------------------------------------------------------------------"
+  ## Lambda Layers ##
   echo "** LAYER_AWSSDK=${LAYER_AWSSDK} **"
   echo "** LAYER_CORE_LIB=${LAYER_CORE_LIB} **"
   echo "** LAYER_MEDIAINFO=${LAYER_MEDIAINFO} **"
   echo "** LAYER_IMAGE_PROCESS=${LAYER_IMAGE_PROCESS} **"
   echo "** LAYER_FIXITY_LIB=${LAYER_FIXITY_LIB} **"
-  echo "** PKG_CUSTOM_RESOURCES=${PKG_CUSTOM_RESOURCES} **"
-  echo "** PKG_S3EVENT=${PKG_S3EVENT} **"
-  echo "** PKG_INGEST=${PKG_INGEST} **"
-  echo "** PKG_ANALYSIS_MONITOR=${PKG_ANALYSIS_MONITOR} **"
-  echo "** PKG_AUDIO_ANALYSIS=${PKG_AUDIO_ANALYSIS} **"
-  echo "** PKG_VIDEO_ANALYSIS=${PKG_VIDEO_ANALYSIS} **"
-  echo "** PKG_IMAGE_ANALYSIS=${PKG_IMAGE_ANALYSIS} **"
-  echo "** PKG_DOCUMENT_ANALYSIS=${PKG_DOCUMENT_ANALYSIS} **"
-  echo "** PKG_GT_LABELING=${PKG_GT_LABELING} **"
+  echo "** LAYER_CANVAS_LIB=${LAYER_CANVAS_LIB} **"
+  echo "** LAYER_PDF_LIB=${LAYER_PDF_LIB} **"
+  echo "** LAYER_BACKLOG=${LAYER_BACKLOG} **"
+  ## Backlog Service ##
+  echo "** PKG_BACKLOG_STATUS_UPDATER=${PKG_BACKLOG_STATUS_UPDATER} **"
+  echo "** PKG_BACKLOG_STREAM_CONNECTOR=${PKG_BACKLOG_STREAM_CONNECTOR} **"
+  echo "** PKG_BACKLOG_CUSTOMLABELS=${PKG_BACKLOG_CUSTOMLABELS} **"
+  ## Ingest Workflow ##
+  echo "** PKG_INGEST_MAIN=${PKG_INGEST_MAIN} **"
+  echo "** PKG_INGEST_FIXITY=${PKG_INGEST_FIXITY} **"
+  echo "** PKG_INGEST_VIDEO=${PKG_INGEST_VIDEO} **"
+  echo "** PKG_INGEST_AUDIO=${PKG_INGEST_AUDIO} **"
+  echo "** PKG_INGEST_IMAGE=${PKG_INGEST_IMAGE} **"
+  echo "** PKG_INGEST_DOCUMENT=${PKG_INGEST_DOCUMENT} **"
+  ## Analysis Workflow ##
+  echo "** PKG_ANALYSIS_MAIN=${PKG_ANALYSIS_MAIN} **"
+  echo "** PKG_ANALYSIS_AUDIO=${PKG_ANALYSIS_AUDIO} **"
+  echo "** PKG_ANALYSIS_VIDEO=${PKG_ANALYSIS_VIDEO} **"
+  echo "** PKG_ANALYSIS_IMAGE=${PKG_ANALYSIS_IMAGE} **"
+  echo "** PKG_ANALYSIS_DOCUMENT=${PKG_ANALYSIS_DOCUMENT} **"
+  echo "** PKG_ANALYSIS_STATUS_UPDATER=${PKG_ANALYSIS_STATUS_UPDATER} **"
+  ## Main Workflow ##
   echo "** PKG_ERROR_HANDLER=${PKG_ERROR_HANDLER} **"
+  echo "** PKG_MAIN_S3EVENT=${PKG_MAIN_S3EVENT} **"
+  ## WebApp ##
   echo "** PKG_API=${PKG_API} **"
   echo "** PKG_WEBAPP=${PKG_WEBAPP} **"
+  ## Misc. ##
+  echo "** PKG_CUSTOM_RESOURCES=${PKG_CUSTOM_RESOURCES} **"
 }
 
 #
@@ -910,26 +1073,13 @@ clean_start
 install_dev_dependencies
 
 # layers
-build_awssdk_layer
-build_core_lib_layer
-build_fixity_layer
-build_mediainfo_layer
-build_image_process_layer
+build_layer_packages
 # custom resource
 build_custom_resources_package
-# ingest
-build_s3event_package
-build_ingest_package
-# analysis
-build_analysis_monitor_package
-build_audio_analysis_package
-build_video_analysis_package
-build_image_analysis_package
-build_document_analysis_package
-# ground-truth
-build_gt_labeling_package
-# state machine error handler
-build_error_handler_package
+# backlog service
+build_backlog_packages
+# main workflow
+build_main_workflow_packages
 # api
 build_api_package
 # webapp

@@ -1,20 +1,7 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+const CRYPTO = require('crypto');
 
-/**
- * @author MediaEnt Solutions
- */
-
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-plusplus */
-
-/**
- * @class Retry
- * @description wrapper class to retry the function if the exception is caused by throttling
- */
 class Retry {
   /**
    * @static
@@ -22,8 +9,10 @@ class Retry {
    * @param {number} duration - in milliseconds
    */
   static async pause(duration = 0) {
-    return new Promise(resolve =>
-      setTimeout(() => resolve(), duration));
+    return new Promise((resolve) => {
+      setTimeout(() =>
+        resolve(), duration);
+    });
   }
 
   /**
@@ -33,7 +22,7 @@ class Retry {
    * @param {number} [max] default to 100
    */
   static random(min = 0, max = 100) {
-    return Math.floor(Math.random() * (max - min)) + min;
+    return CRYPTO.randomInt(Math.max(0, min), Math.max(1, max));
   }
 
   /**
@@ -63,6 +52,4 @@ class Retry {
   }
 }
 
-module.exports = {
-  Retry,
-};
+module.exports = Retry;

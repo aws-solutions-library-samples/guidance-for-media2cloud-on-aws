@@ -1,0 +1,464 @@
+{
+    "StartAt": "Start video analysis",
+    "States": {
+        "Start video analysis": {
+            "Type": "Parallel",
+            "Branches": [
+                {
+                    "StartAt": "Frame-based detection iterators",
+                    "States": {
+                        "Frame-based detection iterators": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "prepare-frame-detection-iterators",
+                                "uuid.$": "$.uuid",
+                                "input.$": "$.input",
+                                "data.$": "$.data",
+                                "status": "NOT_STARTED",
+                                "progress": 0
+                            },
+                            "Next": "Frame based analysis",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Frame based analysis": {
+                            "Type": "Map",
+                            "ItemsPath": "$.data.iterators",
+                            "MaxConcurrency": 10,
+                            "Iterator": {
+                                "StartAt": "Detect frame (Iterator)",
+                                "States": {
+                                    "Detect frame (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "detect-frame-iterator",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "More frames (Iterator)?",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "More frames (Iterator)?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.status",
+                                                "StringEquals": "COMPLETED",
+                                                "Next": "Detect frame completed"
+                                            }
+                                        ],
+                                        "Default": "Detect frame (Iterator)"
+                                    },
+                                    "Detect frame completed": {
+                                        "Type": "Succeed"
+                                    }
+                                }
+                            },
+                            "ResultPath": "$.data.iterators",
+                            "Next": "Frame-based track iterators"
+                        },
+                        "Frame-based track iterators": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "prepare-frame-track-iterators",
+                                "uuid.$": "$.uuid",
+                                "data.$": "$.data",
+                                "status": "NOT_STARTED",
+                                "progress": 0
+                            },
+                            "Next": "Frame based track iterators",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Frame based track iterators": {
+                            "Type": "Map",
+                            "ItemsPath": "$.data.iterators",
+                            "MaxConcurrency": 10,
+                            "Iterator": {
+                                "StartAt": "Create frame-based track (Iterator)",
+                                "States": {
+                                    "Create frame-based track (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "create-track-iterator",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "More frame-based tracks (Iterator)?",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "More frame-based tracks (Iterator)?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.status",
+                                                "StringEquals": "COMPLETED",
+                                                "Next": "Index frame-based analysis (Iterator)"
+                                            }
+                                        ],
+                                        "Default": "Create frame-based track (Iterator)"
+                                    },
+                                    "Index frame-based analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "ResultPath": "$.data.iterators",
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Video-based detection iterators",
+                    "States": {
+                        "Video-based detection iterators": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "prepare-video-detection-iterators",
+                                "uuid.$": "$.uuid",
+                                "input.$": "$.input",
+                                "data.$": "$.data",
+                                "status": "NOT_STARTED",
+                                "progress": 0
+                            },
+                            "Next": "Video based analysis",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Video based analysis": {
+                            "Type": "Map",
+                            "ItemsPath": "$.data.iterators",
+                            "MaxConcurrency": 10,
+                            "Iterator": {
+                                "StartAt": "Start detection and wait (Iterator)",
+                                "States": {
+                                    "Start detection and wait (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                        "Parameters": {
+                                            "FunctionName": "${a0}",
+                                            "Payload": {
+                                                "token.$":"$$.Task.Token",
+                                                "operation": "start-detection-iterator",
+                                                "uuid.$": "$.uuid",
+                                                "status": "NOT_STARTED",
+                                                "progress": 0,
+                                                "data.$": "$.data"
+                                            }
+                                        },
+                                        "TimeoutSeconds": 86400,
+                                        "Next": "Collect detection results (Iterator)"
+                                    },
+                                    "Collect detection results (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "operation": "collect-results-iterator",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "Create video-based track (Iterator)",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "Create video-based track (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "create-track-iterator",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "More video-based tracks (Iterator)?",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "More video-based tracks (Iterator)?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.status",
+                                                "StringEquals": "COMPLETED",
+                                                "Next": "Index video-based analysis (Iterator)"
+                                            }
+                                        ],
+                                        "Default": "Create video-based track (Iterator)"
+                                    },
+                                    "Index video-based analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "ResultPath": "$.data.iterators",
+                            "End": true
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Custom detection iterators",
+                    "States": {
+                        "Custom detection iterators": {
+                            "Type": "Task",
+                            "Resource": "${x0}",
+                            "Parameters": {
+                                "operation": "prepare-custom-detection-iterators",
+                                "uuid.$": "$.uuid",
+                                "input.$": "$.input",
+                                "data.$": "$.data",
+                                "status": "NOT_STARTED",
+                                "progress": 0
+                            },
+                            "Next": "Custom analysis",
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        },
+                        "Custom analysis": {
+                            "Type": "Map",
+                            "ItemsPath": "$.data.iterators",
+                            "MaxConcurrency": 10,
+                            "Iterator": {
+                                "StartAt": "Start custom and wait (Iterator)",
+                                "States": {
+                                    "Start custom and wait (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                        "Parameters": {
+                                            "FunctionName": "${a0}",
+                                            "Payload": {
+                                                "token.$":"$$.Task.Token",
+                                                "operation": "start-detection-iterator",
+                                                "uuid.$": "$.uuid",
+                                                "status": "NOT_STARTED",
+                                                "progress": 0,
+                                                "data.$": "$.data"
+                                            }
+                                        },
+                                        "TimeoutSeconds": 86400,
+                                        "Next": "Collect custom results (Iterator)"
+                                    },
+                                    "Collect custom results (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "operation": "collect-results-iterator",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "Create custom track (Iterator)",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "Create custom track (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "create-track-iterator",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "Next": "More custom tracks (Iterator)?",
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    },
+                                    "More custom tracks (Iterator)?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.status",
+                                                "StringEquals": "COMPLETED",
+                                                "Next": "Index custom analysis (Iterator)"
+                                            }
+                                        ],
+                                        "Default": "Create custom track (Iterator)"
+                                    },
+                                    "Index custom analysis (Iterator)": {
+                                        "Type": "Task",
+                                        "Resource": "${x0}",
+                                        "Parameters": {
+                                            "operation": "index-analysis-results",
+                                            "uuid.$": "$.uuid",
+                                            "status.$": "$.status",
+                                            "progress.$": "$.progress",
+                                            "data.$": "$.data"
+                                        },
+                                        "End": true,
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 2,
+                                                "BackoffRate": 1.1
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            "ResultPath": "$.data.iterators",
+                            "End": true
+                        }
+                    }
+                }
+            ],
+            "Next": "Video analysis completed"
+        },
+        "Video analysis completed": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "job-completed",
+                "stateExecution.$": "$$.Execution",
+                "parallelStateOutputs.$": "$"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        }
+    }
+}

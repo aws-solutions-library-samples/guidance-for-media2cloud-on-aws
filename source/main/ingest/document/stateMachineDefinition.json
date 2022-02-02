@@ -1,0 +1,43 @@
+{
+    "Comment": "document ingest state machine lambda to run pdf info to extract metadata and convert pages to PNG images",
+    "StartAt": "Run PDFInfo and extract pages",
+    "States": {
+        "Run PDFInfo and extract pages": {
+            "Type": "Task",
+            "Resource": "${x0}",
+            "Parameters": {
+                "operation": "run-docinfo",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "More pages?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "More pages?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "PDFInfo completed"
+                }
+            ],
+            "Default": "Run PDFInfo and extract pages"
+        },
+        "PDFInfo completed": {
+            "Type": "Succeed"
+        }
+    }
+}

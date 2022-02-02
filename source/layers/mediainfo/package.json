@@ -14,7 +14,7 @@
     "test": "mocha *.spec.js",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/mediainfo",
     "build:copy": "cp -rv package.json index.js build-mediainfo.sh amazon dist/nodejs/node_modules/mediainfo",
-    "build:install": "cd dist/nodejs/node_modules/mediainfo && npm install --production",
+    "build:install": "cd dist/nodejs/node_modules/mediainfo && npm install --only=prod --no-optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },

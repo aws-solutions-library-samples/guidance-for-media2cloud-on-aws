@@ -1,2791 +1,930 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (SO0050) Media2Cloud - the solution is designed to demonstrate a serverless ingest framework that can quickly setup a baseline ingest workflow for placing video assets and associated metadata under management control of an AWS customer.
+Description: (%%SOLUTION_ID%%) Media2Cloud - the solution is designed to demonstrate a serverless ingest and analysis framework that can quickly setup a baseline ingest workflow for placing video assets and associated metadata under management control of an AWS customer. Version %%VERSION%%
 
-#
-# Mappings to store static value of the solution
-#
 Mappings:
     Solution:
         Project:
-            Id: SO0050
-            Version: "%VERSION%"
+            Id: "%%SOLUTION_ID%%"
+            LowerCaseId: "%%SOLUTION_ID_LOWERCASE%%"
+            Version: "%%VERSION%%"
+            CustomUserAgent: AWSSOLUTION/%%SOLUTION_ID%%/%%VERSION%%
         Template:
-            S3Bucket: "%BUCKET%"
-            KeyPrefix: "%KEYPREFIX%"
-        Package:
-            CustomResourceX: "%PKG_CUSTOM_RESOURCES%"
-            StateMachineErrorHandler: "%PKG_ERROR_HANDLER%"
-        Layer:
-            AwsSdk: "%LAYER_AWSSDK%"
-            CoreLib: "%LAYER_CORE_LIB%"
-            Mediainfo: "%LAYER_MEDIAINFO%"
-            ImageProcess: "%LAYER_IMAGE_PROCESS%"
-            FixityLib: "%LAYER_FIXITY_LIB%"
-        SNS:
-            DisplayName: M2CStatus
-        APIGateway:
-            StageName: demo
-    DynamoDB:
-        RecoveryStrategy:
-            EnablePITR: true
-        TTL:
-            AttributeName: ttl
-        Asset:
-            PartitionKey: UUID
-        Mediainfo:
-            PartitionKey: UUID
-        Ingest:
-            PartitionKey: uuid
-            Suffix: ingest
-            IndexName: ingest-timestamp-gsi
-            IndexKey: schemaVersion
-            IndexSortKey: timestamp
-        AIML:
-            PartitionKey: uuid
-            SortKey: type
-            Suffix: aiml
-        AnalysisQueue:
-            PartitionKey: uuid
-            SortKey: keyword
-            Suffix: analysis-queue
-        IndexedFaces:
-            PartitionKey: name
-            SortKey: faceId
-            Suffix: indexed-faces
-        QueuedFaces:
-            PartitionKey: tempId
-            Suffix: queued-faces
-    StepFunctions:
-        StateMachine:
-            WaitIntervalInSec: 12
-    Function:
-        Handler:
-            onStateMachineErrorHandler: index.onErrorHandler
-    S3:
-        CORS:
-            AllowedOrigins: "*"
-            AllowedMethods: "GET,PUT,POST,HEAD,DELETE"
-            AllowedHeaders: "*"
-            ExposeHeaders: "Content-Length,ETag,x-amz-meta-uuid,x-amz-meta-md5"
-            MaxAgeSeconds: "3000"
+            S3Bucket: "%%BUCKET_NAME%%"
+            KeyPrefix: "%%KEYPREFIX%%"
+            SingleRegion: "%%SINGLE_REGION%%"
+        Stack:
+            Core: media2cloud-core-stack.template
+            Backend: media2cloud-backend-stack.template
+            WebApp: media2cloud-webapp-stack.template
+    Workflow:
+        CustomResources:
+            Package: "%%PKG_CUSTOM_RESOURCES%%"
+            Name: custom-resources
     AIML:
         Options:
-            MinConfidence: 80
+            DefaultMinConfidence: 80
+    Node:
+        Runtime:
+            Version: nodejs14.x
+    Send:
+        AnonymousUsage:
+            Data: "Yes"
 
 Parameters:
-    # Media Analysis parameters (Elasticsearch)
-    ElasticsearchClusterSize:
+    # User defined Ingest Bucket
+    UserDefinedIngestBucket:
         Type: String
-        Description: "A drop-down box with three Amazon Elasticsearch cluster sizes: Small, Medium, Large"
-        Default: Small
+        Description: If you have an existing bucket that you would like to store uploaded contents, specify the bucket name. Otherwise, leave it blank to auto create a new bucket
+        Default: ""
+    # Elasticsearch
+    OpenSearchCluster:
+        Type: String
+        Description: Configure Amazon OpenSearch cluster size
+        Default: Development and Testing (t3.small=0,m5.large=1,gp2=10,az=1)
         AllowedValues:
-            - Small
-            - Medium
-            - Large
+            - Development and Testing (t3.small=0,m5.large=1,gp2=10,az=1)
+            - Suitable for Production Workload (t3.small=3,m5.large=2,gp2=20,az=2)
+            - Recommended for Production Workload (t3.small=3,m5.large=4,gp2=20,az=2)
+            - Recommended for Large Production Workload (t3.small=3,m5.large=6,gp2=40,az=3)
     # AI/ML Settings
-    LanguageCode:
+    DefaultAIOptions:
         Type: String
-        Description: default language to analyze audio stream
+        Description: Configure AI/ML settings
+        Default: Default (celeb,label,segment,transcribe,keyphrase,entity,textract)
         AllowedValues:
-            - ar-AE
-            - ar-SA
-            - de-CH
-            - de-DE
-            - en-AB
-            - en-AU
-            - en-GB
-            - en-IE
-            - en-IN
-            - en-US
-            - en-WL
-            - es-ES
-            - es-US
-            - fa-IR
-            - fr-CA
-            - fr-FR
-            - he-IL
-            - hi-IN
-            - id-ID
-            - it-IT
-            - ja-JP
-            - ko-KR
-            - ms-MY
-            - nl-NL
-            - pt-BR
-            - pt-PT
-            - ru-RU
-            - ta-IN
-            - te-IN
-            - tr-TR
-            - zh-CN
-        Default: en-US
-    AIOptions:
-        Type: String
-        Description: enable analysis features
-        Default: Default (Celeb,Label,Transcript,Keyphrase,Entity,Text)
-        AllowedValues:
-            - Default (Celeb,Label,Transcript,Keyphrase,Entity,Text)
-            - All (Celeb,Label,Face,FaceMatch,Person,Moderation,Transcript,Keyphrase,Entity,Sentiment,Topic,Text)
-            - Audio and Text (Transcript,Keyphrase,Entity,Text)
+            - Default (celeb,label,segment,transcribe,keyphrase,entity,textract)
+            - All (celeb,face,facematch,label,moderation,person,text,segment,transcribe,keyphrase,entity,sentiment,textract)
+            - Video analysis (celeb,face,facematch,label,moderation,person,text,segment)
+            - Audio analysis (transcribe,keyphrase,entity)
+            - Image analysis (celeb,face,facematch,label,moderation,text)
+            - Document analysis (textract)
+            - Celebrity recognition only (celeb)
+            - Video segment detection only (segment)
+            - Speech to text only (transcribe)
     # SNS / Cognito parameters
     Email:
         Type: String
-        Description: "Email address of the user that will be created in the Amazon Cognito Identity Pool and subscribed to the Amazon SNS topic. Subscribed users will receive ingest, publishing, and error notifications. After launch, two emails will be sent to this address: one with instructions for logging in to the web interface and one confirming the SNS subscription."
-        AllowedPattern: '[^\s@]+@[^\s@]+\.[^\s@]+'
-
+        Description: Email address of the user that will be created in the Amazon Cognito Identity Pool and subscribed to the Amazon SNS topic. Subscribed users will receive ingest, publishing, and error notifications. After launch, two emails will be sent to this address; one with instructions for logging in to the web interface and one confirming the SNS subscription.
+        # Formats: Email address or Username:Password
+        AllowedPattern: '([^\s@:]+@[^\s@:]+\.[^\s@:]+)|([^\s@:]+:[^\s@:]+)'
     # CloudFront / Website
     PriceClass:
         Type: String
-        Description: "Specify the price class of the edge location from which CloudFront serves your requests. For more information, see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html"
-        AllowedValues: [
-            "Use Only U.S., Canada and Europe",
-            "Use U.S., Canada, Europe, Asia and Africa",
-            "Use All Edge Locations (Best Performance)"
-        ]
-        Default: "Use Only U.S., Canada and Europe"
-
-    # Solution anonymous metric
-    AnonymousUsage:
-        Type: String
-        Description: send anonymous usage data
-        Default: "Yes"
+        Description: Specify the price class of the edge location from which CloudFront serves your requests. For more information, see https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html
         AllowedValues:
-          - "No"
-          - "Yes"
+            - Use Only U.S., Canada and Europe (PriceClass_100)
+            - Use U.S., Canada, Europe, Asia and Africa (PriceClass_200)
+            - Use All Edge Locations [Best Performance] (PriceClass_All)
+        Default: Use Only U.S., Canada and Europe (PriceClass_100)
+    # S3 Ingest Bucket
+    StartOnObjectCreation:
+        Type: String
+        Description: Start workflow when directly upload assets to ingest S3 bucket
+        Default: "NO"
+        AllowedValues:
+            - "NO"
+            - "YES"
 
 Metadata:
     AWS::CloudFormation::Interface:
         ParameterGroups:
             -
                 Label:
-                    default: "Amazon Cognito / SNS Configuration"
+                    default: Amazon Cognito / Amazon Simple Notification Service
                 Parameters:
                     - Email
             -
                 Label:
-                    default: "Amazon S3 / CloudFront Configuration"
+                    default: Amazon CloudFront
                 Parameters:
                     - PriceClass
             -
                 Label:
-                    default: "Media Analysis Configuration"
+                    default: Amazon OpenSearch Service
                 Parameters:
-                    - ElasticsearchClusterSize
-                    - LanguageCode
-                    - AIOptions
+                    - OpenSearchCluster
             -
                 Label:
-                    default: "Help us to improve"
+                    default: AI/ML Default Settings
                 Parameters:
-                    - AnonymousUsage
-
+                    - DefaultAIOptions
+            -
+                Label:
+                    default: (OPTIONAL) Advanced Customization
+                Parameters:
+                    - UserDefinedIngestBucket
+                    - StartOnObjectCreation
         ParameterLabels:
-            PriceClass:
-                default: "Price Class"
-            ElasticsearchClusterSize:
-                default: "Elasticsearch Cluster Size"
-            LanguageCode:
-                default: "Default Language Code"
-            AIOptions:
-                default: "Analysis Feature(s)"
             Email:
-                default: "Email"
-            AnonymousUsage:
-                default: "Anonymous Usage"
+                default: Email
+            PriceClass:
+                default: Price Class
+            OpenSearchCluster:
+                default: OpenSearch Cluster
+            DefaultAIOptions:
+                default: Analysis Feature(s)
+            UserDefinedIngestBucket:
+                default: User defined Amazon S3 Bucket for ingest
+            StartOnObjectCreation:
+                default: Allow autostart on ingest S3 bucket
 
 Conditions:
-    bEmail: !Not [
-        !Equals [
-            !Ref Email,
-            ""
-        ]
-    ]
-    # AI/ML selection
-    bAimlDefault: !Equals [
-        !Ref AIOptions,
-        "Default (Celeb,Label,Transcript,Keyphrase,Entity,Text)"
-    ]
-    bAimlAudioText: !Equals [
-        !Ref AIOptions,
-        "Audio and Text (Transcript,Keyphrase,Entity,Text)"
-    ]
+    # Using email address for Cognito User Pool
+    bEmail: !Not
+        - !Equals
+            - !Select
+                - 0
+                - !Split
+                    - "@"
+                    - !Ref Email
+            - !Ref Email
+    # Using Username and Temporary Code for Cognito User Pool
+    bUseTemporaryCode: !Not
+        - !Equals
+            - !Select
+                - 0
+                - !Split
+                    - ":"
+                    - !Ref Email
+            - !Ref Email
+    bSingleRegion: !Equals
+        - !FindInMap
+            - Solution
+            - Template
+            - SingleRegion
+        - "true"
 
 Resources:
     ################################################################################
     #
-    # Create custom resource lambda
+    # Custom Resources
     #
     ################################################################################
-    CustomResourceExecutionRole:
-        Type: AWS::IAM::Role
+    CustomResourcesLogGroup:
         Metadata:
             cfn_nag:
                 rules_to_suppress:
                     -
-                        id: W11
-                        reason: "This wildcard is present as the custom resource lambda needs to be able to access contents within the bucket!"
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${solutionId}-${stackId}-${name}
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - LowerCaseId
+                    stackId: !Select
+                        - 4
+                        - !Split
+                            - "-"
+                            - !Select
+                                - 2
+                                - !Split
+                                    - "/"
+                                    - !Ref AWS::StackId
+                    name: !FindInMap
+                        - Workflow
+                        - CustomResources
+                        - Name
+            RetentionInDays: 7
+
+    CustomResourcesRole:
+        Type: AWS::IAM::Role
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
                 Statement:
                     -
-                        Effect: "Allow"
-                        Action:
-                            - "sts:AssumeRole"
+                        Effect: Allow
+                        Action: sts:AssumeRole
                         Principal:
-                            Service:
-                                - "lambda.amazonaws.com"
-            Path: /
+                            Service: lambda.amazonaws.com
+            Path: !Sub
+                - /${solutionId}-${stackId}/
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - LowerCaseId
+                    stackId: !Select
+                        - 4
+                        - !Split
+                            - "-"
+                            - !Select
+                                - 2
+                                - !Split
+                                    - "/"
+                                    - !Ref AWS::StackId
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
             Policies:
                 -
-                    PolicyName: !Sub [
-                        "${x0}-${AWS::StackName}-custom-resources", {
-                            x0: !FindInMap [
-                                "Solution",
-                                "Project",
-                                "Id"
-                            ]
-                        }
-                    ]
-                    PolicyDocument:
-                        Version: "2012-10-17"
-                        Statement:
-                        ## S3
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "s3:DeleteObject"
-                                - "s3:GetObject"
-                                - "s3:GetObjectAcl"
-                                - "s3:GetObjectTagging"
-                                - "s3:PutObject"
-                                - "s3:PutObjectAcl"
-                                - "s3:PutObjectTagging"
-                            # This wildcard is present because of circular dependency where
-                            # the buckets aren't known before this custom resource lambda function
-                            # is created.
-                            Resource:
-                                - !Join ["", ["arn:aws:s3:::", "*/*"]]
-
-                        ## S3.GetBucketLoction to check bucket availability
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "s3:ListAllMyBuckets"
-                                - "s3:GetBucketLocation"
-                                - "s3:GetAccelerateConfiguration"
-                                - "s3:GetBucketCORS"
-                                - "s3:GetBucketNotification"
-                                - "s3:GetBucketPolicy"
-                                - "s3:GetBucketTagging"
-                                - "s3:GetEncryptionConfiguration"
-                                - "s3:GetLifecycleConfiguration"
-                                - "s3:ListBucket"
-                                - "s3:PutAccelerateConfiguration"
-                                - "s3:PutBucketCORS"
-                                - "s3:PutBucketNotification"
-                                - "s3:PutBucketPolicy"
-                                - "s3:PutBucketTagging"
-                                - "s3:PutEncryptionConfiguration"
-                                - "s3:PutLifecycleConfiguration"
-                            # This wildcard is present as we need access to check bucket
-                            # availability
-                            Resource:
-                                - !Join ["", ["arn:aws:s3:::", "*"]]
-
-                        ## MediaConvert
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "mediaConvert:DescribeEndpoints"
-                            # This wildcard is present because the MediaConvert job
-                            # IDs are randomly generated.
-                            Resource:
-                                - !Sub "arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*"
-
-                        ## CloudWatch Logs
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "logs:CreateLogGroup"
-                                - "logs:CreateLogStream"
-                                - "logs:PutLogEvents"
-                            Resource:
-                                - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
-
-                        ## DynamoDB
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "dynamodb:DeleteItem"
-                                - "dynamodb:DescribeTable"
-                                - "dynamodb:Query"
-                                - "dynamodb:Scan"
-                                - "dynamodb:UpdateItem"
-                                - "dynamodb:Attributes"
-                                - "dynamodb:LeadingKeys"
-                                - "dynamodb:ReturnConsumedCapacity"
-                                - "dynamodb:ReturnValues"
-                                - "dynamodb:Select"
-                            # The wildcard is presented as DynamoDB table names are yet to be determined
-                            Resource: [
-                                !Sub [
-                                    "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${x0}-*", {
-                                        x0: !FindInMap [
-                                            "Solution",
-                                            "Project",
-                                            "Id"
-                                        ]
-                                    }
-                                ]
-                            ]
-
-                        ## IoT
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "iot:Publish"
-                            # The wildcard is needed for the custom resource as Iot resources isn't created at the time
-                            Resource:
-                                - !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/*"
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "iot:ListTargetsForPolicy"
-                            Resource:
-                                - !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:policy/*"
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "iot:AttachPolicy"
-                                - "iot:DetachPolicy"
-                            # This wildcard is present because we are attaching Cognito Identity Id
-                            # cert/* and thinggroup/* resources won't work!
-                            # resource. See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
-                            Resource: !Join ["", ["*"]]
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "iot:DescribeEndpoint"
-                            # This wildcard is present because iot:DescribeEndpoint doesn't take
-                            # resource. See details on https://docs.aws.amazon.com/IAM/latest/UserGuide/list_awsiot.html
-                            Resource: !Join ["", ["*"]]
-
-                        ## SNS
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "sns:GetSubscriptionAttributes"
-                                - "sns:GetTopicAttributes"
-                                - "sns:ListSubscriptionsByTopic"
-                                - "sns:ListTopics"
-                                - "sns:SetSubscriptionAttributes"
-                                - "sns:SetTopicAttributes"
-                                - "sns:Subscribe"
-                                - "sns:Unsubscribe"
-                            # This wildcard is present because the SNS topic is not known
-                            # before this custom resource lambda function is created.
-                            Resource:
-                                - !Sub "arn:aws:sns:${AWS::Region}:${AWS::AccountId}:*"
-
-                        ## Lambda
-                        -
-                            Effect: "Allow"
-                            # permission to update lambda environment variables
-                            Action:
-                                - "lambda:GetFunctionConfiguration"
-                                - "lambda:UpdateFunctionConfiguration"
-                            # This wildcard is present as the lambda function yet to be created.
-                            Resource:
-                                - !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*"
-
-                        ## Cognito
-                        -
-                            Effect: "Allow"
-                            # permission to update cognito user attribute
-                            Action:
-                                - "cognito-idp:AdminUpdateUserAttributes"
-                            # This wildcard is present as cognito userpool yet to be created.
-                            Resource:
-                                - !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
-                        -
-                            Effect: "Allow"
-                            # permission to create/delete user pool domain
-                            Action:
-                                - "cognito-idp:AdminCreateUser"
-                                - "cognito-idp:CreateGroup"
-                                - "cognito-idp:CreateUserPool"
-                                - "cognito-idp:CreateUserPoolClient"
-                                - "cognito-idp:DeleteGroup"
-                                - "cognito-idp:DeleteUserPool"
-                                - "cognito-idp:DeleteUserPoolClient"
-                                - "cognito-idp:DescribeUserPool"
-                                - "cognito-idp:DescribeUserPoolClient"
-                                - "cognito-idp:UpdateUserPool"
-                                - "cognito-idp:UpdateUserPoolClient"
-                            # This wildcard is present as cognito userpool yet to be created.
-                            Resource:
-                                - !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "cognito-idp:CreateUserPoolDomain"
-                                - "cognito-idp:DeleteUserPoolDomain"
-                                - "cognito-idp:DescribeUserPoolDomain"
-                            Resource: !Join ["", ["*"]]
-
-                        ## SageMaker
-                        -
-                            Effect: "Allow"
-                            # permission to create / delete workteam
-                            Action:
-                                - "sagemaker:CreateWorkteam"
-                                - "sagemaker:DeleteWorkteam"
-                                - "sagemaker:DescribeWorkteam"
-                            # This wildcard is present as workteam yet to be created.
-                            Resource:
-                                - !Sub "arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:workteam/*"
-                        -
-                            # permission to list work teams
-                            Effect: "Allow"
-                            Action:
-                                - "sagemaker:ListWorkteams"
-                            # This wildcard is present here because sagemaker:ListWorkteams requires wildcard.
-                            Resource: !Join ["", ["*"]]
-
-                        ## IAM
-                        -
-                            Effect: "Allow"
-                            # allow custom resource to pass IAM role during cognito.CreateGroup
-                            Action:
-                                - "iam:PassRole"
-                            Resource: !Join ["", ["*"]]
-
-                        ## Rekognition
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "rekognition:CreateCollection"
-                                - "rekognition:DeleteCollection"
-                            Resource:
-                                - !Sub "arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*"
-
-                        ## Transcribe
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "transcribe:CreateVocabulary"
-                                - "transcribe:DeleteVocabulary"
-                                - "transcribe:GetVocabulary"
-                            Resource: !Join ["", ["*"]]
-
-                        ## Elasticsearch (to create index document)
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "es:ESHttpGet"
-                                - "es:ESHttpPost"
-                                - "es:ESHttpPut"
-                                - "es:ESHttpPost"
-                                - "es:ESHttpDelete"
-                            Resource:
-                                - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/*/*"
-
-                        ## CloudFormation
-                        -
-                            Effect: "Allow"
-                            Action:
-                                - "cloudformation:DescribeStacks"
-                            Resource:
-                                - !Sub "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*/*"
-
-    CustomResourceFunction:
-        Type: AWS::Lambda::Function
-        Properties:
-            Description: !Sub [
-                "(${x0}) custom resources", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            Runtime: nodejs10.x
-            MemorySize: 128
-            Timeout: 900
-            Handler: index.Run
-            Role: !GetAtt CustomResourceExecutionRole.Arn
-            Code:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}",{
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Package",
-                            "CustomResourceX"
-                        ]
-                    }
-                ]
-
-    ################################################################################
-    #
-    # Sanitized stack name first, convert 
-    #
-    ################################################################################
-    SanitizedStackName:
-        Type: Custom::SantizedStackName
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: StringManipulation
-            InputString: !Ref AWS::StackName
-            Operations: "alphanumeric,lower,maxlen=25"
-            OutputReference: SanitizedStackName
-
-    ################################################################################
-    #
-    # Generate random solution UUID
-    #
-    ################################################################################
-    CreateSolutionUuid:
-        Type: Custom::CreateSolutionUuid
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: CreateSolutionUuid
-
-    ################################################################################
-    #
-    # Create random unique name to prefix resources
-    #
-    ################################################################################
-    RandomizedName:
-      Type: Custom::RandomizedName
-      Properties:
-        ServiceToken: !GetAtt CustomResourceFunction.Arn
-        FunctionName: StringManipulation
-        InputString: !Sub [
-            "${x0}-${SanitizedStackName.OutputString}", {
-                x0: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-            }
-        ]
-        Operations: "lower,minlen=3,maxlen=63,dash,random=12"
-        OutputReference: RandomizedName
-
-    ################################################################################
-    #
-    # Lambda layers
-    #
-    ################################################################################
-    #
-    # latest AWS SDK layer
-    #
-    AwsSdkLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-aws-sdk-layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            CompatibleRuntimes:
-                - nodejs10.x
-            Content:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Layer",
-                            "AwsSdk"
-                        ]
-                    }
-                ]
-            Description: !Sub [
-                "${x0} ${AWS::StackName} aws-sdk layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            LicenseInfo: Apache-2.0
-
-    #
-    # latest M2C Core Library layer
-    #
-    CoreLibLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-m2c-core-lib-layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            CompatibleRuntimes:
-                - nodejs10.x
-            Content:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Layer",
-                            "CoreLib"
-                        ]
-                    }
-                ]
-            Description: !Sub [
-                "${x0} ${AWS::StackName} M2C Core Library layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            LicenseInfo: Apache-2.0
-
-    #
-    # Mediainfo layer
-    #
-    MediainfoLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-mediainfo-layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            CompatibleRuntimes:
-                - nodejs10.x
-            Content:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Layer",
-                            "Mediainfo"
-                        ]
-                    }
-                ]
-            Description: !Sub [
-                "${x0} ${AWS::StackName} mediainfo layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            LicenseInfo: Apache-2.0
-
-    #
-    # ImageProcess layer
-    #
-    ImageProcessLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-image-process-lib-layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            CompatibleRuntimes:
-                - nodejs10.x
-            Content:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Layer",
-                            "ImageProcess"
-                        ]
-                    }
-                ]
-            Description: !Sub [
-                "${x0} ${AWS::StackName} image-process layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            LicenseInfo: ISC
-
-    #
-    # Fixity Library layer
-    #
-    FixityLibLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-fixity-lib-layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            CompatibleRuntimes:
-                - nodejs10.x
-            Content:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Layer",
-                            "FixityLib"
-                        ]
-                    }
-                ]
-            Description: !Sub [
-                "${x0} ${AWS::StackName} fixity library layer", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            LicenseInfo: Apache-2.0
-
-    ################################################################################
-    #
-    # DynamoDB related resources
-    #
-    ################################################################################
-    #
-    # Ingest table stores media info of the asset
-    #
-    IngestTable:
-        Type: AWS::DynamoDB::Table
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W28
-                        reason: "Table name is constructed with stack name. On update, we need to keep the existing table name."
-        Properties:
-            TableName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-${x1}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ],
-                    x1: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "Suffix"
-                    ]
-                }
-            ]
-            BillingMode: "PAY_PER_REQUEST"
-            AttributeDefinitions:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "PartitionKey"
-                    ]
-                    AttributeType: "S"
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "IndexKey"
-                    ]
-                    AttributeType: "N"
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "IndexSortKey"
-                    ]
-                    AttributeType: "N"
-            KeySchema:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "PartitionKey"
-                    ]
-                    KeyType: HASH
-            SSESpecification:
-                SSEEnabled: true
-            PointInTimeRecoverySpecification:
-                PointInTimeRecoveryEnabled: !FindInMap [
-                    "DynamoDB",
-                    "RecoveryStrategy",
-                    "EnablePITR"
-                ]
-            GlobalSecondaryIndexes:
-                -
-                    IndexName: !FindInMap [
-                        "DynamoDB",
-                        "Ingest",
-                        "IndexName"
-                    ]
-                    KeySchema:
-                        -
-                            AttributeName: !FindInMap [
-                                "DynamoDB",
-                                "Ingest",
-                                "IndexKey"
-                            ]
-                            KeyType: HASH
-                        -
-                            AttributeName: !FindInMap [
-                                "DynamoDB",
-                                "Ingest",
-                                "IndexSortKey"
-                            ]
-                            KeyType: RANGE
-                    Projection:
-                        ProjectionType: INCLUDE
-                        NonKeyAttributes:
-                            - type
-
-    #
-    # Analysis table stores media info of the asset
-    #
-    AIMLTable:
-        Type: AWS::DynamoDB::Table
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W28
-                        reason: "Table name is constructed with stack name. On update, we need to keep the existing table name."
-        Properties:
-            TableName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-${x1}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ],
-                    x1: !FindInMap [
-                        "DynamoDB",
-                        "AIML",
-                        "Suffix"
-                    ]
-                }
-            ]
-            BillingMode: "PAY_PER_REQUEST"
-            AttributeDefinitions:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AIML",
-                        "PartitionKey"
-                    ]
-                    AttributeType: "S"
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AIML",
-                        "SortKey"
-                    ]
-                    AttributeType: "S"
-            KeySchema:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AIML",
-                        "PartitionKey"
-                    ]
-                    KeyType: HASH
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AIML",
-                        "SortKey"
-                    ]
-                    KeyType: RANGE
-            SSESpecification:
-                SSEEnabled: true
-            PointInTimeRecoverySpecification:
-                PointInTimeRecoveryEnabled: !FindInMap [
-                    "DynamoDB",
-                    "RecoveryStrategy",
-                    "EnablePITR"
-                ]
-
-    #
-    # IndexedFaces table stores indexed faces
-    #
-    IndexedFacesTable:
-        Type: AWS::DynamoDB::Table
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W28
-                        reason: "Table name is constructed with stack name. On update, we need to keep the existing table name."
-        Properties:
-            TableName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-${x1}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ],
-                    x1: !FindInMap [
-                        "DynamoDB",
-                        "IndexedFaces",
-                        "Suffix"
-                    ]
-                }
-            ]
-            BillingMode: "PAY_PER_REQUEST"
-            AttributeDefinitions:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "IndexedFaces",
-                        "PartitionKey"
-                    ]
-                    AttributeType: "S"
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "IndexedFaces",
-                        "SortKey"
-                    ]
-                    AttributeType: "S"
-            KeySchema:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "IndexedFaces",
-                        "PartitionKey"
-                    ]
-                    KeyType: HASH
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "IndexedFaces",
-                        "SortKey"
-                    ]
-                    KeyType: RANGE
-            SSESpecification:
-                SSEEnabled: true
-            PointInTimeRecoverySpecification:
-                PointInTimeRecoveryEnabled: !FindInMap [
-                    "DynamoDB",
-                    "RecoveryStrategy",
-                    "EnablePITR"
-                ]
-
-    #
-    # QueuedFaces table temporarily stores faces for Ground Truth to process
-    #
-    QueuedFacesTable:
-        Type: AWS::DynamoDB::Table
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W28
-                        reason: "Table name is constructed with stack name. On update, we need to keep the existing table name."
-        Properties:
-            TableName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-${x1}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ],
-                    x1: !FindInMap [
-                        "DynamoDB",
-                        "QueuedFaces",
-                        "Suffix"
-                    ]
-                }
-            ]
-            BillingMode: "PAY_PER_REQUEST"
-            AttributeDefinitions:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "QueuedFaces",
-                        "PartitionKey"
-                    ]
-                    AttributeType: "S"
-            KeySchema:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "QueuedFaces",
-                        "PartitionKey"
-                    ]
-                    KeyType: HASH
-            SSESpecification:
-                SSEEnabled: true
-            PointInTimeRecoverySpecification:
-                PointInTimeRecoveryEnabled: !FindInMap [
-                    "DynamoDB",
-                    "RecoveryStrategy",
-                    "EnablePITR"
-                ]
-            TimeToLiveSpecification:
-                AttributeName: !FindInMap [
-                    "DynamoDB",
-                    "TTL",
-                    "AttributeName"
-                ]
-                Enabled: true
-
-    #
-    # AnalysusQueue table temporarily stores analysis messages
-    #
-    AnalysisQueueTable:
-        Type: AWS::DynamoDB::Table
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: W28
-                        reason: "Table name is constructed with stack name. On update, we need to keep the existing table name."
-        Properties:
-            TableName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-${x1}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ],
-                    x1: !FindInMap [
-                        "DynamoDB",
-                        "AnalysisQueue",
-                        "Suffix"
-                    ]
-                }
-            ]
-            BillingMode: "PAY_PER_REQUEST"
-            AttributeDefinitions:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AnalysisQueue",
-                        "PartitionKey"
-                    ]
-                    AttributeType: "S"
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AnalysisQueue",
-                        "SortKey"
-                    ]
-                    AttributeType: "S"
-            KeySchema:
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AnalysisQueue",
-                        "PartitionKey"
-                    ]
-                    KeyType: HASH
-                -
-                    AttributeName: !FindInMap [
-                        "DynamoDB",
-                        "AnalysisQueue",
-                        "SortKey"
-                    ]
-                    KeyType: RANGE
-            SSESpecification:
-                SSEEnabled: true
-            PointInTimeRecoverySpecification:
-                PointInTimeRecoveryEnabled: !FindInMap [
-                    "DynamoDB",
-                    "RecoveryStrategy",
-                    "EnablePITR"
-                ]
-            TimeToLiveSpecification:
-                AttributeName: !FindInMap [
-                    "DynamoDB",
-                    "TTL",
-                    "AttributeName"
-                ]
-                Enabled: true
-
-    #
-    # call MediaConvert describeEndpoint
-    #
-    MediaConvertUrl:
-        Type: Custom::MediaConvertUrl
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: MediaConvertEndpoint
-
-    #
-    # call Iot describeEndpoint
-    #
-    IotUrl:
-        Type: Custom::IotUrl
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: IotEndpoint
-
-    #
-    # create default Rekognition face collection
-    #
-    CreateFaceCollection:
-        Type: Custom::FaceCollection
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: CreateFaceCollection
-            CollectionId: !Sub "${RandomizedName.OutputString}-collection"
-
-    #
-    # create default Transcribe Custom Vocabulary
-    #
-    CreateCustomVocabulary:
-        Type: Custom::CustomVocabulary
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: CreateCustomVocabulary
-            LanguageCode: !Ref LanguageCode
-            Prefix: !Sub "${RandomizedName.OutputString}-"
-
-
-    ################################################################################
-    #
-    # S3/Glacier related resources
-    #
-    ################################################################################
-    #
-    # create ingest, proxy buckets
-    #
-    BucketStack:
-        Type: AWS::CloudFormation::Stack
-        Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-bucket-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                SolutionUuid: !GetAtt CreateSolutionUuid.Uuid
-                AnonymousUsage: !Ref AnonymousUsage
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                BucketPrefix: !Sub "${RandomizedName.OutputString}"
-                CustomResourceArn: !GetAtt CustomResourceFunction.Arn
-                SNSTopicArn: !Ref SNSTopic
-                # Iot
-                IotHost: !GetAtt IotUrl.Endpoint
-                IotTopic: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}/status", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                # layers
-                AwsSdkLayer: !Ref AwsSdkLayer
-                CoreLibLayer: !Ref CoreLibLayer
-
-    ################################################################################
-    #
-    # Web App related resources
-    #
-    ################################################################################
-    #
-    # create Website bucket and Cloudfront distribution stack
-    #
-    WebAppStack:
-        Type: AWS::CloudFormation::Stack
-        Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-webapp-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                CustomResourceArn: !GetAtt CustomResourceFunction.Arn
-                WebBucket: !GetAtt BucketStack.Outputs.WebBucket
-                PriceClass: !Ref PriceClass
-
-    #
-    # update ingest bucket CORS
-    #
-    UpdateIngestBucketCORS:
-        Type: Custom::UpdateIngestBucketCORS
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: SetCORS
-            Bucket: !GetAtt BucketStack.Outputs.IngestBucket
-            AllowedOrigins: !GetAtt WebAppStack.Outputs.WebsiteUrl
-            AllowedMethods: !FindInMap [
-                "S3",
-                "CORS",
-                "AllowedMethods"
-            ]
-            AllowedHeaders: !FindInMap [
-                "S3",
-                "CORS",
-                "AllowedHeaders"
-            ]
-            ExposeHeaders: !FindInMap [
-                "S3",
-                "CORS",
-                "ExposeHeaders"
-            ]
-            MaxAgeSeconds: !FindInMap [
-                "S3",
-                "CORS",
-                "MaxAgeSeconds"
-            ]
-
-    #
-    # update proxy bucket CORS
-    #
-    UpdateProxyBucketCORS:
-        Type: Custom::UpdateProxyBucketCORS
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: SetCORS
-            Bucket: !GetAtt BucketStack.Outputs.ProxyBucket
-            AllowedOrigins: !GetAtt WebAppStack.Outputs.WebsiteUrl
-            AllowedMethods: !FindInMap [
-                "S3",
-                "CORS",
-                "AllowedMethods"
-            ]
-            AllowedHeaders: !FindInMap [
-                "S3",
-                "CORS",
-                "AllowedHeaders"
-            ]
-            ExposeHeaders: !FindInMap [
-                "S3",
-                "CORS",
-                "ExposeHeaders"
-            ]
-            MaxAgeSeconds: !FindInMap [
-                "S3",
-                "CORS",
-                "MaxAgeSeconds"
-            ]
-
-    #
-    # Post-processing - update solution-manifest.js in web content bucket
-    #
-    UpdateManifest:
-        Type: Custom::UpdateManifest
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: UpdateManifest
-            SolutionId: !FindInMap [
-                "Solution",
-                "Project",
-                "Id"
-            ]
-            StackName: !GetAtt SanitizedStackName.OutputString
-            # web zip package to be extracted adn copied to media analysis bucket
-            ContentBucket: !GetAtt BucketStack.Outputs.WebBucket
-            CognitoUserPoolId: !Ref UserPool
-            CognitoAppClientId: !Ref AppClient
-            CognitoIdentityPoolId: !Ref IdentityPool
-            HomePageUrl: !GetAtt WebAppStack.Outputs.WebsiteUrl
-            IngestStateMachine: !GetAtt StateMachinesStack.Outputs.IngestStateMachineName
-            AnalysisStateMachine: !GetAtt StateMachinesStack.Outputs.AnalysisStateMachineName
-            GroundTruthStateMachine: !GetAtt GroundTruthStack.Outputs.StateMachineName
-            Media2CloudEndpoint: !GetAtt Media2CloudApiGatewayStack.Outputs.Endpoint
-            IotHost: !GetAtt IotUrl.Endpoint
-            IotTopic: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}/status", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            IngestBucket: !GetAtt BucketStack.Outputs.IngestBucket
-            ProxyBucket: !GetAtt BucketStack.Outputs.ProxyBucket
-            AIOptions: !If [
-                bAimlAudioText,
-                "transcript,keyphrase,entity,text",
-                !If [
-                    bAimlDefault,
-                    "transcript,keyphrase,entity,text,celeb,label",
-                    "transcript,keyphrase,entity,sentiment,topic,label,faceMatch,celeb,face,person,moderation,text"
-                    ]
-                ]
-            LanguageCode: !Ref LanguageCode
-            FaceCollectionId: !GetAtt CreateFaceCollection.Id
-            CustomVocabulary: !GetAtt CreateCustomVocabulary.Name
-            MinConfidence: !FindInMap [
-                "AIML",
-                "Options",
-                "MinConfidence"
-            ]
-
-    ################################################################################
-    #
-    # Search engine stack
-    #
-    ################################################################################
-    SearchEngineStack:
-        Type: AWS::CloudFormation::Stack
-        Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-search-engine-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                CustomResourceArn: !GetAtt CustomResourceFunction.Arn
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                SolutionUuid: !GetAtt CreateSolutionUuid.Uuid
-                Version: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Version"
-                ]
-                ClusterSize: !Ref ElasticsearchClusterSize
-                AnonymousUsage: !Ref AnonymousUsage
-
-    ################################################################################
-    #
-    # SNS related resources
-    #
-    ################################################################################
-    #
-    # create sns topic / notification
-    #
-    SNSTopic:
-        Type: AWS::SNS::Topic
-        Properties:
-            TopicName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            DisplayName: !FindInMap [
-                "Solution",
-                "SNS",
-                "DisplayName"
-            ]
-            KmsMasterKeyId: "alias/aws/sns"
-
-    SNSTopicPolicy:
-        Type: AWS::SNS::TopicPolicy
-        Properties:
-            Topics:
-                - !Ref SNSTopic
-            PolicyDocument:
-                Id: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}-sns-policy", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                Version: "2012-10-17"
-                Statement:
-                    -
-                        Sid: "allow-lambda-publish"
-                        Effect: "Allow"
-                        Principal:
-                            Service: "lambda.amazonaws.com"
-                        Action: "sns:Publish"
-                        Resource: !Ref SNSTopic
-
-    ## run EmailSubscribe to subscribe emails to SNS topic
-    EmailSubscribeFunction:
-        DependsOn: UpdateManifest
-        Condition: bEmail
-        Type: Custom::EmailSubscribe
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: EmailSubscribe
-            EmailList: !Ref Email
-            TopicArn: !Ref SNSTopic
-
-    ################################################################################
-    #
-    # Iot related resources
-    #
-    ################################################################################
-    #
-    # Iot Thing resource for MQTT message broker
-    #
-    IotThing:
-        Type: AWS::IoT::Thing
-        Properties:
-            ThingName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-thing", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-
-    #
-    # allow web app to subscribe, publish, and receice Iot messages
-    #
-    IotThingPolicy:
-        Type: AWS::IoT::Policy
-        Properties:
-            PolicyName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-thing-policy", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            PolicyDocument:
-                Version: "2012-10-17"
-                Statement:
-                    -
-                        Effect: Allow
-                        Action:
-                            - "iot:Connect"
-                        Resource:
-                            - !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*"
-                    -
-                        Effect: Allow
-                        Action:
-                            - "iot:Subscribe"
-                        Resource:
-                            - !Sub [
-                                "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${x0}-${SanitizedStackName.OutputString}/status", {
-                                    x0: !FindInMap [
-                                        "Solution",
-                                        "Project",
-                                        "Id"
-                                    ]
-                                }
-                            ]
-                    -
-                        Effect: Allow
-                        Action:
-                            - "iot:Publish"
-                            - "iot:Receive"
-                        Resource:
-                            - !Sub [
-                                "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${x0}-${SanitizedStackName.OutputString}/status", {
-                                    x0: !FindInMap [
-                                        "Solution",
-                                        "Project",
-                                        "Id"
-                                    ]
-                                }
-                            ]
-
-    #
-    # on delete stack, we need to clean up Iot policy attached targets.
-    # otherwise, stack will fail.
-    #
-    IotDetachPolices:
-        Type: Custom::IotDetachPolices
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: IotDetachPolices
-            IotThingPolicy: !Ref IotThingPolicy
-
-    ################################################################################
-    #
-    # Step Functions/state machine lambda related resources
-    #
-    ################################################################################
-    #
-    # create ingest & metadata state machines stack
-    #
-    StateMachinesStack:
-        Type: AWS::CloudFormation::Stack
-        Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-state-machine-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                SolutionUuid: !GetAtt CreateSolutionUuid.Uuid
-                AnonymousUsage: !Ref AnonymousUsage
-                IngestBucket: !GetAtt BucketStack.Outputs.IngestBucket
-                SNSTopicArn: !Ref SNSTopic
-                ProxyBucket: !GetAtt BucketStack.Outputs.ProxyBucket
-                ElasticsearchDomainName: !GetAtt SearchEngineStack.Outputs.DomainName
-                ElasticsearchDomainEndpoint: !GetAtt SearchEngineStack.Outputs.DomainEndpoint
-                ElasticsearchDomainIndexName: !GetAtt SearchEngineStack.Outputs.IndexName
-                WaitIntervalInSec: !FindInMap [
-                    "StepFunctions",
-                    "StateMachine",
-                    "WaitIntervalInSec"
-                ]
-                # IoT
-                IotTopic: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}/status", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                IotHost: !GetAtt IotUrl.Endpoint
-                MediaConvertEndpoint: !GetAtt MediaConvertUrl.Endpoint
-                # AI/ML
-                AIOptions: !If [
-                    bAimlAudioText,
-                    "transcript,keyphrase,entity,text",
-                    !If [
-                        bAimlDefault,
-                        "transcript,keyphrase,entity,text,celeb,label",
-                        "transcript,keyphrase,entity,sentiment,topic,label,faceMatch,celeb,face,person,moderation,text"
-                        ]
-                    ]
-                LanguageCode: !Ref LanguageCode
-                FaceCollectionId: !GetAtt CreateFaceCollection.Id
-                CustomVocabulary: !GetAtt CreateCustomVocabulary.Name
-                MinConfidence: !FindInMap [
-                    "AIML",
-                    "Options",
-                    "MinConfidence"
-                ]
-                # layers
-                AwsSdkLayer: !Ref AwsSdkLayer
-                CoreLibLayer: !Ref CoreLibLayer
-                MediainfoLayer: !Ref MediainfoLayer
-                ImageProcessLayer: !Ref ImageProcessLayer
-                FixityLibLayer: !Ref FixityLibLayer
-
-    ################################################################################
-    #
-    # Ground Truth stack
-    #
-    ################################################################################
-    #
-    # create another cognito for workers, state machine to start/monitor labeling job,
-    # sns to notify workers when labeling job is created.
-    #
-    GroundTruthStack:
-        Type: AWS::CloudFormation::Stack
-        Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-groundtruth-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                SolutionUuid: !GetAtt CreateSolutionUuid.Uuid
-                AnonymousUsage: !Ref AnonymousUsage
-                CustomResourceArn: !GetAtt CustomResourceFunction.Arn
-                ProxyBucket: !GetAtt BucketStack.Outputs.ProxyBucket
-                IotTopic: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}/status", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                IotHost: !GetAtt IotUrl.Endpoint
-                SNSTopicArn: !Ref SNSTopic
-                RandomizedName: !Sub "${RandomizedName.OutputString}"
-                # layers
-                AwsSdkLayer: !Ref AwsSdkLayer
-                CoreLibLayer: !Ref CoreLibLayer
-
-    ################################################################################
-    #
-    # CloudWatch Event (State Machine error handling)
-    #
-    ################################################################################
-    StateMachineErrorHandlerRole:
-        Type: AWS::IAM::Role
-        DependsOn:
-            - StateMachinesStack
-            - GroundTruthStack
-        Properties:
-            AssumeRolePolicyDocument:
-                Version: "2012-10-17"
-                Statement:
-                    -
-                        Effect: "Allow"
-                        Action:
-                            - "sts:AssumeRole"
-                        Principal:
-                            Service:
-                                - "lambda.amazonaws.com"
-            Path: /
-            Policies:
-                -
-                    PolicyName: !Sub [
-                        "${x0}-${SanitizedStackName.OutputString}-error-handler-policy", {
-                            x0: !FindInMap [
-                                "Solution",
-                                "Project",
-                                "Id"
-                            ]
-                        }
-                    ]
+                    PolicyName: !Sub
+                        - "${solutionId}-custom-resources"
+                        - solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
                     PolicyDocument:
                         Version: "2012-10-17"
                         Statement:
                             ## CloudWatch Logs
                             -
-                                Effect: "Allow"
+                                Effect: Allow
                                 Action:
-                                    - "logs:CreateLogGroup"
-                                    - "logs:CreateLogStream"
-                                    - "logs:PutLogEvents"
-                                Resource:
-                                    - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
-                            ## Step Functions
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "states:DescribeStateMachine"
-                                Resource:
-                                    - !Sub [
-                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${x0}-${SanitizedStackName.OutputString}-*", {
-                                            x0: !FindInMap [
-                                                "Solution",
-                                                "Project",
-                                                "Id"
-                                            ]
-                                        }
-                                    ]
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "states:DescribeExecution"
-                                    - "states:GetExecutionHistory"
-                                Resource:
-                                    - !Sub [
-                                        "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${x0}-${SanitizedStackName.OutputString}-*:*", {
-                                            x0: !FindInMap [
-                                                "Solution",
-                                                "Project",
-                                                "Id"
-                                            ]
-                                        }
-                                    ]
-                            ## IoT
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "iot:Publish"
-                                Resource:
-                                    - !Sub [
-                                        "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${x0}-${SanitizedStackName.OutputString}/status", {
-                                            x0: !FindInMap [
-                                                "Solution",
-                                                "Project",
-                                                "Id"
-                                            ]
-                                        }
-                                    ]
-                            ## SNS
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "sns:Publish"
-                                Resource:
-                                    - !Ref SNSTopic
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt CustomResourcesLogGroup.Arn
 
-    OnStateMachineErrorFunction:
+    CustomResourcesLambda:
         Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
         Properties:
-            FunctionName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-error-handler", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            Description: !Sub [
-                "(${x0}) state machine error handling", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            Runtime: nodejs10.x
+            FunctionName: !Sub
+                - ${solutionId}-${stackId}-${name}
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - LowerCaseId
+                    stackId: !Select
+                        - 4
+                        - !Split
+                            - "-"
+                            - !Select
+                                - 2
+                                - !Split
+                                    - "/"
+                                    - !Ref AWS::StackId
+                    name: !FindInMap
+                        - Workflow
+                        - CustomResources
+                        - Name
+            Description: !Sub
+                - (${solutionId}) custom resources
+                - solutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
             MemorySize: 128
             Timeout: 900
-            Handler: !FindInMap [
-                "Function",
-                "Handler",
-                "onStateMachineErrorHandler"
-            ]
-            Role: !GetAtt StateMachineErrorHandlerRole.Arn
+            Handler: index.handler
+            Role: !GetAtt CustomResourcesRole.Arn
             Code:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}",{
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                S3Key: !Sub [
-                    "${x0}/${x1}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "KeyPrefix"
-                        ],
-                        x1: !FindInMap [
-                            "Solution",
-                            "Package",
-                            "StateMachineErrorHandler"
-                        ]
-                    }
-                ]
-            Layers:
-                - !Ref AwsSdkLayer
-                - !Ref CoreLibLayer
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub "-${AWS::Region}"
+                S3Key: !Sub
+                    - "${keyprefix}/${package}"
+                    -
+                        keyprefix: !FindInMap
+                            - Solution
+                            - Template
+                            - KeyPrefix
+                        package: !FindInMap
+                            - Workflow
+                            - CustomResources
+                            - Package
+            TracingConfig:
+                Mode: Active
             Environment:
                 Variables:
-                    ENV_SOLUTION_ID: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                    ENV_STACKNAME: !GetAtt SanitizedStackName.OutputString
-                    ENV_SOLUTION_UUID: !GetAtt CreateSolutionUuid.Uuid
-                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
-                    ENV_IOT_HOST: !GetAtt IotUrl.Endpoint
-                    ENV_IOT_TOPIC: !Sub [
-                        "${x0}-${SanitizedStackName.OutputString}/status", {
-                            x0: !FindInMap [
-                                "Solution",
-                                "Project",
-                                "Id"
-                            ]
-                        }
-                    ]
-                    ENV_SNS_TOPIC_ARN: !Ref SNSTopic
-                    ENV_INGEST_BUCKET: !GetAtt BucketStack.Outputs.IngestBucket
-                    ENV_PROXY_BUCKET: !GetAtt BucketStack.Outputs.ProxyBucket
-
-    StateMachineErrorCloudWatchEvent:
-        Type: AWS::Events::Rule
-        Properties:
-            Name: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-state-machine-error-handler", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            Description: !Sub [
-                "(${x0}) state machine error handler", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            EventPattern:
-                source:
-                    - "aws.states"
-                detail-type:
-                    - "Step Functions Execution Status Change"
-                detail:
-                    status:
-                        - FAILED
-                        - ABORTED
-                        - TIMED_OUT
-                    stateMachineArn:
-                        - !GetAtt StateMachinesStack.Outputs.IngestStateMachineArn
-                        - !GetAtt StateMachinesStack.Outputs.AnalysisStateMachineArn
-                        - !GetAtt GroundTruthStack.Outputs.StateMachineArn
-            State: ENABLED
-            Targets:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !FindInMap
+                        - Solution
+                        - Project
+                        - CustomUserAgent
+            Tags:
                 -
-                    Id: !Sub "Id-${OnStateMachineErrorFunction}"
-                    Arn: !GetAtt OnStateMachineErrorFunction.Arn
-
-    PermissionToInvokeLambda:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref OnStateMachineErrorFunction
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt StateMachineErrorCloudWatchEvent.Arn
+                    Key: SolutionId
+                    Value: !FindInMap
+                        - Solution
+                        - Project
+                        - Id
 
     ################################################################################
     #
-    # API Gateway related resources
+    # Core stack
+    # * create the core resources shared among other stacks such as:
+    #   Buckets, Lambda Layers, IoT, etc
     #
     ################################################################################
-    #
-    # create API Gateway stack for Media2Cloud to start/stop state machine
-    #
-    Media2CloudApiGatewayStack:
+    CoreStack:
         Type: AWS::CloudFormation::Stack
         Properties:
-            TemplateURL: !Sub [
-                "https://${x0}-${AWS::Region}.s3.amazonaws.com/${x1}/media2cloud-api-stack.template", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "S3Bucket"
-                    ],
-                    x1: !FindInMap [
-                        "Solution",
-                        "Template",
-                        "KeyPrefix"
-                    ]
-                }
-            ]
-            Parameters:
-                S3Bucket: !Sub [
-                    "${x0}-${AWS::Region}", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Template",
-                            "S3Bucket"
-                        ]
-                    }
-                ]
-                KeyPrefix: !FindInMap [
-                    "Solution",
-                    "Template",
-                    "KeyPrefix"
-                ]
-                SolutionId: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-                RootStackName: !GetAtt SanitizedStackName.OutputString
-                SolutionUuid: !GetAtt CreateSolutionUuid.Uuid
-                AnonymousUsage: !Ref AnonymousUsage
-                ApiGatewayEndpointName: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}-api", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                StageName: !FindInMap [
-                    "Solution",
-                    "APIGateway",
-                    "StageName"
-                ]
-                IngestStateMachine: !GetAtt StateMachinesStack.Outputs.IngestStateMachineName
-                AnalysisStateMachine: !GetAtt StateMachinesStack.Outputs.AnalysisStateMachineName
-                IotThingPolicy: !Ref IotThingPolicy
-                # s3 bucket for uploading faces to Ground Truth
-                GroundTruthStateMachine: !GetAtt GroundTruthStack.Outputs.StateMachineName
-                GroundTruthTeamName: !GetAtt GroundTruthStack.Outputs.TeamName
-                GroundTruthTeamUserPool: !GetAtt GroundTruthStack.Outputs.TeamUserPool
-                GroundTruthTeamTopicName: !GetAtt GroundTruthStack.Outputs.TeamTopicName
-                IotHost: !GetAtt IotUrl.Endpoint
-                IotTopic: !Sub [
-                    "${x0}-${SanitizedStackName.OutputString}/status", {
-                        x0: !FindInMap [
-                            "Solution",
-                            "Project",
-                            "Id"
-                        ]
-                    }
-                ]
-                # AI/ML
-                AIOptions: !If [
-                    bAimlAudioText,
-                    "transcript,keyphrase,entity,text",
-                    !If [
-                        bAimlDefault,
-                        "transcript,keyphrase,entity,text,celeb,label",
-                        "transcript,keyphrase,entity,sentiment,topic,label,faceMatch,celeb,face,person,moderation,text"
-                        ]
-                    ]
-                LanguageCode: !Ref LanguageCode
-                FaceCollectionId: !GetAtt CreateFaceCollection.Id
-                CustomVocabulary: !GetAtt CreateCustomVocabulary.Name
-                MinConfidence: !FindInMap [
-                    "AIML",
-                    "Options",
-                    "MinConfidence"
-                ]
-                # layers
-                AwsSdkLayer: !Ref AwsSdkLayer
-                CoreLibLayer: !Ref CoreLibLayer
-                GSIIndexName: !FindInMap [
-                    "DynamoDB",
-                    "Ingest",
-                    "IndexName"
-                ]
-                IngestBucket: !GetAtt BucketStack.Outputs.IngestBucket
-                ProxyBucket: !GetAtt BucketStack.Outputs.ProxyBucket
-                # elasticsearch
-                ElasticsearchDomainName: !GetAtt SearchEngineStack.Outputs.DomainName
-                ElasticsearchDomainEndpoint: !GetAtt SearchEngineStack.Outputs.DomainEndpoint
-                ElasticsearchDomainIndexName: !GetAtt SearchEngineStack.Outputs.IndexName
-
-    ################################################################################
-    #
-    # Cognito related resources
-    #
-    ################################################################################
-    #
-    # Cognito Identity Pool Name can only contain letters, underscores, space, 128 characters
-    #
-    SanitizeIdentityPoolName:
-        Type: Custom::SanitizeIdentityPoolName
-        Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: StringManipulation
-            InputString: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-identitypool", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            Operations: "underscore,maxlen=127"
-            OutputReference: CognitoIdentityPoolName
-
-    #
-    # Cognito User pool
-    #
-    UserPool:
-        Type: "AWS::Cognito::UserPool"
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
-                    -
-                        id: F78
-                        reason: "Disable MFA check"
-        Properties:
-            AdminCreateUserConfig:
-                AllowAdminCreateUserOnly: true
-                InviteMessageTemplate:
-                  EmailSubject: "You are invited to AWS Media2Cloud demo portal"
-                  EmailMessage:
-                    !Sub
-                        - |-
-                            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schema=s-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
-                            <head>
-                            <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-                            <meta name="Generator" content="Microsoft Word 15 (filtered medium)">
-                            <style>
-                                @font-face {
-                                font-family: "Cambria Math"; panose-1: 2 4 5 3 5 4 6 3 2 4;
-                                }
-                                @font-face {
-                                font-family: DengXian; panose-1: 2 1 6 0 3 1 1 1 1 1;
-                                }
-                                @font-face {
-                                font-family: Calibri; panose-1: 2 15 5 2 2 2 4 3 2 4;
-                                }
-                                @font-face {
-                                font-family: "@DengXian"; panose-1: 2 1 6 0 3 1 1 1 1 1;
-                                }
-                                @font-face {
-                                font-family: "Amazon Ember"; panose-1: 2 11 6 3 2 2 4 2 2 4;
-                                }
-
-                                p.MsoNormal, li.MsoNormal, div.MsoNormal {
-                                margin: 0in;
-                                margin-bottom: .0001pt;
-                                font-size: 12.0pt;
-                                font-family: "Calibri", sans-serif;
-                                }
-
-                                h2 {
-                                mso-style-priority: 9;
-                                mso-style-link: "Heading 2 Char";
-                                mso-margin-top-alt: auto;
-                                margin-right: 0in;
-                                mso-margin-bottom-alt: auto;
-                                margin-left: 0in;
-                                font-size: 18.0pt;
-                                font-family: "Calibri", sans-serif;
-                                font-weight: bold;
-                                }
-
-                                a, span.MsoHyperlink {
-                                mso-style-priority: 99;
-                                color: #0563C1;
-                                }
-
-                                span.EmailStyle17 {
-                                mso-style-type: personal-compose;
-                                font-family: "Calibri", sans-serif;
-                                color: windowtext;
-                                }
-
-                                span.Heading2Char {
-                                mso-style-name: "Heading 2 Char";
-                                mso-style-priority: 9;
-                                mso-style-link: "Heading 2";
-                                font-family: "Calibri", sans-serif;
-                                font-weight: bold;
-                                }
-
-                                .MsoChpDefault {
-                                mso-style-type: export-only;
-                                font-family: "Calibri", sans-serif;
-                                }
-
-                                @page WordSection1 {
-                                size: 8.5in 11.0in;
-                                margin: 1.0in 1.0in 1.0in 1.0in;
-                                }
-
-                                div.WordSection1 {
-                                page: WordSection1;
-                                }
-
-                                .MainContent {
-                                font-variant-ligatures: normal;
-                                font-variant-caps: normal;
-                                orphans:2;
-                                text-align:start;
-                                widows:2;
-                                -webkit-text-stroke-width: 0px;
-                                text-decoration-style:initial;
-                                text-decoration-color:initial;
-                                word-spacing:0px;
-                                font-size:13.5pt;
-                                }
-
-                                .SubContent {
-                                font-family:'Amazon Ember',sans-serif;
-                                color:#333333"
-                                }
-                            </style>
-                            </head>
-
-                            <body lang="EN-US" link="#0563C1" vlink="#954F72">
-                            <div class="WordSection1">
-                                <h2>
-                                <span class="SubContent">
-                                    Welcome to AWS Media2Cloud demo portal<o:p></o:p>
-                                </span>
-                                </h2>
-
-                                <p class="MainContent" style="padding-bottom:30px;">
-                                <span class="SubContent">
-                                    You will need this user name and temporary password to log in the first time.<o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MainContent">
-                                <span class="SubContent">
-                                    User name: <b>{username}</b><o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MainContent">
-                                <span class="SubContent">
-                                    Temporary password: <b>{####}</b><o:p></o:p>
-                                </span>
-                                <br/>
-                                <span class="SubContent" style="font-size:10pt;">
-                                    (After you log in with your temporary password, you will be prompted to create a new one.)<o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MainContent" style="padding-bottom:30px;">
-                                <span class="SubContent">
-                                    Open the link to log in:<o:p></o:p>
-                                    <br/>
-                                    <span style="color:#007DBC">
-                                        <a href="${url}" target="_blank">${url}</a><o:p></o:p>
-                                    </span>
-                                </span>
-                                </p>
-
-                                <h2>
-                                <span class="SubContent">
-                                    Information you need to know<o:p></o:p>
-                                </span>
-                                </h2>
-
-                                <p class="MainContent">
-                                <span class="SubContent">
-                                    S3 Bucket where content is ingested:<o:p></o:p>
-                                    <br/>
-                                    <b>${ingest}</b><o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MainContent">
-                                <span class="SubContent">
-                                    S3 Bucket where proxies and metadata are stored:<o:p></o:p>
-                                    <br/>
-                                    <b>${proxy}</b><o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MainContent" style="padding-top: 30pt;">
-                                <span class="SubContent" style="font-size:12pt;">
-                                    <i>Team AWS Media2Cloud</i><o:p></o:p>
-                                </span>
-                                </p>
-
-                                <p class="MsoNormal">
-                                <span style="font-size:11.0pt">
-                                    <o:p>&nbsp;</o:p>
-                                </span>
-                                </p>
-                            </div>
-                            </body>
-                            </html>
-                        - {
-                            url: !GetAtt WebAppStack.Outputs.WebsiteUrl,
-                            ingest: !GetAtt BucketStack.Outputs.IngestBucket,
-                            proxy: !GetAtt BucketStack.Outputs.ProxyBucket
-                        }
-            AliasAttributes:
-                - email
-            AutoVerifiedAttributes:
-                - email
-            MfaConfiguration: 'OFF'
-            Policies:
-                PasswordPolicy:
-                    MinimumLength: 8
-                    RequireLowercase: true
-                    RequireNumbers: true
-                    RequireSymbols: false
-                    RequireUppercase: true
-            UserPoolName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-userpool", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-
-    #
-    # Cognito App client
-    #
-    AppClient:
-        Type: "AWS::Cognito::UserPoolClient"
-        Properties:
-            ClientName: !Sub [
-                "${x0}-${SanitizedStackName.OutputString}-app", {
-                    x0: !FindInMap [
-                        "Solution",
-                        "Project",
-                        "Id"
-                    ]
-                }
-            ]
-            RefreshTokenValidity: 30
-            UserPoolId: !Ref UserPool
-
-    #
-    # Cognito Identity pool
-    #
-    IdentityPool:
-        Type: "AWS::Cognito::IdentityPool"
-        Properties:
-            IdentityPoolName: !GetAtt SanitizeIdentityPoolName.OutputString
-            AllowUnauthenticatedIdentities: false
-            CognitoIdentityProviders:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
                 -
-                  ClientId: !Ref AppClient
-                  ProviderName: !GetAtt UserPool.ProviderName
-                  ServerSideTokenCheck: false
-
-    #
-    # Cognito Authenticated user IAM role
-    #
-    AuthenticatedRole:
-        Type: AWS::IAM::Role
-        Metadata:
-            cfn_nag:
-                rules_to_suppress:
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - Core
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
                     -
-                        id: W11
-                        reason: "This wildcard is present as the authenticated cognito role needs to be able to access contents within the bucket!"
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
+                CustomResourcesRoleName: !Ref CustomResourcesRole
+                UserDefinedIngestBucket: !Ref UserDefinedIngestBucket
+                OpenSearchDedicatedMaster: !Select
+                    - 0
+                    - !Split
+                        - ","
+                        - !Select
+                            - 0
+                            - !Split
+                                - ")"
+                                - !Select
+                                    - 1
+                                    - !Split
+                                        - "("
+                                        - !Ref OpenSearchCluster
+                OpenSearchInstance: !Select
+                    - 1
+                    - !Split
+                        - ","
+                        - !Select
+                            - 0
+                            - !Split
+                                - ")"
+                                - !Select
+                                    - 1
+                                    - !Split
+                                        - "("
+                                        - !Ref OpenSearchCluster
+                OpenSearchVolume: !Select
+                    - 2
+                    - !Split
+                        - ","
+                        - !Select
+                            - 0
+                            - !Split
+                                - ")"
+                                - !Select
+                                    - 1
+                                    - !Split
+                                        - "("
+                                        - !Ref OpenSearchCluster
+                OpenSearchAvailabilityZone: !Select
+                    - 3
+                    - !Split
+                        - ","
+                        - !Select
+                            - 0
+                            - !Split
+                                - ")"
+                                - !Select
+                                    - 1
+                                    - !Split
+                                        - "("
+                                        - !Ref OpenSearchCluster
+                PriceClass: !Select
+                    - 0
+                    - !Split
+                        - ")"
+                        - !Select
+                            - 1
+                            - !Split
+                                - "("
+                                - !Ref PriceClass
+
+    ################################################################################
+    #
+    # WebApp stack
+    # * create the core resources shared among other stacks such as:
+    #   Buckets, Lambda Layers, IoT, etc
+    #
+    ################################################################################
+    WebAppStack:
+        Type: AWS::CloudFormation::Stack
         Properties:
-            AssumeRolePolicyDocument:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
+                -
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - WebApp
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                CustomUserAgent: !FindInMap
+                    - Solution
+                    - Project
+                    - CustomUserAgent
+                AnonymousUsage: !FindInMap
+                    - Send
+                    - AnonymousUsage
+                    - Data
+                CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
+                CustomResourcesRoleName: !Ref CustomResourcesRole
+                AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
+                CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
+                IotHost: !GetAtt CoreStack.Outputs.IotHost
+                IotTopic: !GetAtt CoreStack.Outputs.IotTopic
+                IotThingPolicy: !GetAtt CoreStack.Outputs.IotThingPolicy
+                IngestBucket: !GetAtt CoreStack.Outputs.IngestBucket
+                ProxyBucket: !GetAtt CoreStack.Outputs.ProxyBucket
+                WebBucket: !GetAtt CoreStack.Outputs.WebBucket
+                CloudFrontDistributionId: !GetAtt CoreStack.Outputs.CloudFrontDistributionId
+                CloudFrontDistributionDomainName: !GetAtt CoreStack.Outputs.CloudFrontDistributionDomainName
+                OpenSearchDomainName: !GetAtt CoreStack.Outputs.OpenSearchDomainName
+                OpenSearchDomainEndpoint: !GetAtt CoreStack.Outputs.OpenSearchDomainEndpoint
+                DefaultAIOptions: !Select
+                    - 0
+                    - !Split
+                        - ")"
+                        - !Select
+                            - 1
+                            - !Split
+                                - "("
+                                - !Ref DefaultAIOptions
+                DefaultMinConfidence: !FindInMap
+                    - AIML
+                    - Options
+                    - DefaultMinConfidence
+
+    ################################################################################
+    #
+    # Backend stack
+    #
+    ################################################################################
+    BackendStack:
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
+                -
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - Backend
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                CustomUserAgent: !FindInMap
+                    - Solution
+                    - Project
+                    - CustomUserAgent
+                AnonymousUsage: !FindInMap
+                    - Send
+                    - AnonymousUsage
+                    - Data
+                CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
+                CustomResourcesRoleName: !Ref CustomResourcesRole
+                AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
+                CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
+                IotHost: !GetAtt CoreStack.Outputs.IotHost
+                IotTopic: !GetAtt CoreStack.Outputs.IotTopic
+                #IotThingPolicy: !GetAtt CoreStack.Outputs.IotThingPolicy
+                IngestBucket: !GetAtt CoreStack.Outputs.IngestBucket
+                ProxyBucket: !GetAtt CoreStack.Outputs.ProxyBucket
+                #WebBucket: !GetAtt CoreStack.Outputs.WebBucket
+                #CloudFrontDistributionId: !GetAtt CoreStack.Outputs.CloudFrontDistributionId
+                OpenSearchDomainName: !GetAtt CoreStack.Outputs.OpenSearchDomainName
+                OpenSearchDomainEndpoint: !GetAtt CoreStack.Outputs.OpenSearchDomainEndpoint
+                DefaultAIOptions: !Select
+                    - 0
+                    - !Split
+                        - ")"
+                        - !Select
+                            - 1
+                            - !Split
+                                - "("
+                                - !Ref DefaultAIOptions
+                DefaultMinConfidence: !FindInMap
+                    - AIML
+                    - Options
+                    - DefaultMinConfidence
+                MediaConvertEndpoint: !GetAtt CoreStack.Outputs.MediaConvertEndpoint
+                StartOnObjectCreation: !Ref StartOnObjectCreation
+
+    ################################################################################
+    #
+    # PostProcess
+    # * Attach Backend resources to ApiRole once stack is created
+    # * Create solution manifest
+    # * Register cognito user
+    # * Subscribe to SNS topic
+    # * Send metrics
+    #
+    ################################################################################
+    ApiRolePolicyBackend:
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !GetAtt WebAppStack.Outputs.ApiRole
+            PolicyName: !Sub
+                - ${solutionId}-${stackId}-api-backend
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - LowerCaseId
+                    stackId: !Select
+                        - 4
+                        - !Split
+                            - "-"
+                            - !Select
+                                - 2
+                                - !Split
+                                    - "/"
+                                    - !Ref AWS::StackId
+            PolicyDocument:
                 Version: "2012-10-17"
                 Statement:
+                    # Step Functions
                     -
-                        Effect: "Allow"
-                        Principal:
-                            Federated: "cognito-identity.amazonaws.com"
+                        Effect: Allow
                         Action:
-                            - "sts:AssumeRoleWithWebIdentity"
-                        Condition:
-                            StringEquals:
-                                cognito-identity.amazonaws.com:aud: !Ref IdentityPool
-                            ForAnyValue:StringLike:
-                                cognito-identity.amazonaws.com:amr: "authenticated"
-            Path: /
-            Policies:
-                -
-                    PolicyName: !Sub [
-                        "${x0}-${SanitizedStackName.OutputString}-CognitoAuthUser", {
-                            x0: !FindInMap [
-                                "Solution",
-                                "Project",
-                                "Id"
-                            ]
-                        }
-                    ]
-                    PolicyDocument:
-                        Version: "2012-10-17"
-                        Statement:
-                            ## Cognito
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "cognito-identity:GetId"
-                                Resource: [
-                                    !Sub "arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${IdentityPool}"
-                                ]
+                            - states:DescribeStateMachine
+                            - states:StartExecution
+                        Resource:
+                            - !GetAtt BackendStack.Outputs.MainStateMachine
+                            - !GetAtt BackendStack.Outputs.IngestMainStateMachine
+                            - !GetAtt BackendStack.Outputs.AnalysisMainStateMachine
+                    -
+                        Effect: Allow
+                        Action:
+                            - states:DescribeExecution
+                            - states:StopExecution
+                        Resource:
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.MainStateMachineName}:*
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.IngestMainStateMachineName}:*
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.AnalysisMainStateMachineName}:*
+                    # DynamoDB - read/write/delete from ingest and analysis tables
+                    -
+                        Effect: Allow
+                        Action:
+                            - dynamodb:DescribeTable
+                            - dynamodb:Query
+                            - dynamodb:Scan
+                            - dynamodb:UpdateItem
+                            - dynamodb:DeleteItem
+                        Resource:
+                            - !GetAtt BackendStack.Outputs.AnalysisTableArn
+                            - !GetAtt BackendStack.Outputs.IngestTableArn
+                    # DynamoDB - read from ingest indices
+                    -
+                        Effect: Allow
+                        Action:
+                            - dynamodb:DescribeTable
+                            - dynamodb:Query
+                            - dynamodb:Scan
+                        Resource: !Sub ${BackendStack.Outputs.IngestTableArn}/index/*
 
-                            ## S3
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "s3:GetObject"
-                                    - "s3:PutObject"
-                                    - "s3:ListBucket"
-                                Resource:
-                                    - !Sub "arn:aws:s3:::${BucketStack.Outputs.IngestBucket}"
-                                    - !Sub "arn:aws:s3:::${BucketStack.Outputs.IngestBucket}/*"
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "s3:GetObject"
-                                    - "s3:PutObject"
-                                    - "s3:ListBucket"
-                                Resource:
-                                    - !Sub "arn:aws:s3:::${BucketStack.Outputs.ProxyBucket}"
-                                    - !Sub "arn:aws:s3:::${BucketStack.Outputs.ProxyBucket}/*"
-
-                            ## API Gateway
-                            -
-                                Effect: "Allow"
-                                Action:
-                                    - "execute-api:Invoke"
-                                Resource:
-                                    - !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Media2CloudApiGatewayStack.Outputs.ApiId}/*/*/*"
-
-                            ## IoT
-                            -
-                                Effect: Allow
-                                Action:
-                                    - "iot:Connect"
-                                Resource:
-                                    - !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*"
-                            -
-                                Effect: Allow
-                                Action:
-                                    - "iot:Subscribe"
-                                Resource:
-                                    - !Sub [
-                                        "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${x0}-${SanitizedStackName.OutputString}/status", {
-                                            x0: !FindInMap [
-                                                "Solution",
-                                                "Project",
-                                                "Id"
-                                            ]
-                                        }
-                                    ]
-                            -
-                                Effect: Allow
-                                Action:
-                                    - "iot:Receive"
-                                Resource:
-                                    - !Sub [
-                                        "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${x0}-${SanitizedStackName.OutputString}/status", {
-                                            x0: !FindInMap [
-                                                "Solution",
-                                                "Project",
-                                                "Id"
-                                            ]
-                                        }
-                                    ]
-
-    #
-    # Cognito attached IAM role to Identity pool
-    #
-    IdentityPoolRoleAttachment:
-        Type: "AWS::Cognito::IdentityPoolRoleAttachment"
+    ################################################################################
+    # CustomResourcesRoleMain
+    CustomResourcesRoleMain:
+        Type: AWS::IAM::Policy
         Properties:
-            IdentityPoolId: !Ref IdentityPool
             Roles:
-                authenticated: !GetAtt AuthenticatedRole.Arn
+                - !Ref CustomResourcesRole
+            PolicyName: !Sub
+                - ${solutionId}-${stackId}-custom-resources-main-stack
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - LowerCaseId
+                    stackId: !Select
+                        - 4
+                        - !Split
+                            - "-"
+                            - !Select
+                                - 2
+                                - !Split
+                                    - "/"
+                                    - !Ref AWS::StackId
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # S3 - create solution manifest
+                    -
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${CoreStack.Outputs.WebBucket}/*
+                    # Cognito - register user
+                    -
+                        Effect: Allow
+                        Action: cognito-idp:AdminCreateUser
+                        Resource: !GetAtt WebAppStack.Outputs.CognitoUserPoolArn
+                    # SNS - subscribe user
+                    -
+                        Effect: Allow
+                        Action: sns:Subscribe
+                        Resource: !GetAtt BackendStack.Outputs.SNSTopicArn
 
-    #
-    # Register Cognito user
-    #
-    RegisterUser:
-        DependsOn: UpdateManifest
+    CreateSolutionManifest:
+        DependsOn: CustomResourcesRoleMain
+        Type: Custom::CreateSolutionManifest
+        Properties:
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                Region: !Ref AWS::Region
+                CustomUserAgent: !FindInMap
+                    - Solution
+                    - Project
+                    - CustomUserAgent
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                Version: !FindInMap
+                    - Solution
+                    - Project
+                    - Version
+                StackName: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                # Core stack
+                Ingest:
+                    Bucket: !GetAtt CoreStack.Outputs.IngestBucket
+                Proxy:
+                    Bucket: !GetAtt CoreStack.Outputs.ProxyBucket
+                Web:
+                    Bucket: !GetAtt CoreStack.Outputs.WebBucket
+                S3:
+                    UseAccelerateEndpoint: !GetAtt CoreStack.Outputs.UseAccelerateEndpoint
+                    ExpectedBucketOwner: !Ref AWS::AccountId
+                IotHost: !GetAtt CoreStack.Outputs.IotHost
+                IotTopic: !GetAtt CoreStack.Outputs.IotTopic
+                # Backend stack
+                StateMachines:
+                    Main: !GetAtt BackendStack.Outputs.MainStateMachineName
+                    Ingest: !GetAtt BackendStack.Outputs.IngestMainStateMachineName
+                    Analysis: !GetAtt BackendStack.Outputs.AnalysisMainStateMachineName
+                AIML:
+                    MinConfidence: !GetAtt BackendStack.Outputs.DefaultMinConfidence
+                    Detections: !Split
+                        - ","
+                        - !GetAtt BackendStack.Outputs.DefaultAIOptions
+                # WebApp stack
+                ApiEndpoint: !GetAtt WebAppStack.Outputs.ApiEndpoint
+                Cognito:
+                    UserPoolId: !GetAtt WebAppStack.Outputs.CognitoUserPool
+                    ClientId: !GetAtt WebAppStack.Outputs.CognitoAppClient
+                    IdentityPoolId: !GetAtt WebAppStack.Outputs.CognitoIdentityPool
+                    RedirectUri: !GetAtt WebAppStack.Outputs.HomePage
+                LastUpdated: !GetAtt WebAppStack.Outputs.LastUpdated
+
+    CognitoRegisterUser:
+        DependsOn: CreateSolutionManifest
         Type: Custom::RegisterUser
         Properties:
-            ServiceToken: !GetAtt CustomResourceFunction.Arn
-            FunctionName: RegisterUser
-            UserPoolId: !Ref UserPool
-            Email: !Ref Email
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                UserPoolId: !GetAtt WebAppStack.Outputs.CognitoUserPool
+                Email: !If
+                    - bEmail
+                    - !Ref Email
+                    - !Ref AWS::NoValue
+                Username: !If
+                    - bUseTemporaryCode
+                    - !Select
+                        - 0
+                        - !Split
+                            - ":"
+                            - !Ref Email
+                    - !If
+                        - bEmail
+                        - !Select
+                            - 0
+                            - !Split
+                                - "@"
+                                - !Ref Email
+                        - !Ref AWS::NoValue
+                TemporaryCode: !If
+                    - bUseTemporaryCode
+                    - !Select
+                        - 1
+                        - !Split
+                            - ":"
+                            - !Ref Email
+                    - !Ref AWS::NoValue
+
+    SubscribeSNSTopic:
+        Condition: bEmail
+        DependsOn: CognitoRegisterUser
+        Type: Custom::EmailSubscribe
+        Properties:
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                TopicArn: !GetAtt BackendStack.Outputs.SNSTopicArn
+                EmailList: !Split
+                    - ","
+                    - !Ref Email
+
+    SendConfig:
+        Type: Custom::SendConfig
+        Properties:
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                Version: !FindInMap
+                    - Solution
+                    - Project
+                    - Version
+                AnonymousUsage: !FindInMap
+                    - Send
+                    - AnonymousUsage
+                    - Data
+                OpenSearchCluster: !Ref OpenSearchCluster
+                SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
 
 Outputs:
-    ## Layers
-    AwsSdkLayerArn:
-        Value: !Ref AwsSdkLayer
-        Description: Lambda Layer (AWS SDK)
-
-    CoreLibLayerArn:
-        Value: !Ref CoreLibLayer
-        Description: Lambda Layer (M2C Core Library)
-
-    MediainfoLayerArn:
-        Value: !Ref MediainfoLayer
-        Description: Lambda Layer (Mediainfo)
-
-    ImageProcessLayerArn:
-        Value: !Ref ImageProcessLayer
-        Description: Lambda Layer (ImageProcess)
-
-    FixityLibLayerArn:
-        Value: !Ref FixityLibLayer
-        Description: Lambda Layer (Fixity Library)
-
-    ## Custom Resource related
-    CustomResourceExecutionRoleArn:
-        Value: !GetAtt CustomResourceExecutionRole.Arn
-        Description: Role Arn (Custom Resource)
-    CustomResourceName:
-        Value: !Ref CustomResourceFunction
-        Description: Lambda Name (Custom Resource)
-    CustomResourceArn:
-        Value: !GetAtt CustomResourceFunction.Arn
-        Description: Lambda Arn (Custom Resource)
-
-    ## Buckets
-    IngestBucket:
-        Value: !GetAtt BucketStack.Outputs.IngestBucket
-        Description: Bucket (Ingest)
-
-    ProxyBucket:
-        Value: !GetAtt BucketStack.Outputs.ProxyBucket
-        Description: Bucket (Proxy)
-
-    WebBucket:
-        Value: !GetAtt BucketStack.Outputs.WebBucket
-        Description: Bucket (Web)
-
-    ## Search engine
-    ElasticsearchDomainName:
-        Value: !GetAtt SearchEngineStack.Outputs.DomainName
-        Description: "Elasticsearch Domain Name (Search Engine)"
-    ElasticsearchDomainEndpoint:
-        Value: !GetAtt SearchEngineStack.Outputs.DomainEndpoint
-        Description: "Elasticsearch Domain Endpoint (Search Engine)"
-    ElasticsearchIndexName:
-        Value: !GetAtt SearchEngineStack.Outputs.IndexName
-        Description: "Elasticsearch Index Document Name (Search Engine)"
-
-    ## SNS related
-    SNSTopicName:
-        Value: !GetAtt SNSTopic.TopicName
-        Description: Topic Name (SNS)
-    SNSTopicArn:
-        Value: !Ref SNSTopic
-        Description: Topic Arn (SNS)
-
-    ## DynamoDB related
-    AIMLTableName:
-        Value: !Ref AIMLTable
-        Description: Table Name (AIML Queue)
-    AnalysisQueueTableName:
-        Value: !Ref AnalysisQueueTable
-        Description: Table Name (Analysis Queue)
-    IngestTableName:
-        Value: !Ref IngestTable
-        Description: Table Name (Ingest)
-
-    ## Iot related
-    IotThingName:
-        Value: !Ref IotThing
-        Description: Iot Thing Name
-    IotThingPolicy:
-        Value: !Ref IotThingPolicy
-        Description: Iot Thing Policy Name
-    IotThingPolicyArn:
-        Value: !GetAtt IotThingPolicy.Arn
-        Description: Iot Thing Policy Arn
-    IotTopic:
-        Value: !Sub [
-            "${x0}-${SanitizedStackName.OutputString}/status", {
-                x0: !FindInMap [
-                    "Solution",
-                    "Project",
-                    "Id"
-                ]
-            }
-        ]
-        Description: Iot Message Topic
-
-    ## State machine related
-    MediaConvertRoleArn:
-        Value: !GetAtt StateMachinesStack.Outputs.MediaConvertRoleArn
-        Description: Role Arn (Media2Cloud MediaConvert Service)
-    Media2CloudStateMachineExecutionRoleList:
-        Value: !GetAtt StateMachinesStack.Outputs.ExecutionRoleList
-        Description: List of Roles (Media2Cloud State Machine Execution)
-    Media2CloudStateMachineServiceRoleArn:
-        Value: !GetAtt StateMachinesStack.Outputs.ServiceRoleArn
-        Description: Role Arn (Media2Cloud State Machine Service)
-    Media2CloudIngestStateMachineArn:
-        Value: !GetAtt StateMachinesStack.Outputs.IngestStateMachineArn
-        Description: State Machine Arn (Media2Cloud Ingest)
-    Media2CloudIngestStateMachineName:
-        Value: !GetAtt StateMachinesStack.Outputs.IngestStateMachineName
-        Description: State Machine Name (Media2Cloud Ingest)
-    Media2CloudAnalysisStateMachineArn:
-        Value: !GetAtt StateMachinesStack.Outputs.AnalysisStateMachineArn
-        Description: State Machine Arn (Media2Cloud Metadata)
-    Media2CloudAnalysisStateMachineName:
-        Value: !GetAtt StateMachinesStack.Outputs.AnalysisStateMachineName
-        Description: State Machine Name (Media2Cloud Metadata)
-    Media2CloudStateMachineLambdaList:
-        Value: !GetAtt StateMachinesStack.Outputs.LambdaFunctionList
-        Description: List of Lambda Functions (Media2Cloud State Machine)
-
-    ## CloudWatch Event (State machine error handling)
-    StateMachineErrorHandlerRoleArn:
-        Value: !GetAtt StateMachineErrorHandlerRole.Arn
-        Description: Role Arn (State Machine Error Handler)
-
-    OnStateMachineErrorFunctionArn:
-        Value: !GetAtt OnStateMachineErrorFunction.Arn
-        Description: Lambda Arn (State Machine Error Handler)
-
-    StateMachineErrorCloudWatchEventArn:
-        Value: !GetAtt StateMachineErrorCloudWatchEvent.Arn
-        Description: CloudWatch Rule Arn (State Machine Error Handler)
-
-    ## API Gateway related
-    Media2CloudApiId:
-        Value: !GetAtt Media2CloudApiGatewayStack.Outputs.ApiId
-        Description: API Id (Media2Cloud)
-    Media2CloudEndpoint:
-        Value: !GetAtt Media2CloudApiGatewayStack.Outputs.Endpoint
-        Description: API Endpoint (Media2Cloud)
-
-    ## Cognito related
-    CognitoUserPoolId:
-        Value: !Ref UserPool
-        Description: "User Pool ID (Cognito)"
-    CognitoUserPoolArn:
-        Value: !GetAtt UserPool.Arn
-        Description: "User Pool Arn (Cognito)"
-    CognitoUserPoolProviderName:
-        Value: !GetAtt UserPool.ProviderName
-        Description: "User Pool Provider Name (Cognito)"
-    CognitoUserPoolProviderURL:
-        Value: !GetAtt UserPool.ProviderURL
-        Description: "User Pool Provider Url (Cognito)"
-    CognitoAppClientId:
-        Value: !Ref AppClient
-        Description: "App Client ID (Cognito)"
-    CognitoIdentityPoolId:
-        Value: !Ref IdentityPool
-        Description: "Identity Pool (Cognito)"
-    CognitoIdentityPoolName:
-        Value: !GetAtt IdentityPool.Name
-        Description: "Identity Pool Name (Cognito)"
-    CognitoRegisterUser:
-        Value: !GetAtt RegisterUser.Username
-        Description: "Registered Username (Cognito)"
-
-    ## WebApp related
-    DistributionId:
-        Value: !GetAtt WebAppStack.Outputs.DistributionId
-        Description: Id (CloudFront Distribution)
-    HomePageUrl:
-        Value: !GetAtt WebAppStack.Outputs.WebsiteUrl
-        Description: "Home Page Url (WebApp)"
-
-    ## Misc.
-    SanitizedStackName:
-        Value: !GetAtt SanitizedStackName.OutputString
-        Description: Stack Name (Sanitized)
-
-    RandomizedName:
-        Value: !GetAtt RandomizedName.OutputString
-        Description: Name (Randomize for prefixing resource)
+    HomePage:
+        Value: !GetAtt WebAppStack.Outputs.HomePage
+        Description: HomePage
+    ApiEndpoint:
+        Value: !GetAtt WebAppStack.Outputs.ApiEndpoint
+        Description: ApiEndpoint

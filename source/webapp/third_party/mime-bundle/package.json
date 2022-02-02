@@ -1,0 +1,19 @@
+{
+  "name": "mime-bundle",
+  "version": "2.0.0",
+  "description": "build mime for browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist && mkdir -p dist/js",
+    "build:browserify": "browserify index.js -o dist/js/mime.js",
+    "build:copy": "terser dist/js/mime.js -o ./dist/js/mime.min.js",
+    "build": "npm-run-all -s build:clean build:browserify build:copy"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "mime": "^2.3.1"
+  },
+  "devDependencies": {}
+}

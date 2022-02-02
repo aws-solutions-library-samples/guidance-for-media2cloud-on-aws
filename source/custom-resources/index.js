@@ -1,43 +1,18 @@
-/**
- * Copyright 2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: LicenseRef-.amazon.com.-AmznSL-1.0
- * Licensed under the Amazon Software License  http://aws.amazon.com/asl/
- */
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-/**
- * @author MediaEnt Solutions
- */
+const CloudFormationResponse = require('./lib/shared/cfResponse');
 
-/* eslint-disable no-console */
-/* eslint-disable global-require */
-/* eslint-disable no-unused-vars */
-/* eslint-disable arrow-body-style */
-
-const {
-  CloudFormationResponse,
-} = require('./lib/shared/cfResponse');
-
-
-/**
- * @function Run
- * @description entrypoint to delegate to service's specific functions.
- * @param {object} event
- * @param {object} context
- */
-exports.Run = async (event, context) => {
+exports.handler = async (event, context) => {
   console.log(`\nconst event = ${JSON.stringify(event, null, 2)};\nconst context = ${JSON.stringify(context, null, 2)}`);
 
   const cfResponse = new CloudFormationResponse(event, context);
-
   let response;
 
   try {
-    const {
-      FunctionName,
-    } = (event || {}).ResourceProperties || {};
-
+    const resource = event.ResourceType.split(':').pop();
     let handler;
-    switch (FunctionName) {
+    switch (resource) {
       /* SNS */
       case 'EmailSubscribe':
         handler = require('./lib/sns/index').EmailSubscribe;
@@ -49,18 +24,15 @@ exports.Run = async (event, context) => {
       case 'UpdateManifest':
         handler = require('./lib/web/index').UpdateManifest;
         break;
+      case 'CreateSolutionManifest':
+        handler = require('./lib/web/index').UpdateManifest;
+        break;
       /* S3 */
-      case 'CheckBucketAvailability':
-        handler = require('./lib/s3/index').CheckBucketAvailability;
-        break;
-      case 'SetNotification':
-        handler = require('./lib/s3/index').SetNotification;
-        break;
       case 'SetCORS':
         handler = require('./lib/s3/index').SetCORS;
         break;
-      case 'SetLifecyclePolicy':
-        handler = require('./lib/s3/index').SetLifecyclePolicy;
+      case 'ConfigureBucketNotification':
+        handler = require('./lib/s3/index').ConfigureBucketNotification;
         break;
       /* string */
       case 'StringManipulation':
@@ -101,24 +73,26 @@ exports.Run = async (event, context) => {
       case 'CreateIndex':
         handler = require('./lib/elasticsearch').CreateIndex;
         break;
+      case 'CreatePipeline':
+        handler = require('./lib/elastictranscoder').CreatePipeline;
+        break;
+      /* cloudfront */
+      case 'InvalidateCache':
+        handler = require('./lib/cloudfront').InvalidateCache;
+        break;
       default:
         break;
     }
 
     if (!handler) {
-      throw Error(`${FunctionName} not implemented`);
+      throw Error(`${resource} not implemented`);
     }
-
     response = await handler(event, context);
     console.log(`response = ${JSON.stringify(response, null, 2)}`);
 
-    response = await cfResponse.send(response);
-
-    return response;
+    return cfResponse.send(response);
   } catch (e) {
     console.error(e);
-    response = await cfResponse.send(e);
-
-    return response;
+    return cfResponse.send(e);
   }
 };

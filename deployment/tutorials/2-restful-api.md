@@ -132,7 +132,7 @@ For this tutorial, we will use Postman application to send requests. If you have
 #### Step 3.1: Import the Media2Cloud Postman collection template
 For simplity, we created a Postman collection template (JSON document) to help you to configure the authentication and Media2Cloud RESTful API endpoints.
 
-1. Download the collection template [here](https://raw.githubusercontent.com/awslabs/media2cloud/master/deployment/tutorials/samples/media2cloud-api-postman-collection.json)
+1. Download the collection template [here](https://raw.githubusercontent.com/aws-solutions/media2cloud/master/deployment/tutorials/samples/media2cloud-api-postman-collection.json)
 
 2. Open the collection template with your text editor. You should find **\<access-key-id\>**, **\<secret-access-key\>**, and **\<aws-region\>** under **auth** block as follows:
 
