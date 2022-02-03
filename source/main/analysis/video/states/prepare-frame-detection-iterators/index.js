@@ -26,7 +26,6 @@ const SUBCATEGORY_TEXT = AnalysisTypes.Rekognition.Text;
 const SUBCATEGORY_MODERATION = AnalysisTypes.Rekognition.Moderation;
 const FRAMECAPTURE_GROUP = 'frameCapture';
 const ITERATORS = 'iterators';
-const OPT_FRAMEBASED = 'framebased';
 
 class StatePrepareFrameDetectionIterators {
   constructor(stateData) {
@@ -47,7 +46,7 @@ class StatePrepareFrameDetectionIterators {
   async process() {
     const input = this.stateData.input;
     const aiOptions = input.aiOptions;
-    if (!aiOptions[OPT_FRAMEBASED]) {
+    if (!aiOptions.framebased || !aiOptions.frameCaptureMode) {
       return this.emptyIterators();
     }
     const bucket = input.destination.bucket;

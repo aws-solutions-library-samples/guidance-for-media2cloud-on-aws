@@ -203,6 +203,8 @@ class StatePrepareAnalysis {
     let aiOptions = options;
     disabled = Array.from(new Set(disabled));
     disabled.forEach(x => aiOptions[x] = false);
+    // check framebased/frameCaptureMode settings
+    aiOptions = this.checkFrameBasedAnalysis(aiOptions);
     // check rekognition/transcribe/comprehend custom settings
     if (rekognition) {
       aiOptions = await this.checkRekognitionCustomLabels(aiOptions);
@@ -473,6 +475,14 @@ class StatePrepareAnalysis {
       prefix: PATH.parse(asset.proxies[0].key).dir,
       numPages: asset.docinfo.numPages,
     };
+  }
+
+  checkFrameBasedAnalysis(options) {
+    if (options.framebased === true
+      && options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
+      options.framebased = false;
+    }
+    return options;
   }
 }
 
