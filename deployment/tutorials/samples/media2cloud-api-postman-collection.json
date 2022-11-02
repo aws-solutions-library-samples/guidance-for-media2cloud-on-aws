@@ -1,7 +1,7 @@
 {
 	"info": {
-		"name": "Media2Cloud",
-		"description": "Examples of Media2Cloud RESTful APIs to ingest, analyze, and search contents.",
+		"name": "Media2Cloud V3",
+		"description": "Examples of Media2Cloud V3 RESTful APIs to ingest, analyze, and search contents.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -9,22 +9,22 @@
 		"awsv4": [
 			{
 				"key": "sessionToken",
-				"value": "",
+				"value": "{sessionToken}",
 				"type": "string"
 			},
 			{
 				"key": "secretKey",
-				"value": "<secret-access-key>",
+				"value": "{secretKey}",
 				"type": "string"
 			},
 			{
 				"key": "accessKey",
-				"value": "<access-key-id>",
+				"value": "{accessKey}",
 				"type": "string"
 			},
 			{
 				"key": "region",
-				"value": "<aws-region>",
+				"value": "{region}",
 				"type": "string"
 			},
 			{
@@ -36,7 +36,7 @@
 	},
 	"item": [
 		{
-			"name": "Start ingest",
+			"name": "Start ingest and analysis",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -49,7 +49,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n\t\"bucket\": \"<bucket-name>\",\n\t\"key\": \"<object-key>\"\n}\n",
+					"raw": "{\"input\": {\"bucket\": \"{ingest-bucket}\",\"key\": \"tutorial/demo.png\"}}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -60,37 +60,18 @@
 					"raw": "",
 					"protocol": "",
 					"host": [
-						"<Media2CloudEndpoint>"
+						"{ApiEndpoint}"
 					],
 					"path": [
 						"assets"
 					]
 				},
-				"description": "Starting ingest workflow with bucket and  key input parameters. This assumes that the object is already uploaded to the bucket.\n"
+				"description": "Starting ingest and analysis workflow. \"bucket\" and \"key\" are required. File must already exist in the S3 bucket.\n"
 			},
 			"response": []
 		},
 		{
-			"name": "Get a list of ingested content",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "",
-					"protocol": "",
-					"host": [
-						"<Media2CloudEndpoint>"
-					],
-					"path": [
-						"assets"
-					]
-				},
-				"description": "Example of getting a list of ingested contents in Media2Cloud collection"
-			},
-			"response": []
-		},
-		{
-			"name": "Get information of a specific ingested content",
+			"name": "Get a list of ingested contents",
 			"request": {
 				"method": "GET",
 				"header": [
@@ -105,49 +86,40 @@
 					"raw": "",
 					"protocol": "",
 					"host": [
-						"<Media2CloudEndpoint>"
+						"{ApiEndpoint}"
+					],
+					"path": [
+						"assets"
+					]
+				},
+				"description": "Example of getting a list of processed contents in Media2Cloud collection"
+			},
+			"response": []
+		},
+		{
+			"name": "Get information of a specific processed content",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"name": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "",
+					"protocol": "",
+					"host": [
+						"{ApiEndpoint}"
 					],
 					"path": [
 						"assets",
-						"<uuid>"
+						"{uuid}"
 					]
 				},
-				"description": "Example to get uploaded asset information by providing uuid of the asset"
-			},
-			"response": []
-		},
-		{
-			"name": "Start analysis",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"name": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n\t\"uuid\": \"<uuid>\"\n}\n\n",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "",
-					"protocol": "",
-					"host": [
-						"<Media2CloudEndpoint>"
-					],
-					"path": [
-						"analysis"
-					]
-				},
-				"description": "Example of starting analysis after the content has been ingested."
+				"description": "Example to get processed asset information by providing uuid of the asset"
 			},
 			"response": []
 		},
@@ -160,14 +132,14 @@
 					"raw": "",
 					"protocol": "",
 					"host": [
-						"<Media2CloudEndpoint>"
+						"{ApiEndpoint}"
 					],
 					"path": [
 						"analysis",
-						"<uuid>"
+						"{uuid}"
 					]
 				},
-				"description": "Example of getting the analysis result of an asset with the uuid of the asset."
+				"description": "Example of getting analysis result of an asset with the uuid of the asset."
 			},
 			"response": []
 		},
@@ -180,7 +152,7 @@
 					"raw": "",
 					"protocol": "",
 					"host": [
-						"<Media2CloudEndpoint>"
+						"{ApiEndpoint}"
 					],
 					"path": [
 						"search"

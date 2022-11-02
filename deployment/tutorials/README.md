@@ -1,23 +1,56 @@
-## Media2Cloud mini workshop
+## Media2Cloud V3 mini workshop series
 
-This tutorial walks you through to create Media2Cloud with AWS CloudFormation service. We will then show you a few techniques to automate Media2Cloud processes such as ingesting contents and analyzing contents with various AWS services.
+Welcome to this mini workshop series of Media2Cloud V3 solution. The workshop consists of four tutorials that we discuss how to use the Media2Cloud solution programmatically.
+
+* [Tutorial 1: Creating the Media2Cloud solution using AWS CloudFormation service](./1-creating-media2cloud-stack.md)
+* [Tutorial 2: Using the Media2Cloud RESTful APIs to ingest and search contents](./2-using-media2cloud-restful-api.md)
+* [Tutorial 3: Automating ingest and analysis workflow with Amazon EventBridge](./3-automate-ingest-analysis-workflow.md), and
+* [Tutorial 4: Integrating Media2Cloud workflow to downstream process](./4-downstream-integration.md)
+
+This is a hands-on workshop and uses numbers of command line tools: [AWS Command Line Interace (CLI)](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html), [cURL](https://curl.se/download.html), and [JQ](https://stedolan.github.io/jq/). Please read the Prerequisite section below and install the necessary tools before we start.
+
+__
 
 ### Prerequisite
-* Download and install [Mozilla Firefox](https://www.mozilla.org/en-US/firefox/new/) or [Google Chrome](https://www.google.com/chrome/) browser. We will use it to access the Media2Cloud web portal.
-* Download and install [Postman](https://www.getpostman.com/apps). We will use it for Step 2.
-* Optionally if you need some sample files to test, download it [here](http://d2yqlwoly7fl0b.cloudfront.net/tutorials/samples/sample-files.zip)
+
+#### AWS CLI
+
+[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) tool is used across all tutorials to create AWS resources.
+
+_
+
+#### cURL
+
+[cURL](https://curl.se/download.html) tool is used to send authenticated HTTPS requests to the Media2Cloud API Endpoint in [Tutorial 2: Using the Media2Cloud RESTful APIs to ingest and search contents](./2-using-media2cloud-restful-api.md) and [Tutorial 4: Integrating Media2Cloud workflow to downstream process](./4-downstream-integration.md). Make sure the version of `cURL` on your system supports `--aws-sigv4` option which is AWS Signature Version 4 Authentication.
+
+```shell
+curl --help all | grep aws-sigv4
+
+# You should see
+--aws-sigv4 <provider1[:provider2[:region[:service]]]>  Use AWS V4 signature authentication
+
+```
+
+_
+
+#### JQ
+
+[JQ](https://stedolan.github.io/jq/) is a lightweight JSON parser. The tutorial uses it to parse JSON responses that we run with AWS CLI commands such as finding out specific Key / Value from the JSON response.
+
+_
 
 
-### Mini workshop rundown
-We will start off with creating your own Media2Cloud instance. Then, we will use Media2Cloud RESTful api to drive the ingest and analysis processes; use Amazon S3 event to autostart ingest process when you upload a file. At last, we will use Amazon SNS notification to autostart the analysis process when the file has been ingested. Appendix A shows you how you can add and manage Media2Cloud users with Amazon Cognito User Pool service.
+#### Google Chrome browser
 
+Download and install [Google Chrome](https://www.google.com/chrome/) browser. After [Tutorial 1: Creating Media2Cloud solution](./1-creating-media2cloud-stack.md), we will access the Media2Cloud Web Portal through the browser.
 
-* [Step 1: creating your own Media2Cloud instance](./1-create-stack.md) on your AWS account.
-* [Step 2: using Media2Cloud RESTful api](./2-restful-api.md) to drive the ingest and analysis processes
-* [Step 3: using Amazon S3 event](./3-s3-event-trigger.md) to autostart ingest process
-* [Step 4: using Amazon SNS notification](./4-sns-notification.md) to autostart analysis process
-* [Appendix A: using Amazon Cognito User Pool service](./appendix-a-add-cognito-user.md) to add and manage Media2Cloud user(s)
+_
 
-----
+#### Postman (Optional)
 
-Click [Next](./1-create-stack.md) to start creating your own instance.
+Bonus section in [Tutorial 2: Using the Media2Cloud RESTful APIs to ingest and search contents](./2-using-media2cloud-restful-api.md) describes how we can use Postman application to send authenicated HTTPS requests to Media2Cloud API Endpoint.
+
+__
+
+Let's start. Next to [Tutorial 1: Creating the Media2Cloud solution using AWS CloudFormation service](./1-creating-media2cloud-stack.md)
+

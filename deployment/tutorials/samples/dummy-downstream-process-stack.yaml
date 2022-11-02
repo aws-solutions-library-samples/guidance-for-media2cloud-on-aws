@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Media2Cloud Tutorial - create a mock downstream process, AWS Step Functions and AWS Lambda Function.
+
+Resources:
+    ################################################################################
+    #
+    # AWS Lambda (downstream-collect-results)
+    #
+    ################################################################################
+    DownstreamCollectResultsLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: /aws/lambda/downstream-collect-results
+            RetentionInDays: 7
+
+    DownstreamCollectResultsRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: /
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AmazonS3FullAccess
+            Policies:
+                -
+                    PolicyName: DownstreamCollectResultsRole
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt DownstreamCollectResultsLogGroup.Arn
+
+    DownstreamCollectResultsLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: downstream-collect-results
+            Description: (Media2Cloud Tutorial) Downstream Process state machine lambda
+            Runtime: nodejs14.x
+            MemorySize: 256
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt DownstreamCollectResultsRole.Arn
+            Code:
+                ZipFile: |
+                    const AWS = require('aws-sdk');
+                    exports.handler = async (event, context) => {
+                        console.log(JSON.stringify(event, null, 2));
+                        return event;
+                    }
+
+    ################################################################################
+    #
+    # AWS Step Functions (downstream-process)
+    #
+    ################################################################################
+    DownstreamProcessStateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: !Sub states.${AWS::Region}.amazonaws.com
+            Path: /
+            Policies:
+                -
+                    PolicyName: DownstreamProcessStateMachineRole
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: lambda:InvokeFunction
+                                Resource: !GetAtt DownstreamCollectResultsLambda.Arn
+
+    DownstreamProcessStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: downstream-process
+            RoleArn: !GetAtt DownstreamProcessStateMachineServiceRole.Arn
+            DefinitionString:
+                !Sub |-
+                    {
+                        "Comment": "(Media2Cloud Tutorial) Simulating downstream process",
+                        "StartAt": "Collect analysis results",
+                        "States": {
+                            "Collect analysis results": {
+                                "Type": "Task",
+                                "Resource": "${DownstreamCollectResultsLambda.Arn}",
+                                "End": true
+                            }
+                        }
+                    }
+
+Outputs:
+    DownstreamCollectResultsLambda:
+        Value: !Ref DownstreamCollectResultsLambda
+        Description: DownstreamCollectResultsLambda
+    DownstreamCollectResultsLambdaArn:
+        Value: !GetAtt DownstreamCollectResultsLambda.Arn
+        Description: DownstreamCollectResultsLambdaArn
+    DownstreamProcessStateMachine:
+        Value: !Ref DownstreamProcessStateMachine
+        Description: DownstreamProcessStateMachine
+    DownstreamProcessStateMachineName:
+        Value: !GetAtt DownstreamProcessStateMachine.Name
+        Description: DownstreamProcessStateMachine
