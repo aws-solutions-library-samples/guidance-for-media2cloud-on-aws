@@ -77,7 +77,6 @@ __
         },
         {
             "Action": [
-                "dynamodb:DescribeTable",
                 "dynamodb:Scan",
                 "dynamodb:Query",
                 "dynamodb:UpdateItem",

@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "pretest": "npm install",
-    "test": "mocha *.spec.js",
+    "test": "jest --coverage --coverageDirectory=../../../coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index.js package.json states dist/",
     "build:install": "cd dist && npm install --only=prod --no-optional",
@@ -16,6 +16,8 @@
   "author": "aws-mediaent-solutions",
   "devDependencies": {
     "core-lib": "file:../../../layers/core-lib",
-    "mediainfo": "file:../../../layers/mediainfo"
+    "mediainfo": "file:../../../layers/mediainfo",
+    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
+    "jest": "^29.3.1"
   }
 }

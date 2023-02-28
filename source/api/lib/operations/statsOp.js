@@ -169,8 +169,8 @@ class StatsOp extends BaseOp {
 
   async aggregateSearch(indices, size) {
     const availableIndices = Indexer.getIndices();
-    for (let i = 0; i < indices.length; i++) {
-      if (availableIndices.indexOf(indices[i]) < 0) {
+    for (let index of indices) {
+      if (availableIndices.indexOf(index) < 0) {
         throw new Error('invalid aggregate value');
       }
     }

@@ -26,8 +26,6 @@ export default class ContentTab extends mxSpinner(BaseTabPlugins) {
     this.$previewComponent = new PreviewSlideComponent();
     this.$categoryComponent = new CategorySlideComponent();
     this.$mediaManager = MediaManager.getSingleton();
-    // const dropdown = this.createDropdownMenu(plugins);
-    // plugins.append(dropdown);
   }
 
   get ids() {

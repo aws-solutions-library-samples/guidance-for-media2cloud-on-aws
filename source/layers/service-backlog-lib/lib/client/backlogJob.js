@@ -112,14 +112,16 @@ class BacklogJob {
         [ddb.sort]: item.serviceApi,
       },
       ReturnValues: 'ALL_OLD',
-    }).then(data => data.Attributes).catch((e) => {
-      console.error(`ERR: BacklogTable.deleteJob: ${e.code}: ${e.message} (${item.id}) (${jobStatus}) (${jobId})`);
-      throw e;
-    });
+    })
+      .then((data) =>
+        data.Attributes)
+      .catch((e) => {
+        console.error(`ERR: BacklogTable.deleteJob: ${e.code}: ${e.message} (${item.id}) (${jobStatus}) (${jobId})`);
+        throw e;
+      });
     return EBHelper.send({
       ...response,
       status: jobStatus,
-      jobStatus,
       ...output,
     });
   }
@@ -185,7 +187,6 @@ class BacklogJob {
     if (response instanceof Error) {
       if (this.noMoreQuotasException(response.code)) {
         status = STATUS_PENDING;
-        // console.log(`${status} ${response.code}: ${response.message} (${id})`);
       } else {
         console.error(`ERR: BacklogTable.startAndRegisterJob: ${response.code}: ${response.message} (${id})`);
         throw response;
@@ -193,7 +194,6 @@ class BacklogJob {
     } else {
       status = STATUS_PROCESSING;
       jobId = this.parseJobId(response);
-      // console.log(`${status} ${response.JobId} (${id})`);
     }
 
     return this.createJobItem(
@@ -227,7 +227,8 @@ class BacklogJob {
         metrics.notStarted.push(item.id);
         continue;
       }
-      response = await this.updateJobId(item, response.JobId)
+      const jobId = this.parseJobId(response);
+      response = await this.updateJobId(item, jobId)
         .catch(e => e);
       if (response instanceof Error) {
         if (response.code === 'ConditionalCheckFailedException') {

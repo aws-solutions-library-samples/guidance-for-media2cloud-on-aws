@@ -110,23 +110,26 @@ class RekognitionBacklogJob extends BacklogJob {
 
   bindToFunc(serviceApi) {
     const rekog = this.getRekognitionInstance();
-    return (serviceApi === RekognitionBacklogJob.ServiceApis.StartCelebrityRecognition)
-      ? rekog.startCelebrityRecognition.bind(rekog)
-      : (serviceApi === RekognitionBacklogJob.ServiceApis.StartContentModeration)
-        ? rekog.startContentModeration.bind(rekog)
-        : (serviceApi === RekognitionBacklogJob.ServiceApis.StartFaceDetection)
-          ? rekog.startFaceDetection.bind(rekog)
-          : (serviceApi === RekognitionBacklogJob.ServiceApis.StartFaceSearch)
-            ? rekog.startFaceSearch.bind(rekog)
-            : (serviceApi === RekognitionBacklogJob.ServiceApis.StartLabelDetection)
-              ? rekog.startLabelDetection.bind(rekog)
-              : (serviceApi === RekognitionBacklogJob.ServiceApis.StartPersonTracking)
-                ? rekog.startPersonTracking.bind(rekog)
-                : (serviceApi === RekognitionBacklogJob.ServiceApis.StartSegmentDetection)
-                  ? rekog.startSegmentDetection.bind(rekog)
-                  : (serviceApi === RekognitionBacklogJob.ServiceApis.StartTextDetection)
-                    ? rekog.startTextDetection.bind(rekog)
-                    : undefined;
+    switch (serviceApi) {
+      case RekognitionBacklogJob.ServiceApis.StartCelebrityRecognition:
+        return rekog.startCelebrityRecognition.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartContentModeration:
+        return rekog.startContentModeration.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartFaceDetection:
+        return rekog.startFaceDetection.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartFaceSearch:
+        return rekog.startFaceSearch.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartLabelDetection:
+        return rekog.startLabelDetection.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartPersonTracking:
+        return rekog.startPersonTracking.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartSegmentDetection:
+        return rekog.startSegmentDetection.bind(rekog);
+      case RekognitionBacklogJob.ServiceApis.StartTextDetection:
+        return rekog.startTextDetection.bind(rekog);
+      default:
+        return undefined;
+    }
   }
 
   async startAndRegisterJob(id, serviceApi, params) {

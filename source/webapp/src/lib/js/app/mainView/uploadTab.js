@@ -92,16 +92,6 @@ export default class UploadTab extends mxAlert(BaseTab) {
       .attr('id', this.ids.carousel.container)
       .append(inner);
 
-    /*
-    carousel.on('slide.bs.carousel', async (event) => {
-      const id = $(event.relatedTarget).prop('id');
-      if (id === this.analysisComponent.slideId) {
-        this.analysisComponent.reloadAnalysisSettings();
-      }
-      return true;
-    });
-    */
-
     return $('<div/>').addClass('col-9 col-sm-9 col-md-9 mx-auto mt-4')
       .append(carousel);
   }

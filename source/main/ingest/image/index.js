@@ -27,12 +27,8 @@ exports.handler = async (event, context) => {
 
     const stateData = new StateData(Environment.StateMachines.Ingest, event, context);
     let instance;
-    switch (event.operation) {
-      case StateData.States.RunImageInfo:
-        instance = new StateRunImageInfo(stateData);
-        break;
-      default:
-        break;
+    if (event.operation === StateData.States.RunImageInfo) {
+      instance = new StateRunImageInfo(stateData);
     }
     if (!instance) {
       throw new IngestError(`${event.operation} not supported`);

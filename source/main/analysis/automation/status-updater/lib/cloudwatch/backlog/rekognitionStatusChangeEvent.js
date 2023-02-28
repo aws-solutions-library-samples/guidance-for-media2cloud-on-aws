@@ -15,13 +15,14 @@ const STATUS_FAILED = 'FAILED';
 class RekognitionStatusChangeEvent extends BacklogStatusChangeEvent {
   async process() {
     if (this.status !== STATUS_SUCCEEDED && this.status !== STATUS_FAILED) {
-      console.error(`ERR: RekognitionStatusChangeEvent.process: ${this.status} status not handled`);
+      console.error(`RekognitionStatusChangeEvent.process: ${this.status} status not handled`);
       return undefined;
     }
 
     /* #1: get state data from service token table */
-    const response = await ServiceToken.getData(this.backlogId).catch(() => undefined);
-
+    const response = await ServiceToken.getData(this.backlogId)
+      .catch(() =>
+        undefined);
     if (!response || !response.service || !response.token || !response.api) {
       throw new JobStatusError(`fail to get token, ${this.backlogId}`);
     }
@@ -38,11 +39,11 @@ class RekognitionStatusChangeEvent extends BacklogStatusChangeEvent {
     this.token = response.token;
 
     /* #3: send task result to state machine execution */
-    if (this.jobStatus === STATUS_SUCCEEDED) {
+    if (this.status === STATUS_SUCCEEDED) {
       this.stateData.setCompleted();
       await this.parent.sendTaskSuccess();
-    } else if (this.jobStatus === STATUS_FAILED) {
-      const error = new JobStatusError(`${this.jobId} ${this.jobStatus}`);
+    } else if (this.status === STATUS_FAILED) {
+      const error = new JobStatusError(`${this.jobId} ${this.status}`);
       this.stateData.setFailed(error);
       await this.parent.sendTaskFailure(error);
     }

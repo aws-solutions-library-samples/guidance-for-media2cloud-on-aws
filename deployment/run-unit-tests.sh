@@ -32,14 +32,9 @@ popd
 # Testing lambda packages
 #
 PACKAGES=(\
-  "api" \
-  "ingest" \
-  "analysis-monitor" \
-  "image-analysis" \
-  "audio-analysis" \
-  "video-analysis" \
-  "document-analysis" \
-  "gt-labeling" \
+  "layers/core-lib" \ 
+  "layers/mediainfo" \ 
+  "layers/service-backlog-lib/" \
 )
 
 for package in "${PACKAGES[@]}"; do
@@ -71,5 +66,29 @@ done
 
 
 echo "------------------------------------------------------------------------------"
-echo "Installing Dependencies And Testing Complete"
+echo "Running Unit Tests now. This may take a while."
 echo "------------------------------------------------------------------------------"
+
+[ "$DEBUG" == 'true' ] && set -x
+set -e
+
+prepare_jest_coverage_report() {
+  local component_name=$1
+
+  if [ ! -d "coverage" ]; then
+      echo "ValidationError: Missing required directory coverage after running unit tests"
+      exit 129
+  fi
+
+  # prepare coverage reports
+  rm -fr coverage/lcov-report
+  mkdir -p $coverage_reports_top_path/jest
+  coverage_report_path=$coverage_reports_top_path/jest/$component_name
+  rm -fr $coverage_report_path
+  mv coverage $coverage_report_path
+}
+
+# Get reference for all important folders
+template_dir="$PWD"
+source_dir="$template_dir/../source"
+coverage_reports_top_path=$source_dir/test/coverage-reports

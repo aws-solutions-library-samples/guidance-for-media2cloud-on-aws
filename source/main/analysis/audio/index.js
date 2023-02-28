@@ -94,6 +94,8 @@ function parseEvent(event, context) {
   return new StateData(stateMachine, parsed, context);
 }
 
+exports.parseEvent = parseEvent;
+
 exports.handler = async (event, context) => {
   console.log(`event = ${JSON.stringify(event, null, 2)}; context = ${JSON.stringify(context, null, 2)};`);
 

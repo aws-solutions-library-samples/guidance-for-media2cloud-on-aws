@@ -321,4 +321,9 @@ export default class BaseMedia extends mxReadable(class {}) {
     return (this.analysisResults || []).map(x =>
       x.textract).filter(x => x)[0];
   }
+
+  /* BLIP model */
+  getImageAutoCaptioning() {
+    return ((this.analysisResults || [])[0] || {}).caption;
+  }
 }

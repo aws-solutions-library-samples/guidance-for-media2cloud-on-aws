@@ -70,8 +70,8 @@ export default Base => class extends Base {
   async useGetAsEntry(data) {
     const promiseFiles = [];
     const promiseDirs = [];
-    for (let i = 0; i < data.items.length; i++) {
-      const entry = data.items[i].webkitGetAsEntry();
+    for (let item of data.items) {
+      const entry = item.webkitGetAsEntry();
       if (entry.isFile) {
         promiseFiles.push(this.readFileEntry(entry));
       } else {
@@ -139,8 +139,8 @@ export default Base => class extends Base {
 
   async useFileReader(data) {
     const promises = [];
-    for (let i = 0; i < data.files.length; i++) {
-      promises.push(this.readFile(data.files[i]));
+    for (let file of data.files) {
+      promises.push(this.readFile(file));
     }
     const files = await Promise.all(promises);
     return files;

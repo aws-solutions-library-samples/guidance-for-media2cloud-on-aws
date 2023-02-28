@@ -15,6 +15,11 @@ Mappings:
     Node:
         Runtime:
             Version: nodejs14.x
+    Cognito:
+        Group:
+            Viewer: viewer
+            Creator: creator
+            Admin: admin
 
 Parameters:
     S3Bucket:
@@ -89,6 +94,9 @@ Parameters:
     DefaultMinConfidence:
         Type: String
         Description: DefaultMinConfidence
+    AIOptionsS3Key:
+        Type: String
+        Description: AIOptionsS3Key
 
 Resources:
     ################################################################################
@@ -301,6 +309,8 @@ Resources:
                     ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
                     ENV_DEFAULT_AI_OPTIONS: !Ref DefaultAIOptions
                     ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
+                    ENV_USER_POOL_ID: !Ref CognitoUserPool
+                    ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
             Tags:
                 -
                     Key: SolutionId
@@ -739,6 +749,9 @@ Resources:
     ################################################################################
     #
     # Cognito resources
+    # * UserPool, IdentityPool, AppClient, & Authenticated role
+    # * UserGroups (viewer, creator, & admin) & IAM roles and policies mapped to UserGroup
+    # * Add Cognito Admin APIs permission to ApiRole
     #
     ################################################################################
     CognitoUserPool:
@@ -945,6 +958,220 @@ Resources:
                     RequireUppercase: true
             UserPoolName: !Sub ${ResourcePrefix}-userpool
 
+    # Different usergroup(s)
+    UserPoolGroupAdmin:
+        Type: AWS::Cognito::UserPoolGroup
+        Properties:
+            Description: Administrator access. Allow view, upload, process assets and manage users.
+            GroupName: !FindInMap
+                - Cognito
+                - Group
+                - Admin
+            Precedence: 1
+            UserPoolId: !Ref CognitoUserPool
+
+    UserPoolGroupCreator:
+        Type: AWS::Cognito::UserPoolGroup
+        Properties:
+            Description: Creator group allows users to view, create, and process assets.
+            GroupName: !FindInMap
+                - Cognito
+                - Group
+                - Creator
+            Precedence: 98
+            UserPoolId: !Ref CognitoUserPool
+
+    UserPoolGroupViewer:
+        Type: AWS::Cognito::UserPoolGroup
+        Properties:
+            Description: Viewer group allows users to view assets.
+            GroupName: !FindInMap
+                - Cognito
+                - Group
+                - Viewer
+            Precedence: 99
+            UserPoolId: !Ref CognitoUserPool
+
+    # Usergroup IAM role(s)
+    UserPoolGroupViewerRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            Federated: cognito-identity.amazonaws.com
+                        Action: sts:AssumeRoleWithWebIdentity
+                        Condition:
+                            StringEquals:
+                                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
+                            ForAnyValue:StringLike:
+                                cognito-identity.amazonaws.com:amr: authenticated
+            Path: !Sub /${ResourcePrefix}/
+
+    UserPoolGroupCreatorRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            Federated: cognito-identity.amazonaws.com
+                        Action: sts:AssumeRoleWithWebIdentity
+                        Condition:
+                            StringEquals:
+                                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
+                            ForAnyValue:StringLike:
+                                cognito-identity.amazonaws.com:amr: authenticated
+            Path: !Sub /${ResourcePrefix}/
+
+    UserPoolGroupAdminRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            Federated: cognito-identity.amazonaws.com
+                        Action: sts:AssumeRoleWithWebIdentity
+                        Condition:
+                            StringEquals:
+                                cognito-identity.amazonaws.com:aud: !Ref CognitoIdentityPool
+                            ForAnyValue:StringLike:
+                                cognito-identity.amazonaws.com:amr: authenticated
+            Path: !Sub /${ResourcePrefix}/
+
+    # Usergroup role polices
+    UserPoolGroupNonAdminDenyPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-UserPoolGroupNonAdminDenyPolicy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # Deny all HTTP methods on /users and /users/*
+                    -
+                        Effect: Deny
+                        Action: execute-api:Invoke
+                        Resource:
+                            - !Sub
+                                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/*/users
+                                - stageName: !FindInMap
+                                    - APIGW
+                                    - Stage
+                                    - Name
+                            - !Sub
+                                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/*/users/*
+                                - stageName: !FindInMap
+                                    - APIGW
+                                    - Stage
+                                    - Name
+                    # Deny POST and DELETE methods on /settings/*
+                    -
+                        Effect: Deny
+                        Action: execute-api:Invoke
+                        Resource:
+                            - !Sub
+                                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/POST/settings/*
+                                - stageName: !FindInMap
+                                    - APIGW
+                                    - Stage
+                                    - Name
+                            - !Sub
+                                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/DELETE/settings/*
+                                - stageName: !FindInMap
+                                    - APIGW
+                                    - Stage
+                                    - Name
+            Roles:
+                - !Ref UserPoolGroupViewerRole
+                - !Ref UserPoolGroupCreatorRole
+
+    UserPoolGroupViewerAccessPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-UserPoolGroupViewerAccessPolicy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # Cognito - allow to get identity id
+                    -
+                        Effect: Allow
+                        Action: cognito-identity:GetId
+                        Resource: !Sub arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${CognitoIdentityPool}
+                    # S3 - Read/List on ingest bucket
+                    -
+                        Effect: Allow
+                        Action: s3:ListBucket
+                        Resource: !Sub arn:aws:s3:::${IngestBucket}
+                    -
+                        Effect: Allow
+                        Action: s3:GetObject
+                        Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                    # S3 - Read/List on proxy bucket
+                    -
+                        Effect: Allow
+                        Action: s3:ListBucket
+                        Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                    -
+                        Effect: Allow
+                        Action: s3:GetObject
+                        Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+                    # API Gateway
+                    -
+                        Effect: Allow
+                        Action: execute-api:Invoke
+                        Resource: !Sub
+                            - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/*/*
+                            - stageName: !FindInMap
+                                - APIGW
+                                - Stage
+                                - Name
+                    # IoT
+                    -
+                        Effect: Allow
+                        Action: iot:Connect
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*
+                    -
+                        Effect: Allow
+                        Action: iot:Subscribe
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${IotTopic}
+                    -
+                        Effect: Allow
+                        Action: iot:Receive
+                        Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
+            Roles:
+                - !Ref UserPoolGroupViewerRole
+                - !Ref UserPoolGroupCreatorRole
+                - !Ref UserPoolGroupAdminRole
+
+    UserPoolGroupCreatorAccessPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-UserPoolGroupCreatorAccessPolicy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # S3 - Write on ingest bucket
+                    -
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                    # S3 - Write on proxy bucket
+                    -
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+            Roles:
+                - !Ref UserPoolGroupCreatorRole
+                - !Ref UserPoolGroupAdminRole
+
     CognitoAppClient:
         Type: AWS::Cognito::UserPoolClient
         Properties:
@@ -992,56 +1219,13 @@ Resources:
                     PolicyDocument:
                         Version: "2012-10-17"
                         Statement:
-                            # Cognito - allow to get identity id
                             -
                                 Effect: Allow
-                                Action: cognito-identity:GetId
-                                Resource: !Sub arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${CognitoIdentityPool}
-                            # S3 - Read/Write/List on ingest bucket
-                            -
-                                Effect: Allow
-                                Action: s3:ListBucket
-                                Resource: !Sub arn:aws:s3:::${IngestBucket}
-                            -
-                                Effect: Allow
-                                Action:
-                                    - s3:GetObject
-                                    - s3:PutObject
-                                Resource: !Sub arn:aws:s3:::${IngestBucket}/*
-                            # S3 - Read/Write/List on proxy bucket
-                            -
-                                Effect: Allow
-                                Action: s3:ListBucket
-                                Resource: !Sub arn:aws:s3:::${ProxyBucket}
-                            -
-                                Effect: Allow
-                                Action:
-                                    - s3:GetObject
-                                    - s3:PutObject
-                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
-                            # API Gateway
-                            -
-                                Effect: Allow
-                                Action: execute-api:Invoke
-                                Resource: !Sub
-                                    - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/*/*
-                                    - stageName: !FindInMap
-                                        - APIGW
-                                        - Stage
-                                        - Name
-                            # IoT
-                            -
-                                Effect: Allow
-                                Action: iot:Connect
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:client/*
-                            -
-                                Effect: Allow
-                                Action: iot:Subscribe
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topicfilter/${IotTopic}
-                            -
-                                Effect: Allow
-                                Action: iot:Receive
-                                Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:topic/${IotTopic}
+                                Action: iam:PassRole
+                                Resource:
+                                    - !GetAtt UserPoolGroupAdminRole.Arn
+                                    - !GetAtt UserPoolGroupCreatorRole.Arn
+                                    - !GetAtt UserPoolGroupViewerRole.Arn
 
     CognitoIdentityPoolRoleAttachment:
         Type: AWS::Cognito::IdentityPoolRoleAttachment
@@ -1049,6 +1233,59 @@ Resources:
             IdentityPoolId: !Ref CognitoIdentityPool
             Roles:
                 authenticated: !GetAtt CognitoAuthenticatedRole.Arn
+            RoleMappings:
+                userpool:
+                    AmbiguousRoleResolution: Deny
+                    IdentityProvider: !Sub ${CognitoUserPool.ProviderName}:${CognitoAppClient}
+                    Type: Rules
+                    RulesConfiguration:
+                        Rules:
+                            -
+                                Claim: cognito:groups
+                                MatchType: Contains
+                                Value: !FindInMap
+                                    - Cognito
+                                    - Group
+                                    - Admin
+                                RoleARN: !GetAtt UserPoolGroupAdminRole.Arn
+                            -
+                                Claim: cognito:groups
+                                MatchType: Contains
+                                Value: !FindInMap
+                                    - Cognito
+                                    - Group
+                                    - Creator
+                                RoleARN: !GetAtt UserPoolGroupCreatorRole.Arn
+                            -
+                                Claim: cognito:groups
+                                MatchType: Contains
+                                Value: !FindInMap
+                                    - Cognito
+                                    - Group
+                                    - Viewer
+                                RoleARN: !GetAtt UserPoolGroupViewerRole.Arn
+
+    # Attach cognito admin access to ApiRole
+    ApiRolePolicyUserManagement:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-ApiRolePolicyUserManagement
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # Cognito management
+                    -
+                        Effect: Allow
+                        Action:
+                            - cognito-idp:AdminCreateUser
+                            - cognito-idp:AdminDeleteUser
+                            - cognito-idp:AdminGetUser
+                            - cognito-idp:AdminListGroupsForUser
+                            - cognito-idp:AdminAddUserToGroup
+                            - cognito-idp:ListUsers
+                        Resource: !GetAtt CognitoUserPool.Arn
+            Roles:
+                - !Ref ApiRole
 
     ################################################################################
     #
@@ -1121,12 +1358,12 @@ Resources:
             Data:
                 DistributionId: !Ref CloudFrontDistributionId
                 Paths:
+                    - /index.html
                     - /app.min.js
                     - /solution-manifest.js
-                    - /css/app.css
-                    - /src/lib/js/*
+                    - /css*
+                    - /src*
                     - /third_party*
-                    - /*.html
                 LastUpdated: !GetAtt CopyWebContent.LastUpdated
 
     UpdateIngestCorsRule:

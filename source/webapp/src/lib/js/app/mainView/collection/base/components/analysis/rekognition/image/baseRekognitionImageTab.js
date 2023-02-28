@@ -7,25 +7,38 @@ import BaseAnalysisTab from '../../base/baseAnalysisTab.js';
 
 export default class BaseRekognitionImageTab extends BaseAnalysisTab {
   constructor(category, previewComponent, data, defaultTab = false) {
-    const tabName = category === AnalysisTypes.Rekognition.Celeb
-      ? Localization.Messages.CelebTab
-      : category === AnalysisTypes.Rekognition.Label
-        ? Localization.Messages.LabelTab
-        : category === AnalysisTypes.Rekognition.Face
-          ? Localization.Messages.FaceTab
-          : category === AnalysisTypes.Rekognition.FaceMatch
-            ? Localization.Messages.FaceMatchTab
-            : category === AnalysisTypes.Rekognition.Moderation
-              ? Localization.Messages.ModerationTab
-              : category === AnalysisTypes.Rekognition.Person
-                ? Localization.Messages.PersonTab
-                : category === AnalysisTypes.Rekognition.Text
-                  ? Localization.Messages.TextTab
-                  : category === AnalysisTypes.Rekognition.Segment
-                    ? Localization.Messages.SegmentTab
-                    : category === AnalysisTypes.Rekognition.CustomLabel
-                      ? Localization.Messages.CustomLabelTab
-                      : 'Unknown';
+    let tabName;
+    switch (category) {
+      case AnalysisTypes.Rekognition.Celeb:
+        tabName = Localization.Messages.CelebTab;
+        break;
+      case AnalysisTypes.Rekognition.Label:
+        tabName = Localization.Messages.LabelTab;
+        break;
+      case AnalysisTypes.Rekognition.Face:
+        tabName = Localization.Messages.FaceTab;
+        break;
+      case AnalysisTypes.Rekognition.FaceMatch:
+        tabName = Localization.Messages.FaceMatchTab;
+        break;
+      case AnalysisTypes.Rekognition.Moderation:
+        tabName = Localization.Messages.ModerationTab;
+        break;
+      case AnalysisTypes.Rekognition.Person:
+        tabName = Localization.Messages.PersonTab;
+        break;
+      case AnalysisTypes.Rekognition.Text:
+        tabName = Localization.Messages.TextTab;
+        break;
+      case AnalysisTypes.Rekognition.Segment:
+        tabName = Localization.Messages.SegmentTab;
+        break;
+      case AnalysisTypes.Rekognition.CustomLabel:
+        tabName = Localization.Messages.CustomLabelTab;
+        break;
+      default:
+        tabName = 'Unknown';
+    }
     super(tabName, previewComponent, defaultTab);
     this.$category = category;
     this.$data = data;

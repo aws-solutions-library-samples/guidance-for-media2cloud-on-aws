@@ -166,13 +166,13 @@ exports.handler = async (event, context) => {
       throw new Error('accountId not found');
     }
 
-    const data = event.Records[0];
-    const bucket = data.s3.bucket.name;
+    const bucket = event.detail.bucket.name;
     /* unescape 'space' character */
-    const key = decodeURIComponent(data.s3.object.key.replace(/\+/g, '%20'));
+    const key = event.detail.object.key;
+    const size = event.detail.object.size;
 
     /* zero byte size (ie. folder), skip */
-    if (data.s3.object.size === 0) {
+    if (size === 0) {
       return undefined;
     }
 

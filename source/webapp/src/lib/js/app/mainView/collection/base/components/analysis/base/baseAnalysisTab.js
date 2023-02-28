@@ -124,20 +124,25 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
   }
 
   createGrouping(name, indent = 0) {
-    const css = (!indent)
-      ? {
+    let css;
+    if (!indent) {
+      css = {
         margin: '',
         lead: 'lead-sm',
-      }
-      : (indent === 1)
-        ? {
-          margin: 'ml-2',
-          lead: 'lead-xs',
-        }
-        : {
-          margin: 'ml-4',
-          lead: 'lead-xxs',
-        };
+      };
+    }
+    else if (indent === 1) {
+      css = {
+        margin: 'ml-2',
+        lead: 'lead-xs',
+      };
+    }
+    else {
+      css = {
+        margin: 'ml-4',
+        lead: 'lead-xxs',
+      };
+    }
     const details = $('<details/>').addClass(css.margin)
       .append($('<summary/>').addClass('my-2')
         .append($('<span/>').addClass(`${css.lead} text-capitalize`)

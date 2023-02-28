@@ -20,7 +20,7 @@ class BaseLib {
     this.$intermediateHash = checksum.intermediateHash || undefined;
     this.$computed = checksum.computed || undefined;
     this.$expected = checksum.expected || undefined;
-    this.$storeChecksumOnTagging = !(checksum.storeChecksumOnTagging === false);
+    this.$storeChecksumOnTagging = (checksum.storeChecksumOnTagging !== false);
     this.$bytesRead = 0;
     this.$startTime = checksum.startTime || new Date().getTime();
   }

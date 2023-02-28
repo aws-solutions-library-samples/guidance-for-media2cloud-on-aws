@@ -9,6 +9,9 @@ Mappings:
             LowerCaseId: "%%SOLUTION_ID_LOWERCASE%%"
             Version: "%%VERSION%%"
             CustomUserAgent: AWSSOLUTION/%%SOLUTION_ID%%/%%VERSION%%
+            SolutionName: "Media2Cloud on AWS"
+            AppRegistryApplicationName: "Media2CloudOnAws"
+            ApplicationType: "AWS-Solutions"
         Template:
             S3Bucket: "%%BUCKET_NAME%%"
             KeyPrefix: "%%KEYPREFIX%%"
@@ -24,12 +27,19 @@ Mappings:
     AIML:
         Options:
             DefaultMinConfidence: 80
+            # store aioptions to proxy bucket
+            S3Key: _settings/aioptions.json
     Node:
         Runtime:
             Version: nodejs14.x
     Send:
         AnonymousUsage:
             Data: "Yes"
+    Cognito:
+        Group:
+            Viewer: viewer
+            Creator: creator
+            Admin: admin
 
 Parameters:
     # User defined Ingest Bucket
@@ -41,12 +51,12 @@ Parameters:
     OpenSearchCluster:
         Type: String
         Description: Configure Amazon OpenSearch cluster size
-        Default: Development and Testing (t3.small=0,m5.large=1,gp2=10,az=1)
+        Default: Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)
         AllowedValues:
-            - Development and Testing (t3.small=0,m5.large=1,gp2=10,az=1)
-            - Suitable for Production Workload (t3.small=3,m5.large=2,gp2=20,az=2)
-            - Recommended for Production Workload (t3.small=3,m5.large=4,gp2=20,az=2)
-            - Recommended for Large Production Workload (t3.small=3,m5.large=6,gp2=40,az=3)
+            - Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)
+            - Suitable for Production Workload (t3.medium=3,m5.large=2,gp2=20,az=2)
+            - Recommended for Production Workload (t3.medium=3,m5.large=4,gp2=20,az=2)
+            - Recommended for Large Production Workload (t3.medium=3,m5.large=6,gp2=40,az=3)
     # AI/ML Settings
     DefaultAIOptions:
         Type: String
@@ -62,6 +72,7 @@ Parameters:
             - Celebrity recognition only (celeb)
             - Video segment detection only (segment)
             - Speech to text only (transcribe)
+            - Others - Celebrity and face matching (celeb,facematch)
     # SNS / Cognito parameters
     Email:
         Type: String
@@ -81,10 +92,21 @@ Parameters:
     StartOnObjectCreation:
         Type: String
         Description: Start workflow when directly upload assets to ingest S3 bucket
-        Default: "NO"
+        Default: "YES"
         AllowedValues:
             - "NO"
             - "YES"
+    # Neptune Knowledge Graph endpoint
+    KnowledgeGraphEndpoint:
+        Type: String
+        Description: specify the API endpoint of the Knowledge Graph database. Leave it blank to disable the feature.
+    KnowledgeGraphApiKey:
+        Type: String
+        Description: specify the API Key of the Knowledge Graph API endpoint. Leave it blank to disable the feature.
+    # BLIP model (auto caption for image)
+    BlipImageArn:
+        Type: String
+        Description: specify the ECR image Arn of the Auto Captioning feature (BLIP model), ie., {{account}}.dkr.ecr.{{region}}.amazonaws.com/{{repo}}:{{tag}}. Leave it blank to disable the feature.
 
 Metadata:
     AWS::CloudFormation::Interface:
@@ -111,10 +133,21 @@ Metadata:
                     - DefaultAIOptions
             -
                 Label:
-                    default: (OPTIONAL) Advanced Customization
+                    default: (OPTIONAL) Advanced Customerization
                 Parameters:
                     - UserDefinedIngestBucket
                     - StartOnObjectCreation
+            -
+                Label:
+                    default: (EXPERIMENTAL FEATURE) Knowledge Graph
+                Parameters:
+                    - KnowledgeGraphEndpoint
+                    - KnowledgeGraphApiKey
+            -
+                Label:
+                    default: (EXPERIMENTAL FEATURE) Auto-Captioning for Images
+                Parameters:
+                    - BlipImageArn
         ParameterLabels:
             Email:
                 default: Email
@@ -128,6 +161,12 @@ Metadata:
                 default: User defined Amazon S3 Bucket for ingest
             StartOnObjectCreation:
                 default: Allow autostart on ingest S3 bucket
+            KnowledgeGraphEndpoint:
+                default: Knowledge Graph API Endpoint
+            KnowledgeGraphApiKey:
+                default: Knowledge Graph API Endpoint API Key
+            BlipImageArn:
+                default: ECR Image ARN of the BLIP model
 
 Conditions:
     # Using email address for Cognito User Pool
@@ -566,6 +605,10 @@ Resources:
                     - AIML
                     - Options
                     - DefaultMinConfidence
+                AIOptionsS3Key: !FindInMap
+                    - AIML
+                    - Options
+                    - S3Key
 
     ################################################################################
     #
@@ -671,6 +714,11 @@ Resources:
                     - DefaultMinConfidence
                 MediaConvertEndpoint: !GetAtt CoreStack.Outputs.MediaConvertEndpoint
                 StartOnObjectCreation: !Ref StartOnObjectCreation
+                AIOptionsS3Key: !FindInMap
+                    - AIML
+                    - Options
+                    - S3Key
+                BlipImageArn: !Ref BlipImageArn
 
     ################################################################################
     #
@@ -729,7 +777,6 @@ Resources:
                     -
                         Effect: Allow
                         Action:
-                            - dynamodb:DescribeTable
                             - dynamodb:Query
                             - dynamodb:Scan
                             - dynamodb:UpdateItem
@@ -741,7 +788,6 @@ Resources:
                     -
                         Effect: Allow
                         Action:
-                            - dynamodb:DescribeTable
                             - dynamodb:Query
                             - dynamodb:Scan
                         Resource: !Sub ${BackendStack.Outputs.IngestTableArn}/index/*
@@ -852,7 +898,24 @@ Resources:
                     ClientId: !GetAtt WebAppStack.Outputs.CognitoAppClient
                     IdentityPoolId: !GetAtt WebAppStack.Outputs.CognitoIdentityPool
                     RedirectUri: !GetAtt WebAppStack.Outputs.HomePage
+                    Group:
+                        Viewer: !FindInMap
+                            - Cognito
+                            - Group
+                            - Viewer
+                        Creator: !FindInMap
+                            - Cognito
+                            - Group
+                            - Creator
+                        Admin: !FindInMap
+                            - Cognito
+                            - Group
+                            - Admin
                 LastUpdated: !GetAtt WebAppStack.Outputs.LastUpdated
+                # Knowledge Graph demo
+                KnowledgeGraph:
+                    Endpoint: !Ref KnowledgeGraphEndpoint
+                    ApiKey: !Ref KnowledgeGraphApiKey
 
     CognitoRegisterUser:
         DependsOn: CreateSolutionManifest
@@ -889,6 +952,16 @@ Resources:
                             - !Ref Email
                     - !Ref AWS::NoValue
 
+    CognitoUserToGroup:
+        Type: AWS::Cognito::UserPoolUserToGroupAttachment
+        Properties:
+            GroupName: !FindInMap
+                - Cognito
+                - Group
+                - Admin
+            Username: !GetAtt CognitoRegisterUser.Username
+            UserPoolId: !GetAtt WebAppStack.Outputs.CognitoUserPool
+
     SubscribeSNSTopic:
         Condition: bEmail
         DependsOn: CognitoRegisterUser
@@ -920,6 +993,87 @@ Resources:
                     - Data
                 OpenSearchCluster: !Ref OpenSearchCluster
                 SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
+
+    ################################################################################
+    #
+    # AppRegistry
+    #
+    ################################################################################
+    Application:
+        Type: AWS::ServiceCatalogAppRegistry::Application
+        Properties:
+            Description: !Sub
+                - Service Catalog application to track and manage all your resources. The Solution ID is ${solutionId} and Solution Version is ${solutionVersion}.      
+                -
+                    solutionId: !FindInMap
+                        - Solution
+                        - Project
+                        - Id
+                    solutionVersion: !FindInMap
+                        - Solution
+                        - Project
+                        - Version
+            Name: !Join
+                - "-"
+                -   - !FindInMap
+                        - Solution
+                        - Project
+                        - AppRegistryApplicationName
+                    - !Ref AWS::Region
+                    - !Ref AWS::AccountId
+                    - !Ref AWS::StackName
+            Tags: {
+                "Solutions:SolutionID": !FindInMap [Solution, Project, Id],
+                "Solutions:SolutionName": !FindInMap [Solution, Project, SolutionName],
+                "Solutions:SolutionVersion": !FindInMap [Solution, Project, Version],
+                "Solutions:ApplicationType": !FindInMap [Solution, Project, ApplicationType],
+            }
+
+    DefaultApplicationAttributes:
+        Type: AWS::ServiceCatalogAppRegistry::AttributeGroup
+        Properties:
+            Name: !Join ["-", [!Ref "AWS::Region", !Ref "AWS::StackName"]]
+            Description: Attribute group for solution information.
+            Attributes: { 
+                "ApplicationType": !FindInMap [Solution, Project, ApplicationType],
+                "Version": !FindInMap [Solution, Project, Version],
+                "SolutionID": !FindInMap [Solution, Project, Id],
+                "SolutionName": !FindInMap [Solution, Project, SolutionName],
+            }
+
+    AppRegistryApplicationAttributeAssociation:
+        Type: AWS::ServiceCatalogAppRegistry::AttributeGroupAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            AttributeGroup: !GetAtt DefaultApplicationAttributes.Id
+
+    AppRegistryApplicationStackAssociation:
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref AWS::StackId
+            ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationCoreStack:
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref CoreStack
+            ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationWebAppStack:
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref WebAppStack
+            ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationBackendStack:
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref BackendStack
+            ResourceType: CFN_STACK
 
 Outputs:
     HomePage:

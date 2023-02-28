@@ -213,9 +213,9 @@ export default class VideoPreview extends BasePreview {
   trackIsEnabled(label) {
     if (this.player) {
       const tracks = this.player.remoteTextTracks();
-      for (let i = 0; i < tracks.length; i++) {
-        if (tracks[i].label === label) {
-          return tracks[i].mode === 'showing';
+      for (let track of tracks) {
+        if (track.label === label) {
+          return track.mode === 'showing';
         }
       }
     }
@@ -262,10 +262,10 @@ export default class VideoPreview extends BasePreview {
   async trackToggle(label, on) {
     if (this.player) {
       const tracks = this.player.remoteTextTracks();
-      for (let i = 0; i < tracks.length; i++) {
-        if (tracks[i].label === label) {
-          tracks[i].mode = (on) ? 'showing' : 'hidden';
-          return this.markerToggle(tracks[i], on);
+      for (let track of tracks) {
+        if (track.label === label) {
+          track.mode = (on) ? 'showing' : 'hidden';
+          return this.markerToggle(track, on);
         }
       }
     }
@@ -306,10 +306,10 @@ export default class VideoPreview extends BasePreview {
 
   markerAdd(track) {
     const markers = [];
-    for (let i = 0; i < track.cues.length; i++) {
+    for (let cue of track.cues) {
       markers.push({
-        time: track.cues[i].startTime,
-        duration: track.cues[i].endTime - track.cues[i].startTime,
+        time: cue.startTime,
+        duration: cue.endTime - cue.startTime,
         text: track.label,
         overlayText: track.label,
       });
@@ -331,11 +331,14 @@ export default class VideoPreview extends BasePreview {
   }
 
   markerToggle(track, on) {
-    return (track.label === VideoPreview.Constants.Subtitle)
-      ? undefined
-      : on
-        ? this.markerAdd(track)
-        : this.markerRemove(track);
+    if (track.label === VideoPreview.Constants.Subtitle) {
+      return undefined;
+    }
+    if (on) {
+      return this.markerAdd(track);
+    }
+
+    return this.markerRemove(track);
   }
 
   createTrackFromCues(label, cues) {

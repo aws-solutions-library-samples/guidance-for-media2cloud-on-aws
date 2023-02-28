@@ -120,6 +120,18 @@ export default class AttributeSlideComponent extends BaseUploadSlideComponent {
     });
 
     next.off('click').on('click', async (event) => {
+      /* prevent slide switch if it fails validation */
+      let validity = true;
+      const forms = this.slide.find('form.needs-validation');
+      forms.each((idx, form) => {
+        validity = form[0].checkValidity();
+        return validity;
+      });
+      if (validity === false) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       await this.saveData();
       this.slide.trigger(AttributeSlideComponent.Controls.Next);
     });

@@ -52,17 +52,20 @@ class AnalysisOp extends BaseOp {
     let responses = await Promise.all(types.analysis.map(x =>
       db.fetch(uuid, x)));
     /* #3: load vtt and metadata tracks */
-    responses = await Promise.all((responses || []).map(x => (
-      (x.type === MEDIATYPE_VIDEO)
-        ? this.loadVideoTracks(x)
-        : (x.type === MEDIATYPE_AUDIO)
-          ? this.loadAudioTracks(x)
-          : (x.type === MEDIATYPE_IMAGE)
-            ? this.loadImageTracks(x)
-            : (x.type === MEDIATYPE_DOCUMENT)
-              ? this.loadDocumentTracks(x)
-              : undefined
-    )));
+    responses = await Promise.all((responses || []).map(x => {
+      switch (x.type) {
+        case MEDIATYPE_VIDEO:
+          return this.loadVideoTracks(x);
+        case MEDIATYPE_AUDIO:
+          return this.loadAudioTracks(x);
+        case MEDIATYPE_IMAGE:
+          return this.loadImageTracks(x);
+        case MEDIATYPE_DOCUMENT:
+          return this.loadDocumentTracks(x);
+        default:
+          return undefined;
+      }
+  }));
     return super.onGET(responses.filter(x => x));
   }
 
@@ -196,8 +199,7 @@ class AnalysisOp extends BaseOp {
     while (keys.length) {
       const key = keys.shift();
       const datasets = [].concat(data[category][key]);
-      for (let i = 0; i < datasets.length; i++) {
-        const dataset = datasets[i];
+      for (let dataset of datasets) {
         const tracks = await Promise.all([
           TRACK_METADATA,
           TRACK_TIMESERIES,

@@ -687,13 +687,6 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       this.slide.on(eStarted, async (event, fileId) => {
         this.updateBadge(Localization.Statuses.Processing, fileId);
         const anchor = this.slide.find(`a[href="#tab-${fileId}"]`);
-        /* TODO: auto-scroll to focus the processing item
-        const tablist = this.slide.children().first();
-        const top = anchor.position().top;
-        const viewBottom = tablist.innerHeight();
-        const visible = top < viewBottom;
-        console.log(`tab.visible: ${top},${viewBottom},${visible}`);
-        */
         anchor.tab('show');
         this.slide.off(eStarted);
       });

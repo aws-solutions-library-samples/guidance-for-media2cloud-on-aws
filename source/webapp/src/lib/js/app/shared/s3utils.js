@@ -54,4 +54,22 @@ export default class S3Utils {
     } while ((response || {}).NextContinuationToken);
     return collection;
   }
+
+  static async upload(bucket, key, data, mime) {
+    return S3Utils.getInstance().upload({
+      Bucket: bucket,
+      Key: key,
+      Body: data,
+      ContentType: mime,
+      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
+    }).promise();
+  }
+
+  static async deleteObject(bucket, key) {
+    return S3Utils.getInstance().deleteObject({
+      Bucket: bucket,
+      Key: key,
+      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
+    }).promise();
+  }
 }

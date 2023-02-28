@@ -42,7 +42,7 @@ exports.SendConfig = async (event, context) => {
     const data = event.ResourceProperties.Data;
     const key = (x0.isRequestType('Delete')) ? 'Deleted' : 'Launch';
     const cluster = data.ElasticsearchCluster || data.OpenSearchCluster;
-    const matched = cluster.match(/([a-zA-z0-9 ]+)\s\(([a-zA-Z0-9.=,]+)\)/);
+    const matched = cluster.match(/([A-z0-9 ]+)\s\(([a-zA-Z0-9.=,]+)\)/);
     if (matched) {
       const config = matched[2].split(',').map(x => {
         const a0 = x.split('=');

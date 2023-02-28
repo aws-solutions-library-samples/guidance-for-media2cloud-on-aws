@@ -65,7 +65,7 @@ class ImageProcess {
     }
 
     if (x0.indexOf('rotate' >= 0)) {
-      const matched = x0.match(/rotate\s([0-9]+)/);
+      const matched = x0.match(/rotate\s(\d+)/);
       if (matched) {
         response.rotate = Number.parseInt(matched[1], 10);
       }
@@ -94,15 +94,6 @@ class ImageProcess {
     if (factor !== 1) {
       image = image.scale(factor);
     }
-
-    /*
-    if (orient.flipH || orient.flipV) {
-      image = image.mirror(orient.flipH, orient.flipV);
-    }
-    if (orient.rotate) {
-      image = image.rotate(orient.rotate);
-    }
-    */
 
     /* Max image size allowed for Rekognition is 15MB */
     let buf = await image.getBufferAsync(Jimp.MIME_JPEG);

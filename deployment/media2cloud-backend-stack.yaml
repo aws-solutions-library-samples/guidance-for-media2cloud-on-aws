@@ -46,6 +46,9 @@ Mappings:
         AnalysisImage:
             Package: "%%PKG_ANALYSIS_IMAGE%%"
             Name: analysis-image
+        # Docker image containerized lambda
+        BlipModel:
+            Name: blip-model
         AnalysisDocument:
             Package: "%%PKG_ANALYSIS_DOCUMENT%%"
             Name: analysis-document
@@ -203,15 +206,25 @@ Parameters:
         Description: DefaultMinConfidence
     MediaConvertEndpoint:
         Type: String
-        Description: DefaultMinConfidence
+        Description: MediaConvertEndpoint
     StartOnObjectCreation:
         Type: String
         Description: StartOnObjectCreation
+    AIOptionsS3Key:
+        Type: String
+        Description: AIOptionsS3Key
+    BlipImageArn:
+        Type: String
+        Description: BlipImageArn
 
 Conditions:
     bStartOnObjectCreation: !Equals
         - !Ref StartOnObjectCreation
         - "YES"
+    bBlipImageArn: !Not
+        - !Equals
+            - !Ref BlipImageArn
+            - ""
 
 Resources:
     ################################################################################
@@ -1087,7 +1100,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:PutItem
@@ -1456,6 +1468,16 @@ Resources:
                                     - comprehend:StartSentimentDetectionJob
                                     - comprehend:StartTopicsDetectionJob
                                 Resource: "*"
+                            # Transcribe
+                            -
+                                Effect: Allow
+                                Action: transcribe:StartTranscriptionJob
+                                Resource: "*"
+                            # MediaConvert
+                            -
+                                Effect: Allow
+                                Action: mediaConvert:CreateJob
+                                Resource: !Sub arn:aws:mediaconvert:${AWS::Region}:${AWS::AccountId}:*
                             # S3 - StreamConnectorLambda starts AI/ML job on behalf
                             #      which requires GetObject when the services assume role
                             -
@@ -1494,7 +1516,9 @@ Resources:
                             # IAM - Comprehend/Transcribe pass data access role
                             -
                                 Effect: Allow
-                                Action: iam:PassRole
+                                Action:
+                                    - iam:GetRole
+                                    - iam:PassRole
                                 Resource: !GetAtt ServiceDataAccessRole.Arn
 
     BacklogStreamConnectorLambda:
@@ -1551,6 +1575,7 @@ Resources:
                     ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
                     ENV_DATA_ACCESS_ROLE: !GetAtt ServiceDataAccessRole.Arn
                     ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
+                    ENV_MEDIACONVERT_HOST: !Ref MediaConvertEndpoint
 
     BacklogStreamEventSource:
         Type: AWS::Lambda::EventSourceMapping
@@ -1568,7 +1593,10 @@ Resources:
     # * Updater lambda role
     # * Updater lambda
     # * Amazon SNS (Amazon Rekognition, Amazon Textract)
-    # * Amazon CloudWatch Event (Amazon Step Functions of Custom Labels)
+    # * Amazon EventBridge / CloudWatch Event
+    #   * AWS Elemental MediaConvert
+    #   * Amazon Transcribe
+    #   * Amazon Step Functions of Custom Labels
     #
     ################################################################################
     BacklogStatusUpdaterLogGroup:
@@ -1703,7 +1731,7 @@ Resources:
                     ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
 
     ################################################################################
-    # Rekognition / Textract SNS Notification
+    # Backlog Rekognition / Textract SNS Notification
     BacklogTopicSubscription:
         Type: AWS::SNS::Subscription
         Properties:
@@ -1720,7 +1748,77 @@ Resources:
             SourceArn: !Ref BacklogTopic
 
     ################################################################################
-    # Rekognition / Textract SNS Notification
+    # Backlog MediaConvert Job Status Change Event
+    BacklogMediaConvertStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-MediaConvertJobStatusChangeEventBacklog
+            Description: !Sub "(${SolutionLowerCaseId}) MediaConvert Job Status Change Event (Backlog)"
+            EventPattern:
+                source:
+                    - aws.mediaconvert
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - MediaConvert Job State Change
+                detail:
+                    status:
+                        - COMPLETE
+                        - CANCELED
+                        - ERROR
+                    userMetadata:
+                        solutionUuid:
+                            - !Ref SolutionUuid
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub Id-${BacklogStatusUpdaterLambda}
+                    Arn: !GetAtt BacklogStatusUpdaterLambda.Arn
+
+    BacklogMediaConvertStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref BacklogStatusUpdaterLambda
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt BacklogMediaConvertStatusChangeEvent.Arn
+
+    ################################################################################
+    # Backlog Transcribe Job Status Change Event
+    BacklogTranscribeStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-TranscribeJobStateChangeBacklog
+            Description: !Sub (${SolutionLowerCaseId}) Transcribe Job State Change Event (Backlog)
+            EventPattern:
+                source:
+                    - aws.transcribe
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - Transcribe Job State Change
+                detail:
+                    TranscriptionJobStatus:
+                        - COMPLETED
+                        - FAILED
+                    TranscriptionJobName:
+                        - prefix: !Sub ${SolutionUuid}
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub Id-${BacklogStatusUpdaterLambda}
+                    Arn: !GetAtt BacklogStatusUpdaterLambda.Arn
+
+    BacklogTranscribeStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref BacklogStatusUpdaterLambda
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt BacklogTranscribeStatusChangeEvent.Arn
+
+    ################################################################################
+    # Backlog Custom Labels State Machine Event
     BacklogCustomLabelsStateMachineStatusEvent:
         Type: AWS::Events::Rule
         Properties:
@@ -2224,12 +2322,17 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
+                                    - dynamodb:PutItem
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
+                            # EventBridge (ServiceBacklog)
+                            -
+                                Effect: Allow
+                                Action: events:PutEvents
+                                Resource: !GetAtt EventBridgeBus.Arn
 
     IngestVideoLambda:
         Type: AWS::Lambda::Function
@@ -2270,6 +2373,7 @@ Resources:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
                 - !Ref MediaInfoLayer
+                - !Ref BacklogLibLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -2285,7 +2389,12 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_MEDIACONVERT_HOST: !Ref MediaConvertEndpoint
-                    ENV_MEDIACONVERT_ROLE: !GetAtt ServiceDataAccessRole.Arn
+                    ENV_DATA_ACCESS_ROLE: !GetAtt ServiceDataAccessRole.Arn
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
 
     IngestVideoStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -2438,12 +2547,17 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
+                                    - dynamodb:PutItem
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
+                            # EventBridge (ServiceBacklog)
+                            -
+                                Effect: Allow
+                                Action: events:PutEvents
+                                Resource: !GetAtt EventBridgeBus.Arn
 
     IngestAudioLambda:
         Type: AWS::Lambda::Function
@@ -2484,6 +2598,7 @@ Resources:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
                 - !Ref MediaInfoLayer
+                - !Ref BacklogLibLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -2499,7 +2614,12 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_MEDIACONVERT_HOST: !Ref MediaConvertEndpoint
-                    ENV_MEDIACONVERT_ROLE: !GetAtt ServiceDataAccessRole.Arn
+                    ENV_DATA_ACCESS_ROLE: !GetAtt ServiceDataAccessRole.Arn
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
 
     IngestAudioStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -2638,7 +2758,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -2817,7 +2936,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -3016,7 +3134,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -3332,8 +3449,8 @@ Resources:
     #
     # Ingest Automation
     # * Ingest status updater
-    # * MediaConvert Job Status Change Event
     # * Ingest Table DDB Stream Event
+    # * Backlog Status Change Event (Ingest) supports AWS Elemental MediaConvert
     #
     ################################################################################
     IngestStatusUpdaterLogGroup:
@@ -3369,7 +3486,7 @@ Resources:
                 - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
             Policies:
                 -
-                    PolicyName: !Sub ${ResourcePrefix}-ingest-status-updater
+                    PolicyName: !Sub ${ResourcePrefix}-BacklogEventBridgeEvent
                     PolicyDocument:
                         Version: "2012-10-17"
                         Statement:
@@ -3390,17 +3507,16 @@ Resources:
                                 Resource:
                                     - !Ref IngestVideoStateMachine
                                     - !Ref IngestAudioStateMachine
-                            # DynamoDB - get token from ServiceToken / delete items from AIML table on REMOVE event
+                            # DynamoDB - get and delete token from ServiceToken
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
-                            # IoT
+                            # IoT (TO BE REMOVED)
                             -
                                 Effect: Allow
                                 Action: iot:Publish
@@ -3410,7 +3526,11 @@ Resources:
                                 Effect: Allow
                                 Action: sns:Publish
                                 Resource: !Ref SNSTopic
-                            # (DDB stream events below)
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-DDBStreamEvent
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
                             # DynamoDB stream permission
                             -
                                 Effect: Allow
@@ -3501,42 +3621,6 @@ Resources:
                     ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
 
     ################################################################################
-    # MediaConvert Job Status Change Event
-    MediaConvertStatusChangeEvent:
-        Type: AWS::Events::Rule
-        Properties:
-            Name: !Sub ${ResourcePrefix}-MediaConvertJobStatusChangeEvent
-            Description: !Sub "(${SolutionLowerCaseId}) MediaConvert Job Status Change Event"
-            EventPattern:
-                source:
-                    - aws.mediaconvert
-                region:
-                    - !Ref AWS::Region
-                detail-type:
-                    - MediaConvert Job State Change
-                detail:
-                    status:
-                        - COMPLETE
-                        - CANCELED
-                        - ERROR
-                    userMetadata:
-                        solutionUuid:
-                            - !Ref SolutionUuid
-            State: ENABLED
-            Targets:
-                -
-                    Id: !Sub Id-${IngestStatusUpdaterLambda}
-                    Arn: !GetAtt IngestStatusUpdaterLambda.Arn
-
-    MediaConvertStatusChangePermission:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref IngestStatusUpdaterLambda
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt MediaConvertStatusChangeEvent.Arn
-
-    ################################################################################
     # DynamoDB Ingest Table DDB Stream Event
     IngestTableStreamEventSource:
         Type: AWS::Lambda::EventSourceMapping
@@ -3547,6 +3631,50 @@ Resources:
             BatchSize: 1
             MaximumRetryAttempts: 10
             StartingPosition: LATEST
+
+    ################################################################################
+    # Backlog Ingest Status Change Event
+    # * events fired by our Service Backlog EventBus
+    IngestBacklogStatusChangeEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-IngestBacklogStatusChangeEvent
+            Description: !Sub "(${SolutionId}) Backlog Ingest Status Change Event"
+            EventBusName: !GetAtt EventBridgeBus.Name
+            EventPattern:
+                source:
+                    - !FindInMap
+                        - EventBridge
+                        - Rule
+                        - Source
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - !FindInMap
+                        - EventBridge
+                        - Rule
+                        - Detail
+                detail:
+                    status:
+                        # MediaConvert
+                        - COMPLETE
+                        - CANCELED
+                        - ERROR
+                    serviceApi:
+                        - mediaconvert:createjob
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub Id-${IngestStatusUpdaterLambda}
+                    Arn: !GetAtt IngestStatusUpdaterLambda.Arn
+
+    IngestBacklogStatusChangePermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !Ref IngestStatusUpdaterLambda
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt IngestBacklogStatusChangeEvent.Arn
 
     ################################################################################
     #
@@ -3722,7 +3850,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:PutItem
@@ -4406,7 +4533,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:PutItem
@@ -5084,7 +5210,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -5168,6 +5293,170 @@ Resources:
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
 
+    # BLIP model lambda
+    BlipModelLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - BlipModel
+                    - Name
+            RetentionInDays: 7
+
+    BlipModelRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Wildcard character is prefixed and scoped with the ResourcePrefix
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-analysis-image
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt BlipModelLogGroup.Arn
+                            # S3 - proxy bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                            -
+                                Effect: Allow
+                                Action: s3:GetObject
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+
+    BlipModelLambda:
+        Condition: bBlipImageArn
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - BlipModel
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) BLIP model lambda (5308MB)
+            MemorySize: 5308
+            Timeout: 900
+            PackageType: Image
+            Role: !GetAtt BlipModelRole.Arn
+            Code:
+                ImageUri: !Ref BlipImageArn
+            Architectures:
+                - x86_64
+            TracingConfig:
+                Mode: Active
+
+    # Placeholder if BlipImageArn not defined
+    BlipModelPlaceholderLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}-placeholder
+                - name: !FindInMap
+                    - Workflow
+                    - BlipModel
+                    - Name
+            RetentionInDays: 7
+
+    BlipModelPlaceholderLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}-placeholder
+                - name: !FindInMap
+                    - Workflow
+                    - BlipModel
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) BLIP model (placeholder) lambda (128MB)
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 128
+            Timeout: 3
+            Handler: index.handler
+            Role: !GetAtt BlipModelRole.Arn
+            Code:
+                ZipFile: |
+                    exports.handler = async (event, context) => {
+                        return {
+                            caption: undefined,
+                        };
+                    };
+
+    # Allow AnalysisStateMachine to run Blip model
+    BlipModelAnalysisPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !Ref AnalysisStateMachineServiceRole
+            PolicyName: AllowAnalysisStateMachineInvokeBlipModel
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: lambda:InvokeFunction
+                        Resource: !If
+                            - bBlipImageArn
+                            - !GetAtt BlipModelLambda.Arn
+                            - !GetAtt BlipModelPlaceholderLambda.Arn
+
     AnalysisImageStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -5182,42 +5471,74 @@ Resources:
                 !Sub
                     - |-
                         {
-                            "StartAt": "Start image analysis",
+                            "StartAt": "Run parallel states",
                             "States": {
-                                "Start image analysis": {
-                                    "Type": "Task",
-                                    "Resource": "${x0}",
-                                    "Parameters": {
-                                        "operation": "start-image-analysis",
-                                        "uuid.$": "$.uuid",
-                                        "status": "NOT_STARTED",
-                                        "progress": 0,
-                                        "input.$": "$.input",
-                                        "data.$": "$.data",
-                                        "stateExecution.$": "$$.Execution"
-                                    },
-                                    "Next": "Index analysis results",
-                                    "Retry": [
+                                "Run parallel states": {
+                                    "Type": "Parallel",
+                                    "Branches": [
                                         {
-                                            "ErrorEquals": [
-                                                "States.ALL"
-                                            ],
-                                            "IntervalSeconds": 1,
-                                            "MaxAttempts": 6,
-                                            "BackoffRate": 1.1
+                                            "StartAt": "Start image analysis",
+                                            "States": {
+                                                "Start image analysis": {
+                                                    "Type": "Task",
+                                                    "Resource": "${AnalysisImageLambda.Arn}",
+                                                    "Parameters": {
+                                                        "operation": "start-image-analysis",
+                                                        "uuid.$": "$.uuid",
+                                                        "status": "NOT_STARTED",
+                                                        "progress": 0,
+                                                        "input.$": "$.input",
+                                                        "data.$": "$.data"
+                                                    },
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 6,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "StartAt": "Run BLIP model",
+                                            "States": {
+                                                "Run BLIP model": {
+                                                    "Type": "Task",
+                                                    "Resource": "${blipLambda}",
+                                                    "Parameters": {
+                                                        "bucket.$": "$.input.destination.bucket",
+                                                        "key.$": "$.input.image.key"
+                                                    },
+                                                    "ResultPath": "$.data.image",
+                                                    "End": true,
+                                                    "Retry": [
+                                                        {
+                                                            "ErrorEquals": [
+                                                                "States.ALL"
+                                                            ],
+                                                            "IntervalSeconds": 1,
+                                                            "MaxAttempts": 2,
+                                                            "BackoffRate": 1.1
+                                                        }
+                                                    ]
+                                                }
+                                            }
                                         }
-                                    ]
+                                    ],
+                                    "Next": "Index analysis results"
                                 },
                                 "Index analysis results": {
                                     "Type": "Task",
-                                    "Resource": "${x0}",
+                                    "Resource": "${AnalysisImageLambda.Arn}",
                                     "Parameters": {
                                         "operation": "index-analysis-results",
-                                        "uuid.$": "$.uuid",
-                                        "status": "NOT_STARTED",
-                                        "progress": 0,
-                                        "input.$": "$.input",
-                                        "data.$": "$.data"
+                                        "parallelStateOutputs.$": "$",
+                                        "stateExecution.$": "$$.Execution"
                                     },
                                     "End": true,
                                     "Retry": [
@@ -5235,7 +5556,11 @@ Resources:
                         }
                     -
                         {
-                            x0: !GetAtt AnalysisImageLambda.Arn
+                            blipLambda: !If [
+                                bBlipImageArn,
+                                !GetAtt BlipModelLambda.Arn,
+                                !GetAtt BlipModelPlaceholderLambda.Arn
+                            ]
                         }
 
     ################################################################################
@@ -5306,7 +5631,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -5530,7 +5854,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -5636,6 +5959,7 @@ Resources:
                     ## Default AI/ML options ##
                     ENV_DEFAULT_AI_OPTIONS: !Ref DefaultAIOptions
                     ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
+                    ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
 
     AnalysisMainStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -5862,10 +6186,9 @@ Resources:
     #
     # Analysis Automation
     # * Analysis status updater
-    # * Transcribe Job Status Change Event
-    # * Rekognition async operation status change (SUCCEEDED or FAILED)
-    # * Comprehend async operation status change (PROCESSING)
-    # * Custom Labels async operation status change (FAILED, ABORTED, TIMED_OUT, SUCCEEDED)
+    # * Backlog Status Change Event (Analysis) includes
+    #   Amazon Rekognition, Amazon Transcribe,
+    #   Amazon Comprehend, & Custom Labels state machine
     #
     ################################################################################
     AnalysisStatusUpdaterLogGroup:
@@ -5932,7 +6255,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -6002,44 +6324,13 @@ Resources:
                     ENV_SNS_TOPIC_ARN: !Ref SNSTopic
 
     ################################################################################
-    # Transcribe Job Status Change Event
-    TranscribeStatusChangeEvent:
+    # Analysis Backlog Status Change Event
+    # * events fired by our Service Backlog EventBus
+    AnalysisBacklogStatusChangeEvent:
         Type: AWS::Events::Rule
         Properties:
-            Name: !Sub ${ResourcePrefix}-TranscribeJobStateChange
-            Description: !Sub (${SolutionLowerCaseId}) Transcribe Job State Change Event
-            EventPattern:
-                source:
-                    - aws.transcribe
-                region:
-                    - !Ref AWS::Region
-                detail-type:
-                    - Transcribe Job State Change
-                detail:
-                    TranscriptionJobStatus:
-                        - COMPLETED
-                        - FAILED
-            State: ENABLED
-            Targets:
-                -
-                    Id: !Sub Id-${AnalysisStatusUpdaterLambda}
-                    Arn: !GetAtt AnalysisStatusUpdaterLambda.Arn
-
-    TranscribeStatusChangePermission:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref AnalysisStatusUpdaterLambda
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt TranscribeStatusChangeEvent.Arn
-
-    ################################################################################
-    # Rekognition Job Status Change Event (Backlog)
-    RekognitionStatusChangeEvent:
-        Type: AWS::Events::Rule
-        Properties:
-            Name: !Sub ${ResourcePrefix}-RekognitionStatusChangeBacklog
-            Description: !Sub "(${SolutionId}) Rekognition Status Change Event (Backlog)"
+            Name: !Sub ${ResourcePrefix}-AnalysisBacklogStatusChangeEvent
+            Description: !Sub "(${SolutionId}) Backlog Analysis Status Change Event"
             EventBusName: !GetAtt EventBridgeBus.Name
             EventPattern:
                 source:
@@ -6056,9 +6347,18 @@ Resources:
                         - Detail
                 detail:
                     status:
+                        # Rekognition (SUCCEEDED, FAILED)
                         - SUCCEEDED
                         - FAILED
+                        # Transcribe (COMPLETED, FAILED)
+                        - COMPLETED
+                        # Comprehend (PROCESSING)
+                        - PROCESSING
+                        # Custom Labels state machine (SUCCEEDED, FAILED, ABORTED, TIMED_OUT)
+                        - ABORTED
+                        - TIMED_OUT
                     serviceApi:
+                        # Rekognition APIs supported by backlog management
                         - rekognition:startcontentmoderation
                         - rekognition:startcelebrityrecognition
                         - rekognition:startfacedetection
@@ -6067,93 +6367,17 @@ Resources:
                         - rekognition:startpersontracking
                         - rekognition:startsegmentdetection
                         - rekognition:starttextdetection
-            State: ENABLED
-            Targets:
-                -
-                    Id: !Sub Id-${AnalysisStatusUpdaterLambda}
-                    Arn: !GetAtt AnalysisStatusUpdaterLambda.Arn
-
-    RekognitionStatusChangePermission:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref AnalysisStatusUpdaterLambda
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt RekognitionStatusChangeEvent.Arn
-
-    ################################################################################
-    # Comprehend Job Status Change Event (Backlog)
-    ComprehendStatusChangeEvent:
-        Type: AWS::Events::Rule
-        Properties:
-            Name: !Sub ${ResourcePrefix}-ComprehendStatusChangeBacklog
-            Description: !Sub "(${SolutionId}) Comprehend Status Change Event (Backlog)"
-            EventBusName: !GetAtt EventBridgeBus.Name
-            EventPattern:
-                source:
-                    - !FindInMap
-                        - EventBridge
-                        - Rule
-                        - Source
-                region:
-                    - !Ref AWS::Region
-                detail-type:
-                    - !FindInMap
-                        - EventBridge
-                        - Rule
-                        - Detail
-                detail:
-                    status:
-                        - PROCESSING
-                    serviceApi:
+                        # Transcribe APIs supported by backlog management
+                        - transcribe:startmedicaltranscriptionjob
+                        - transcribe:starttranscriptionjob
+                        # Comprehend APIs supported by backlog management
                         - comprehend:startdocumentclassificationjob
                         - comprehend:startdominantlanguagedetectionjob
                         - comprehend:startentitiesdetectionjob
                         - comprehend:startkeyphrasesdetectionjob
                         - comprehend:startsentimentdetectionjob
                         - comprehend:starttopicsdetectionjob
-            State: ENABLED
-            Targets:
-                -
-                    Id: !Sub Id-${AnalysisStatusUpdaterLambda}
-                    Arn: !GetAtt AnalysisStatusUpdaterLambda.Arn
-
-    ComprehendStatusChangePermission:
-        Type: AWS::Lambda::Permission
-        Properties:
-            FunctionName: !Ref AnalysisStatusUpdaterLambda
-            Action: lambda:InvokeFunction
-            Principal: events.amazonaws.com
-            SourceArn: !GetAtt ComprehendStatusChangeEvent.Arn
-
-    ################################################################################
-    # RekognitionCustomLabels Job Status Change Event (Backlog)
-    RekognitionCustomLabelsStatusChangeEvent:
-        Type: AWS::Events::Rule
-        Properties:
-            Name: !Sub ${ResourcePrefix}-RekognitionCustomLabelsStatusChangeBacklog
-            Description: !Sub "(${SolutionId}) RekognitionCustomLabels Status Change Event (Backlog)"
-            EventBusName: !GetAtt EventBridgeBus.Name
-            EventPattern:
-                source:
-                    - !FindInMap
-                        - EventBridge
-                        - Rule
-                        - Source
-                region:
-                    - !Ref AWS::Region
-                detail-type:
-                    - !FindInMap
-                        - EventBridge
-                        - Rule
-                        - Detail
-                detail:
-                    status:
-                        - FAILED
-                        - ABORTED
-                        - TIMED_OUT
-                        - SUCCEEDED
-                    serviceApi:
+                        # Custom Custom Labels API supported by backlog management
                         - custom:startcustomlabelsdetection
             State: ENABLED
             Targets:
@@ -6161,13 +6385,13 @@ Resources:
                     Id: !Sub Id-${AnalysisStatusUpdaterLambda}
                     Arn: !GetAtt AnalysisStatusUpdaterLambda.Arn
 
-    RekognitionCustomLabelsStatusChangePermission:
+    AnalysisBacklogStatusChangePermission:
         Type: AWS::Lambda::Permission
         Properties:
             FunctionName: !Ref AnalysisStatusUpdaterLambda
             Action: lambda:InvokeFunction
             Principal: events.amazonaws.com
-            SourceArn: !GetAtt RekognitionCustomLabelsStatusChangeEvent.Arn
+            SourceArn: !GetAtt AnalysisBacklogStatusChangeEvent.Arn
 
     ################################################################################
     #
@@ -6336,7 +6560,6 @@ Resources:
                             -
                                 Effect: Allow
                                 Action:
-                                    - dynamodb:DescribeTable
                                     - dynamodb:Scan
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
@@ -6558,14 +6781,38 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
 
-    S3EventPermission:
+    IngestObjectCreatedEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-IngestObjectCreated
+            Description: !Sub (${SolutionLowerCaseId}) Ingest Bucket Object Created Event
+            EventPattern:
+                source:
+                    - aws.s3
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - Object Created
+                detail:
+                    bucket:
+                        name:
+                            - !Ref IngestBucket
+            State: !If
+                - bStartOnObjectCreation
+                - ENABLED
+                - DISABLED
+            Targets:
+                -
+                    Id: !Sub Id-${IngestS3EventLambda}
+                    Arn: !GetAtt IngestS3EventLambda.Arn
+
+    IngestObjectCreatedPermission:
         Type: AWS::Lambda::Permission
         Properties:
-            Action: lambda:InvokeFunction
             FunctionName: !Ref IngestS3EventLambda
-            Principal: s3.amazonaws.com
-            SourceAccount: !Ref AWS::AccountId
-            SourceArn: !Sub arn:aws:s3:::${IngestBucket}
+            Action: lambda:InvokeFunction
+            Principal: events.amazonaws.com
+            SourceArn: !GetAtt IngestObjectCreatedEvent.Arn
 
     CustomResourcesPolicyBackend:
         Type: AWS::IAM::Policy
@@ -6581,6 +6828,11 @@ Resources:
                         Effect: Allow
                         Action: s3:PutBucketNotification
                         Resource: !Sub arn:aws:s3:::${IngestBucket}
+                    # SageMaker - describe model endpoint
+                    -
+                        Effect: Allow
+                        Action: sagemaker:DescribeEndpoint
+                        Resource: !Sub arn:aws:sagemaker:${AWS::Region}:${AWS::AccountId}:endpoint/*
 
     ConfigureBucketNotification:
         Condition: bStartOnObjectCreation
@@ -6591,12 +6843,8 @@ Resources:
             Data:
                 Bucket: !Ref IngestBucket
                 NotificationConfiguration:
-                    LambdaFunctionConfigurations:
-                        -
-                            Id: !Sub Id-${IngestS3EventLambda}
-                            Events:
-                                - s3:ObjectCreated:*
-                            LambdaFunctionArn: !GetAtt IngestS3EventLambda.Arn
+                    EventBridgeConfiguration:
+                        EventBridgeEnabled: !Ref AWS::NoValue
 
 Outputs:
     # SNS Topic

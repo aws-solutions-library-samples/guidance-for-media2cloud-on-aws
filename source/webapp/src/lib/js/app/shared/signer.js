@@ -109,20 +109,20 @@ export default class SigV4Client {
 
     const sortedQueryParams = Object.keys(queryParams).sort();
     let canonicalQueryString = '';
-    for (let i = 0; i < sortedQueryParams.length; i += 1) {
+    for (let param of sortedQueryParams) {
       canonicalQueryString =
-        `${canonicalQueryString}${sortedQueryParams[i]}=${encodeURIComponent(queryParams[sortedQueryParams[i]])}&`;
+        `${canonicalQueryString}${param}=${encodeURIComponent(queryParams[param])}&`;
     }
-    return canonicalQueryString.substr(0, canonicalQueryString.length - 1);
+    return canonicalQueryString.substring(0, canonicalQueryString.length - 1);
   }
 
   buildCanonicalHeaders(headers) {
     let canonicalHeaders = '';
     const sortedKeys = Object.keys(headers).sort();
 
-    for (let i = 0; i < sortedKeys.length; i += 1) {
+    for (let key of sortedKeys) {
       canonicalHeaders =
-        `${canonicalHeaders}${sortedKeys[i].toLowerCase()}:${headers[sortedKeys[i]]}\n`;
+        `${canonicalHeaders}${key.toLowerCase()}:${headers[key]}\n`;
     }
     return canonicalHeaders;
   }
@@ -158,9 +158,6 @@ export default class SigV4Client {
     const hostname = (url.indexOf('://') > -1)
       ? url.split('/')[2]
       : url.split('/')[0];
-
-    // hostname = hostname.split(':')[0];
-    // hostname = hostname.split('?')[0];
 
     return hostname
       .split(':').shift()

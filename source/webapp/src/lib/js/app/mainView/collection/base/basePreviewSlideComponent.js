@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../shared/localization.js';
+import CognitoConnector from '../../../shared/cognitoConnector.js';
 import MediaFactory from '../../../shared/media/mediaFactory.js';
+import MediaTypes from '../../../shared/media/mediaTypes.js';
 import PreviewSlideEvents from './previewSlideComponentEvents.js';
 import TechnicalComponentHelper from './components/technicalComponentHelper.js';
 import AnalysisComponent from './components/analysisComponent.js';
+import SnapshotComponent from './components/snapshotComponent.js';
 import BaseSlideComponent from '../../../shared/baseSlideComponent.js';
 
 const BKGD_PREVIEW = 'bg-white';
@@ -21,6 +24,8 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
     super();
     this.$previewComponent = undefined;
     this.$analysisComponent = undefined;
+    this.$snapshotComponent = undefined;
+    this.$canWrite = CognitoConnector.getSingleton().canWrite();
   }
 
   static get Events() {
@@ -43,8 +48,20 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
     this.$analysisComponent = val;
   }
 
+  get snapshotComponent() {
+    return this.$snapshotComponent;
+  }
+
+  set snapshotComponent(val) {
+    this.$snapshotComponent = val;
+  }
+
   get media() {
     return (this.$previewComponent || {}).media;
+  }
+
+  get canWrite() {
+    return this.$canWrite;
   }
 
   async setMedia(media, optionalSearchResults) {
@@ -53,6 +70,12 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
       await this.hide();
       this.previewComponent = await MediaFactory.createPreviewComponent(media, optionalSearchResults);
       this.analysisComponent = new AnalysisComponent(this.previewComponent);
+    }
+    if (media.type === MediaTypes.Video
+      || media.type === MediaTypes.Photo) {
+      if (this.canWrite && !this.snapshotComponent) {
+        this.snapshotComponent = new SnapshotComponent(this.previewComponent);
+      }
     }
   }
 
@@ -72,6 +95,10 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
   }
 
   async hide() {
+    if (this.snapshotComponent) {
+      await this.snapshotComponent.hide();
+    }
+    this.snapshotComponent = undefined;
     if (this.previewComponent) {
       await this.previewComponent.unload();
     }
@@ -105,7 +132,15 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
   createPreview() {
     const preview = $('<div/>').addClass('col-12 p-0 m-0')
       .append(this.previewComponent.container);
-    return preview;
+
+    let controls;
+    if (this.snapshotComponent) {
+      controls = this.snapshotComponent.createComponent();
+    }
+    return [
+      preview,
+      controls,
+    ];
   }
 
   createTechnicalView() {
@@ -144,7 +179,7 @@ export default class BasePreviewSlideComponent extends BaseSlideComponent {
       height,
     } = this.previewComponent.getContainerDimensions();
     const tech = this.slide.find(`div[${DATA_VIEW}="${VIEW_TECH}"]`);
-    // tech.css('height', height);
+
     return this;
   }
 }

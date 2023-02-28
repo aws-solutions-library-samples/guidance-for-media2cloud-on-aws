@@ -44,25 +44,37 @@ class StateCreateTrackIterator {
 
   async process() {
     const data = this.stateData.data;
-    const iterator = (data[SUBCATEGORY_CELEB])
-      ? new CreateCelebTrackIterator(this.stateData)
-      : (data[SUBCATEGORY_FACE])
-        ? new CreateFaceTrackIterator(this.stateData)
-        : (data[SUBCATEGORY_FACEMATCH])
-          ? new CreateFaceMatchTrackIterator(this.stateData)
-          : (data[SUBCATEGORY_LABEL])
-            ? new CreateLabelTrackIterator(this.stateData)
-            : (data[SUBCATEGORY_MODERATION])
-              ? new CreateModerationTrackIterator(this.stateData)
-              : (data[SUBCATEGORY_PERSON])
-                ? new CreatePersonTrackIterator(this.stateData)
-                : (data[SUBCATEGORY_SEGMENT])
-                  ? new CreateSegmentTrackIterator(this.stateData)
-                  : (data[SUBCATEGORY_TEXT])
-                    ? new CreateTextTrackIterator(this.stateData)
-                    : (data[SUBCATEGORY_CUSTOMLABEL])
-                      ? new CreateCustomLabelTrackIterator(this.stateData)
-                      : undefined;
+    let iterator;
+    if (data[SUBCATEGORY_CELEB]) {
+      iterator = new CreateCelebTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACE]) {
+      iterator = new CreateFaceTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACEMATCH]) {
+      iterator = new CreateFaceMatchTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_LABEL]) {
+      iterator = new CreateLabelTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_MODERATION]) {
+      iterator = new CreateModerationTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_PERSON]) {
+      iterator = new CreatePersonTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_SEGMENT]) {
+      iterator = new CreateSegmentTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_TEXT]) {
+      iterator = new CreateTextTrackIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_CUSTOMLABEL]) {
+      iterator = new CreateCustomLabelTrackIterator(this.stateData);
+    }
+    else {
+      iterator = undefined;
+    }
     if (!iterator) {
       const e = `iterator '${Object.keys(data).join(',')}' not impl`;
       console.error(e);

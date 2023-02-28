@@ -26,8 +26,7 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
     const datasets = await CommonUtils.download(bucket, key)
       .then(x => JSON.parse(x));
     const selected = [];
-    for (let i = 0; i < datasets.Persons.length; i++) {
-      const item = datasets.Persons[i];
+    for (let item of datasets.Persons) {
       if (item.FaceMatches && item.FaceMatches.length) {
         const bestMatch = item.FaceMatches.filter(x =>
           x.Face.ExternalImageId === name)
@@ -46,8 +45,7 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
   createTimeseriesData(name, datasets) {
     const timestamps = {};
     let desc;
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       if (!(dataset.FaceMatches || [])[0]) {
         continue;
       }

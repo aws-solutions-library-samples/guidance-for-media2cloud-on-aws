@@ -46,17 +46,23 @@ class MimeWrapper {
   }
 
   getMime(data) {
-    return (typeof data === 'string')
-      ? MimeWrapper.$.getType(data)
-      : (data || {}).type
-        ? data.type
-        : (data || {}).mime
-          ? data.mime
-          : (data || {}).name
-            ? MimeWrapper.$.getType(data.name)
-            : (data || {}).key
-              ? MimeWrapper.$.getType(data.key)
-              : undefined;
+    if (typeof data === 'string') {
+      return MimeWrapper.$.getType(data);
+    }
+    if ((data || {}).type) {
+      return data.type;
+    }
+    if ((data || {}).mime) {
+      return data.mime;
+    }
+    if ((data || {}).name) {
+      return MimeWrapper.$.getType(data.name);
+    }
+    if ((data || {}).key) {
+      return MimeWrapper.$.getType(data.key);
+    }
+
+    return undefined;
   }
 
   getKind(data) {
@@ -65,13 +71,17 @@ class MimeWrapper {
       subtype,
     ] = (this.getMime(data) || '').split('/').filter(x => x)
       .map(x => x.toLowerCase());
-    return (type === 'video' || type === 'audio' || type === 'image')
-      ? type
-      : (subtype === 'mxf' || subtype === 'gxf')
-        ? 'video'
-        : (subtype === 'pdf')
-          ? 'document'
-          : subtype;
+    if (type === 'video' || type === 'audio' || type === 'image') {
+      return type;
+    }
+    if (subtype === 'mxf' || subtype === 'gxf') {
+      return 'video';
+    }
+    if (subtype === 'pdf') {
+      return 'document';
+    }
+
+    return subtype;
   }
 }
 

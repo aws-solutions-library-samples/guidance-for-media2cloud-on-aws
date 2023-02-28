@@ -1,40 +1,72 @@
 {
-    "StartAt": "Start image analysis",
+    "StartAt": "Run parallel states",
     "States": {
-        "Start image analysis": {
-            "Type": "Task",
-            "Resource": "${x0}",
-            "Parameters": {
-                "operation": "start-image-analysis",
-                "uuid.$": "$.uuid",
-                "status": "NOT_STARTED",
-                "progress": 0,
-                "input.$": "$.input",
-                "data.$": "$.data",
-                "stateExecution.$": "$$.Execution"
-            },
-            "Next": "Index analysis results",
-            "Retry": [
+        "Run parallel states": {
+            "Type": "Parallel",
+            "Branches": [
                 {
-                    "ErrorEquals": [
-                        "States.ALL"
-                    ],
-                    "IntervalSeconds": 1,
-                    "MaxAttempts": 6,
-                    "BackoffRate": 1.1
+                    "StartAt": "Start image analysis",
+                    "States": {
+                        "Start image analysis": {
+                            "Type": "Task",
+                            "Resource": "${AnalysisImageLambda.Arn}",
+                            "Parameters": {
+                                "operation": "start-image-analysis",
+                                "uuid.$": "$.uuid",
+                                "status": "NOT_STARTED",
+                                "progress": 0,
+                                "input.$": "$.input",
+                                "data.$": "$.data"
+                            },
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 6,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "StartAt": "Run BLIP model",
+                    "States": {
+                        "Run BLIP model": {
+                            "Type": "Task",
+                            "Resource": "${blipLambda}",
+                            "Parameters": {
+                                "bucket.$": "$.input.destination.bucket",
+                                "key.$": "$.input.image.key"
+                            },
+                            "ResultPath": "$.data.image",
+                            "End": true,
+                            "Retry": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "IntervalSeconds": 1,
+                                    "MaxAttempts": 2,
+                                    "BackoffRate": 1.1
+                                }
+                            ]
+                        }
+                    }
                 }
-            ]
+            ],
+            "Next": "Index analysis results"
         },
         "Index analysis results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisImageLambda.Arn}",
             "Parameters": {
                 "operation": "index-analysis-results",
-                "uuid.$": "$.uuid",
-                "status": "NOT_STARTED",
-                "progress": 0,
-                "input.$": "$.input",
-                "data.$": "$.data"
+                "parallelStateOutputs.$": "$",
+                "stateExecution.$": "$$.Execution"
             },
             "End": true,
             "Retry": [

@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "pretest": "npm install",
-    "test": "mocha *.spec.js",
+    "test": "jest --coverage --coverageDirectory=../../coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index*.js package.json lib dist/",
     "build:install": "cd dist && npm install --only=prod --no-optional",
@@ -15,6 +15,18 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "core-lib": "file:../layers/core-lib"
+    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
+    "aws-sdk": "2.831.0",
+    "aws-sdk-mock": "5.8.0",
+    "chai": "4.3.7",
+    "core-lib": "file:../layers/core-lib",
+    "jest": "^29.4.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.9",
+    "aws-elasticsearch-connector": "^9.2.0",
+    "node-webvtt": "^1.9.4",
+    "sqlstring": "^2.3.3",
+    "tar-stream": "^2.2.0"
   }
 }

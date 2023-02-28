@@ -31,4 +31,29 @@ export default class ImageStore extends BaseStore {
     }
     return URL.createObjectURL(blob);
   }
+
+  async getBlob(url) {
+    let blob = await this.getItem(url);
+    if (!blob) {
+      blob = await fetch(url)
+        .then((res) => {
+          if (!res.ok) {
+            return undefined;
+          }
+          /* also check content type to ensure it is image */
+          const type = (res.headers.get('Content-Type') || '')
+            .split('/')
+            .shift();
+          if (!type || type.toLowerCase() !== 'image') {
+            return undefined;
+          }
+          return res.blob();
+        });
+      if (!blob) {
+        return undefined;
+      }
+      await this.putItem(url, blob);
+    }
+    return URL.createObjectURL(blob);
+  }
 }

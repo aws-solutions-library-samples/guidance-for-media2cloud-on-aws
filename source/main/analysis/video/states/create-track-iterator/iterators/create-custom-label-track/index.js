@@ -36,8 +36,7 @@ class CreateCustomLabelTrackIterator extends BaseCreateTrackIterator {
 
   createTimeseriesData(name, datasets) {
     const timestamps = {};
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       const box = ((dataset.CustomLabel.Geometry || {}).BoundingBox)
         ? {
           w: Number.parseFloat(dataset.CustomLabel.Geometry.BoundingBox.Width.toFixed(4)),

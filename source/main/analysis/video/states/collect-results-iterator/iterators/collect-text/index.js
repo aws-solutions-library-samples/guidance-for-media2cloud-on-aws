@@ -49,9 +49,14 @@ class CollectTextIterator extends BaseCollectResultsIterator {
     keys = [...new Set(keys)];
     while (keys.length) {
       const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
+      try {
+        /* property name such as 'constructor' will throw error */
+        const unique = new Set(mapData[key]);
+        unique.add(seqFile);
+        mapData[key] = [...unique];
+      } catch (e) {
+        console.log('[ERR]: mapUniqueNameToSequenceFile: invalid text:', key, e.message);
+      }
     }
     return mapData;
   }

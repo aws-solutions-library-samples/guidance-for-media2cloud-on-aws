@@ -31,7 +31,7 @@ class StateValidateChecksum {
     this.$computed = checksum.computed;
     this.$algorithm = checksum.algorithm || undefined;
     this.$expected = checksum.expected || undefined;
-    this.$storeChecksumOnTagging = !(checksum.storeChecksumOnTagging === false);
+    this.$storeChecksumOnTagging = (checksum.storeChecksumOnTagging !== false);
     this.$comparedWith = checksum.expected ? TYPE_API : TYPE_NONE;
     this.$comparedResult = RESULT_SKIPPED;
     this.$tagUpdated = false;
@@ -93,11 +93,15 @@ class StateValidateChecksum {
     this.tags = await this.getTags();
     /* #1: compared checksum result */
     const refChecksum = this.expected || await this.bestGuessChecksum();
-    this.comparedResult = (!refChecksum)
-      ? RESULT_SKIPPED
-      : (refChecksum.toLowerCase() === this.computed.toLowerCase())
-        ? RESULT_MATCHED
-        : RESULT_NOTMATCHED;
+    if (!refChecksum) {
+      this.comparedResult = RESULT_SKIPPED;
+    }
+    else if (refChecksum.toLowerCase() === this.computed.toLowerCase()) {
+      this.comparedResult = RESULT_MATCHED;
+    }
+    else {
+      this.comparedResult = RESULT_NOTMATCHED;
+    }
     /* #2: store checksum to tagging if MATCHED or SKIPPED */
     if (this.storeChecksumOnTagging
       && this.comparedResult !== RESULT_NOTMATCHED) {

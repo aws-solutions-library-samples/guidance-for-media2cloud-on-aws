@@ -22,6 +22,9 @@ const {
   FrameCaptureMode,
 } = require('core-lib');
 
+const DEFAULT_AI_OPTIONS = process.env.ENV_DEFAULT_AI_OPTIONS;
+const AI_OPTIONS_S3KEY = process.env.ENV_AI_OPTIONS_S3KEY;
+
 const TYPE_REKOGNITION_IMAGE = [
   AnalysisTypes.Rekognition.Celeb,
   AnalysisTypes.Rekognition.Face,
@@ -64,13 +67,6 @@ class StatePrepareAnalysis {
       throw new AnalysisError('stateData not StateData object');
     }
     this.$stateData = stateData;
-    this.$defaultAIOptions = {
-      ...AIML,
-      minConfidence: Environment.Rekognition.MinConfidence,
-    };
-    process.env.ENV_DEFAULT_AI_OPTIONS.split(',').filter(x => x).forEach((x) => {
-      this.$defaultAIOptions[x] = true;
-    });
     this.$timestamp = ((this.stateData.input || {}).request || {}).timestamp
       || (new Date()).getTime();
   }
@@ -81,10 +77,6 @@ class StatePrepareAnalysis {
 
   get stateData() {
     return this.$stateData;
-  }
-
-  get defaultAIOptions() {
-    return this.$defaultAIOptions;
   }
 
   get timestamp() {
@@ -161,11 +153,46 @@ class StatePrepareAnalysis {
     return this.stateData.toJSON();
   }
 
+  async getDefaultAIOptions() {
+    const aiOptions = {
+      ...AIML,
+      minConfidence: Environment.Rekognition.MinConfidence,
+    };
+
+    /* global options from stored by webapp (admin) */
+    const bucket = Environment.Proxy.Bucket;
+    const key = AI_OPTIONS_S3KEY;
+    const globalOptions = await CommonUtils.download(bucket, key, false)
+      .then((x) =>
+        JSON.parse(x.Body.toString()))
+      .catch(() =>
+        undefined);
+
+    if (globalOptions !== undefined) {
+      return {
+        ...aiOptions,
+        ...globalOptions,
+      };
+    }
+
+    /* environment options during stack creation */
+    DEFAULT_AI_OPTIONS.split(',')
+      .forEach((x) => {
+        aiOptions[x] = true;
+      });
+
+    return aiOptions;
+  }
+
   async parseAIOptions(requested) {
     const aiOptions = requested || {};
-    Object.keys(this.defaultAIOptions).forEach((x) => {
+
+    const defaultAIOptions = await this.getDefaultAIOptions();
+
+    /* merge requested and default aioptions */
+    Object.keys(defaultAIOptions).forEach((x) => {
       if (aiOptions[x] === undefined) {
-        aiOptions[x] = this.defaultAIOptions[x];
+        aiOptions[x] = defaultAIOptions[x];
       }
     });
     return this.mergeServiceOptions(aiOptions);

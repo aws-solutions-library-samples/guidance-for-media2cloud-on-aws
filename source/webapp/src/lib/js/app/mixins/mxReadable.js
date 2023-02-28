@@ -29,7 +29,7 @@ const mxReadable = Base => class extends Base {
     ]);
   }
 
-  static readableDuration(durationInMs = 0, hhmmss = false) {
+  static readableDuration(durationInMs = 0, hhmmss = true) {
     const HH = Math.floor(durationInMs / 3600000);
     const MM = Math.floor((durationInMs % 3600000) / 60000);
     const SS = Math.floor((durationInMs % 60000) / 1000);

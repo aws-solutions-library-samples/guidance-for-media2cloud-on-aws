@@ -35,8 +35,7 @@ class CreateModerationTrackIterator extends BaseCreateTrackIterator {
   createTimeseriesData(name, datasets) {
     let desc;
     const timestamps = {};
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       if (!desc && dataset.ModerationLabel.Name) {
         desc = dataset.ModerationLabel.Name;
       }

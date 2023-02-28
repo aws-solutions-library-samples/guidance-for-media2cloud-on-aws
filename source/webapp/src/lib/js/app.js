@@ -14,15 +14,16 @@ export default class DemoApp {
       container: `app-${AppUtils.randomHexstring()}`,
     };
     const view = $('<div/>').attr('id', this.ids.container);
-    const mainView = new MainView();
-    mainView.appendTo(view);
     const signIn = new SignInFlow();
     signIn.appendTo(view);
+
     signIn.view.on(SignInFlow.Events.View.Hidden, () =>
-      setTimeout(async () =>
-        mainView.show(), 10));
+      setTimeout(async () => {
+        const mainView = new MainView();
+        mainView.appendTo(view);
+        mainView.show();
+      }, 10));
     this.$signInFlow = signIn;
-    this.$mainView = mainView;
     this.$view = view;
   }
 
@@ -32,10 +33,6 @@ export default class DemoApp {
 
   get view() {
     return this.$view;
-  }
-
-  get mainView() {
-    return this.$mainView;
   }
 
   get signInFlow() {

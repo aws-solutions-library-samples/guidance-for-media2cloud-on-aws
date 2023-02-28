@@ -17,6 +17,9 @@ const Environment = require('../environment');
 const AnalysisTypes = require('../analysisTypes');
 const MAPPINGS_INGEST = require('./mappings/ingest');
 const MAPPINGS_ANALYSIS = require('./mappings/analysis');
+const {
+  pause,
+} = require('../retry');
 
 const DOMAIN_ENDPOINT = Environment.Elasticsearch.DomainEndpoint;
 /* exception types */
@@ -124,7 +127,7 @@ class Indexer {
     return this.client.cat.indices({
       index: name,
     }).then((res) =>
-      Indexer.parseIndexDecription(res.body));
+      Indexer.parseIndexDescription(res.body));
   }
 
   async describeAllIndices() {
@@ -138,16 +141,27 @@ class Indexer {
       throw new Error('index name not specified');
     }
     const body = Indexer.getMapping(name);
-    return this.client.indices.create({
-      index: name,
-      body,
-    }).catch((e) => {
-      if (e.body.error.type === EXCEPTION_RESOURCE_ALREADY_EXISTS) {
+    /* retry logic */
+    let tries = 5;
+    let response;
+    do {
+      response = await this.client.indices.create({
+        index: name,
+        body,
+      }).catch((e) =>
+        e);
+
+      if (!(response instanceof Error)) {
+        return response;
+      }
+      if (response.body.error.type === EXCEPTION_RESOURCE_ALREADY_EXISTS) {
         console.log(`index '${name}' already exists`);
         return undefined;
       }
-      throw e;
-    });
+      await pause(400);
+    } while ((tries--) > 0);
+
+    throw response;
   }
 
   async batchCreateIndices(indices = INDICES) {
@@ -160,7 +174,7 @@ class Indexer {
         .then(() =>
           succeeded.push(name))
         .catch((e) =>
-          failed.push(e.body.error.reason));
+          failed.push(((e.body || {}).error || {}).reason));
     }
     if (failed.length) {
       throw new Error(failed.join('\n'));
@@ -193,7 +207,7 @@ class Indexer {
         .then(() =>
           succeeded.push(name))
         .catch((e) =>
-          failed.push(e.body.error.reason));
+          failed.push(((e.body || {}).error || {}).reason));
     }
     if (failed.length) {
       throw new Error(failed.join('\n'));
@@ -308,7 +322,7 @@ class Indexer {
   async indexDocument(name, id, doc) {
     return this.update(name, id, doc)
       .catch((e) => {
-        if (e.body.error.type === EXCEPTION_DOCUMENT_MISSING) {
+        if (((e.body || {}).error || {}).type === EXCEPTION_DOCUMENT_MISSING) {
           return this.index(name, id, doc);
         }
         throw e;
@@ -318,7 +332,7 @@ class Indexer {
   async deleteDocument(name, id) {
     return this.delete(name, id)
       .catch((e) => {
-        if (e.body.result === EXCEPTION_NOT_FOUND) {
+        if ((e.body || {}).result === EXCEPTION_NOT_FOUND) {
           return undefined;
         }
         throw e;

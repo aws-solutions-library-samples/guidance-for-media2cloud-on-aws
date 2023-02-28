@@ -2,16 +2,26 @@
   "name": "m2c-webapp",
   "version": "2.0.0",
   "description": "media2cloud webapp",
-  "main": "index.js",
+  "main": "src/lib/js/app.js",
+  "type": "module",
   "private": true,
   "scripts": {
     "pretest": "npm install",
-    "test": "echo \"no test\"",
+    "test": "jest --coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv css images src favicon.ico index.html 404.html ./dist",
     "build": "npm-run-all -s build:clean build:copy",
     "zip": "cd dist && zip -rq"
   },
+  "jest": {
+    "setupTestFrameworkScriptFile": "tests/setup.js",
+    "transform": {
+      "^.+\\.jsx?$": "babel-jest"
+    }
+  },
   "author": "aws-mediaent-solutions",
-  "devDependencies": {}
+  "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
+    "jest": "^29.3.1"
+  }
 }

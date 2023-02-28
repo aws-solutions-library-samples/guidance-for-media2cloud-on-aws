@@ -38,7 +38,6 @@ export default class SignInFlow {
     this.$view = $('<div/>').attr('id', this.$ids.container);
     this.$cognito = CognitoConnector.getSingleton();
     this.$dialog = undefined;
-    this.$firstTimeSignIn = 0;
   }
 
   static get Events() {
@@ -73,17 +72,11 @@ export default class SignInFlow {
     return this.$cognito;
   }
 
-  get firstTimeSignIn() {
-    return this.$firstTimeSignIn;
-  }
-
-  set firstTimeSignIn(val) {
-    this.$firstTimeSignIn = val;
-  }
-
   async show() {
     await this.hide();
-    const user = await this.cognito.signIn().catch(() => undefined);
+    const user = await this.userSignIn()
+      .catch(() =>
+        undefined);
 
     this.dialog = $('<div/>').addClass('modal fade')
       .attr('tabindex', -1)
@@ -119,6 +112,18 @@ export default class SignInFlow {
   async hide() {
     this.view.children().remove();
     this.dialog = undefined;
+  }
+
+  async userSignIn() {
+    const user = await this.cognito.signIn();
+    if (user !== undefined) {
+      /* grant iot policy to the user */
+      await ApiHelper.attachIot();
+      console.log(`iot permission granted to '${user.username}'...`);
+      /* start iot connection */
+      await IotSubscriber.getSingleton().connect();
+    }
+    return user;
   }
 
   createCarousel(user) {
@@ -184,8 +189,7 @@ export default class SignInFlow {
         if (response.status === 'newPasswordRequired') {
           return this.slideTo(this.ids.slides.newPassword);
         }
-        await this.cognito.signIn();
-        this.connectIotThread();
+        await this.userSignIn();
         return this.dialog.modal('hide');
       } catch (e) {
         event.stopPropagation();
@@ -234,7 +238,6 @@ export default class SignInFlow {
         btn.addClass('disabled')
           .attr('disabled', 'disabled');
         await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed, 3000);
-        this.firstTimeSignIn = 1;
         this.cognito.signOut();
         password01.val('');
         password02.val('');
@@ -311,7 +314,6 @@ export default class SignInFlow {
       try {
         await this.cognito.confirmPassword(code.val(), password.val());
         await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed);
-        this.firstTimeSignIn = 1;
         this.cognito.signOut();
         code.val('');
         password.val('');
@@ -452,27 +454,5 @@ export default class SignInFlow {
     const carousel = this.dialog.find(`#${this.ids.carousel}`).first();
     const idx = carousel.find(`#${id}`).index();
     carousel.carousel(idx);
-  }
-
-  connectIotThread() {
-    setTimeout(async () => {
-      if (!this.firstTimeSignIn) {
-        return IotSubscriber.getSingleton();
-      }
-      try {
-        await ApiHelper.attachIot();
-        console.log(`iot permission granted to '${this.cognito.user.username}'...`);
-        return IotSubscriber.getSingleton();
-      } catch (e) {
-        this.firstTimeSignIn *= 2;
-        if (this.firstTimeSignIn > 128) {
-          /* bail out logic */
-          alert(`Error: fail to grant Iot permission for '${this.cognito.user.username}'`);
-          return undefined;
-        }
-        console.error(`error: connectIotThread: ${encodeURIComponent(e.message).replace(/%20/g, ' ')}...retry in ${this.firstTimeSignIn}s.`);
-        return this.connectIotThread();
-      }
-    }, this.firstTimeSignIn * 1000 || 100);
   }
 }

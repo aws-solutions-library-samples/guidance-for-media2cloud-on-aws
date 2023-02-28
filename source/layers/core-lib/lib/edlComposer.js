@@ -63,7 +63,8 @@ class EDLComposer {
     const srcIn = event.startTime.replace(';', ':');
     const srcOut = event.endTime.replace(';', ':');
     // field 8/9
-    const recordIn = (prev) ? prev.endTime.replace(';', ':') : srcIn;
+    // const recordIn = (prev) ? prev.endTime.replace(';', ':') : srcIn;
+    const recordIn = srcIn;
     const recordOut = srcOut;
     const clipName = event.clipName; // .toUpperCase().replace(/[^A-Z0-9\s_.-]/g, ' ');
     return [

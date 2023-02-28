@@ -269,11 +269,17 @@ export default class ProcessingTab extends mxSpinner(BaseTab) {
       'timestamp',
       'status',
     ].forEach(name => helper.appendTableList(dl, media, name));
-    const bkgdColor = media.overallStatus === SolutionManifest.Statuses.Error
-      ? 'bg-danger'
-      : media.overallStatus === SolutionManifest.Statuses.Processing
-        ? 'bg-primary'
-        : 'bg-success';
+    let bkgdColor;
+    switch (media.overallStatus) {
+      case SolutionManifest.Statuses.Error:
+        bkgdColor = 'bg-danger';
+        break;
+      case SolutionManifest.Statuses.Processing:
+        bkgdColor = 'bg-primary';
+        break;
+      default:
+        bkgdColor = 'bg-success';
+    }
     const status = $('<span/>').addClass('lead-xxs mx-auto my-auto text-white')
       .html(media.overallStatus);
 

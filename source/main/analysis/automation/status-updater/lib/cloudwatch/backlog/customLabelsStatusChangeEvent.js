@@ -23,7 +23,7 @@ const ALLOWED_STATUSES = [
 class CustomLabelsStatusChangeEvent extends BacklogStatusChangeEvent {
   async process() {
     if (ALLOWED_STATUSES.indexOf(this.status) < 0) {
-      console.error(`ERR: CustomLabelsStatusChangeEvent.process: ${this.status} status not handled`);
+      console.error(`CustomLabelsStatusChangeEvent.process: ${this.status} status not handled`);
       return undefined;
     }
     /* #1: get state data from service token table */

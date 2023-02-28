@@ -56,20 +56,25 @@ export default class DescriptionList extends mxReadable(class {}) {
   }
 
   createDetailGroup(name, indent = 0) {
-    const css = (!indent)
-      ? {
+    let css;
+    if (!indent) {
+      css = {
         margin: '',
         lead: 'lead-s',
-      }
-      : (indent === 1)
-        ? {
-          margin: 'ml-2',
-          lead: 'lead-s',
-        }
-        : {
-          margin: 'ml-4',
-          lead: 'lead-s',
-        };
+      };
+    }
+    else if (indent === 1) {
+      css = {
+        margin: 'ml-2',
+        lead: 'lead-s',
+      };
+    }
+    else {
+      css = {
+        margin: 'ml-4',
+        lead: 'lead-s',
+      };
+    }
     const details = $('<details/>').addClass(css.margin)
       .append($('<summary/>').addClass('my-2')
         .append($('<span/>').addClass(`${css.lead} text-capitalize`)

@@ -28,7 +28,8 @@ const DDB_STREAM_SOURCE = 'aws:dynamodb';
 exports.handler = async (event, context) => {
   console.log(`event = ${JSON.stringify(event, null, 2)}; context = ${JSON.stringify(context, null, 2)};`);
   try {
-    const missing = REQUIRED_ENVS.filter(x => process.env[x] === undefined);
+    const missing = REQUIRED_ENVS.filter(x =>
+      process.env[x] === undefined);
     if (missing.length) {
       throw new Error(`missing env, ${missing.join(', ')}`);
     }

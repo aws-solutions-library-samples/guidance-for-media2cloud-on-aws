@@ -13,5 +13,7 @@
   "scripts": {},
   "author": "aws-specialist-sa-emea",
   "license": "MIT-0",
-  "devDependencies": {}
+  "devDependencies": {
+    "jest": "^29.4.3"
+  }
 }

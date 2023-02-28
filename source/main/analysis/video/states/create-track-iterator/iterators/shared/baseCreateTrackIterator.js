@@ -175,8 +175,8 @@ class BaseCreateTrackIterator {
       : undefined;
     const timelines = [];
     const queue = new TimelineQ();
-    for (let i = 0; i < dataset.length; i++) {
-      const item = TimelineQ.createTypedItem(dataset[i], options);
+    for (let data of dataset) {
+      const item = TimelineQ.createTypedItem(data, options);
       if (!item.canUse()) {
         continue;
       }

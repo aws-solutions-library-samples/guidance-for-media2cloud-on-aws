@@ -1,14 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const FS = require('fs');
 const PATH = require('path');
 const {
@@ -16,7 +7,13 @@ const {
   StateData,
   ServiceToken,
   TranscodeError,
+  CommonUtils,
 } = require('core-lib');
+const {
+  BacklogClient: {
+    MediaConvertBacklogJob,
+  },
+} = require('service-backlog-lib');
 
 const CATEGORY = 'transcode';
 const API_NAME = 'audio';
@@ -67,40 +64,47 @@ class StateStartTranscode {
     if (!data.mediainfo) {
       throw new TranscodeError('missing mediainfo');
     }
-    const response = await this.createJob();
+
+    const params = await this.createJobTemplate();
     /* done with mediainfo, remove mediainfo block to reduce the stateData payload size */
     [
       'video',
       'audio',
       'container',
-    ].forEach(x => delete data.mediainfo[x]);
+    ].forEach(x =>
+      delete data.mediainfo[x]);
+
+    const stateOutput = await this.createJob(params);
 
     const output = this.makeOutputPrefix(dest.prefix);
     this.stateData.setStarted();
     this.stateData.setData(CATEGORY, {
-      startTime: new Date().getTime(),
-      jobId: response.Job.Id,
+      ...stateOutput,
       output,
     });
 
+    const id = stateOutput.backlogId;
+    const responseData = this.stateData.toJSON();
     await ServiceToken.register(
-      this.stateData.data[CATEGORY].jobId,
+      id,
       this.stateData.event.token,
       CATEGORY,
       API_NAME,
-      this.stateData.toJSON()
+      responseData
     );
-    return this.stateData.toJSON();
+    return responseData;
   }
 
-  async createJob() {
-    const template = await this.createJobTemplate();
-    const mediaconvert = new AWS.MediaConvert({
-      apiVersion: '2017-08-29',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-      endpoint: Environment.MediaConvert.Host,
-    });
-    return mediaconvert.createJob(template).promise();
+  async createJob(params) {
+    /* use backlog system */
+    const uniqueId = CommonUtils.uuid4();
+
+    const backlog = new MediaConvertBacklogJob();
+    return backlog.createJob(uniqueId, params)
+      .then(() => ({
+        startTime: new Date().getTime(),
+        backlogId: uniqueId,
+      }));
   }
 
   async createJobTemplate() {
@@ -108,7 +112,7 @@ class StateStartTranscode {
     const outputGroup = this.makeOutputGroup();
     const audioSelectorName = 'Audio Selector 1';
     const template = {
-      Role: Environment.MediaConvert.Role,
+      Role: Environment.DataAccess.RoleArn,
       Settings: {
         OutputGroups: outputGroup,
         AdAvailOffset: 0,

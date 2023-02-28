@@ -56,11 +56,14 @@ class TextractBacklogJob extends BacklogJob {
 
   bindToFunc(serviceApi) {
     const textract = this.getTextractInstance();
-    return (serviceApi === TextractBacklogJob.ServiceApis.StartDocumentAnalysis)
-      ? textract.startDocumentAnalysis.bind(textract)
-      : (serviceApi === TextractBacklogJob.ServiceApis.StartDocumentTextDetection)
-        ? textract.startDocumentTextDetection.bind(textract)
-        : undefined;
+    switch (serviceApi) {
+      case TextractBacklogJob.ServiceApis.StartDocumentAnalysis:
+        return textract.startDocumentAnalysis.bind(textract);
+      case TextractBacklogJob.ServiceApis.StartDocumentTextDetection:
+        return textract.startDocumentTextDetection.bind(textract);
+      default:
+        return undefined;
+    }
   }
 
   async startAndRegisterJob(id, serviceApi, params) {

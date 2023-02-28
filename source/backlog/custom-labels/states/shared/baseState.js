@@ -140,11 +140,11 @@ class BaseState {
   }
 
   testProjectArn(val) {
-    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/[0-9]+$/.test(val);
+    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/\d+$/.test(val);
   }
 
   testProjectVersionArn(val) {
-    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/version\/[a-zA-Z0-9_.-]{1,255}\/[0-9]+$/.test(val);
+    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/version\/[a-zA-Z0-9_.-]{1,255}\/\d+$/.test(val);
   }
 
   async process() {

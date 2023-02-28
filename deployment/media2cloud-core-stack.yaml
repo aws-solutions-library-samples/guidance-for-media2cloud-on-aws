@@ -16,7 +16,7 @@ Mappings:
             Name: core-lib
     OpenSearch:
         Engine:
-            Version: OpenSearch_1.0
+            Version: OpenSearch_1.3
     Node:
         Runtime:
             Version: nodejs14.x
@@ -206,19 +206,13 @@ Resources:
                         AbortIncompleteMultipartUpload:
                             DaysAfterInitiation: 1
             IntelligentTieringConfigurations:
-                - 
-                    Id: EnableGlacierTier
-                    Prefix: /
+                -
+                    Id: EnableArchiveTiers
                     Status: Enabled
                     Tierings:
                         -
                             AccessTier: ARCHIVE_ACCESS
                             Days: 90
-                - 
-                    Id: EnableDeepArchiveTier
-                    Prefix: /
-                    Status: Enabled
-                    Tierings:
                         -
                             AccessTier: DEEP_ARCHIVE_ACCESS
                             Days: 180

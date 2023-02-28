@@ -14,10 +14,13 @@ const RekognitionOp = require('./operations/rekognitionOp');
 const TranscribeOp = require('./operations/transcribeOp');
 const ComprehendOp = require('./operations/comprehendOp');
 const StatsOp = require('./operations/statsOp');
+const UsersOp = require('./operations/usersOp');
+const SettingsOp = require('./operations/settingsOp');
 
 const OP_REKOGNITION = 'rekognition';
 const OP_TRANSCRIBE = 'transcribe';
 const OP_COMPREHEND = 'comprehend';
+const OP_SETTINGS = ApiOps.AIOptionsSettings.split('/')[0];
 
 class ApiRequest {
   constructor(event, context) {
@@ -116,6 +119,12 @@ class ApiRequest {
     }
     if (op === ApiOps.Stats) {
       return new StatsOp(this);
+    }
+    if (op === ApiOps.Users) {
+      return new UsersOp(this);
+    }
+    if (op === OP_SETTINGS) {
+      return new SettingsOp(this);
     }
     throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
   }

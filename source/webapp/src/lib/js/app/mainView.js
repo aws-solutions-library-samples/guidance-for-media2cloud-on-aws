@@ -11,6 +11,7 @@ import ProcessingTab from './mainView/processingTab.js';
 import StatsTab from './mainView/statsTab.js';
 import FaceCollectionTab from './mainView/faceCollectionTab.js';
 import SettingsTab from './mainView/settingsTab.js';
+import UserManagementTab from './mainView/userManagementTab.js';
 
 const ID_MAIN_CONTAINER = `main-${AppUtils.randomHexstring()}`;
 const ID_MAIN_TOASTLIST = `main-${AppUtils.randomHexstring()}`;
@@ -23,14 +24,7 @@ export default class MainView {
   constructor() {
     this.$view = $('<div/>').attr('id', ID_MAIN_CONTAINER);
     this.$cognito = CognitoConnector.getSingleton();
-    this.$tabControllers = [
-      new CollectionTab(true),
-      new UploadTab(),
-      new ProcessingTab(),
-      new StatsTab(),
-      new FaceCollectionTab(),
-      new SettingsTab(),
-    ];
+    this.$tabControllers = this.initTabControllersByGroup();
   }
 
   get view() {
@@ -43,6 +37,37 @@ export default class MainView {
 
   get tabControllers() {
     return this.$tabControllers;
+  }
+
+  initTabControllersByGroup() {
+    const tabControllers = {};
+    /* read only access */
+    if (this.cognito.canRead()) {
+      tabControllers.collection = new CollectionTab(true);
+      tabControllers.processing = new ProcessingTab();
+      tabControllers.stats = new StatsTab();
+    }
+    /* read/write access */
+    if (this.cognito.canWrite()) {
+      tabControllers.upload = new UploadTab();
+      tabControllers.faceCollection = new FaceCollectionTab();
+      tabControllers.settings = new SettingsTab();
+    }
+    /* read/write/modify access */
+    if (this.cognito.canModify()) {
+      tabControllers.userManagement = new UserManagementTab();
+    }
+
+    return [
+      tabControllers.collection,
+      tabControllers.upload,
+      tabControllers.processing,
+      tabControllers.stats,
+      tabControllers.faceCollection,
+      tabControllers.settings,
+      tabControllers.userManagement,
+    ].filter((x) =>
+      x !== undefined);
   }
 
   appendTo(parent) {

@@ -15,6 +15,16 @@ const {
 } = require('core-lib');
 const MediaConvertStatusChangeEvent = require('./mediaConvertStatusChangeEvent');
 
+const BACKLOG_SOURCE_TYPE = 'custom.servicebacklog';
+const SERVICE_MEDIACONVERT = 'mediaconvert:';
+
+const EXCEPTION_TASK_TIMEOUT = 'TaskTimedOut';
+const EXCEPTION_TASK_NOTEXIST = 'TaskDoesNotExist';
+const IGNORED_EXECEPTION_LIST = [
+  EXCEPTION_TASK_TIMEOUT,
+  EXCEPTION_TASK_NOTEXIST,
+];
+
 class CloudWatchStatus {
   constructor(event, context) {
     this.$event = event;
@@ -65,11 +75,13 @@ class CloudWatchStatus {
 
   async process() {
     let instance;
-    if (this.source === MediaConvertStatusChangeEvent.SourceType) {
-      instance = new MediaConvertStatusChangeEvent(this);
+    if (this.source === BACKLOG_SOURCE_TYPE) {
+      if (this.detail.serviceApi.indexOf(SERVICE_MEDIACONVERT) === 0) {
+        instance = new MediaConvertStatusChangeEvent(this);
+      }
     }
     if (!instance) {
-      throw new JobStatusError(`${this.source} not supported`);
+      throw new JobStatusError(`${this.source}: ${this.detail.serviceApi}: not supported`);
     }
     return instance.process();
   }
@@ -81,7 +93,14 @@ class CloudWatchStatus {
     })).sendTaskSuccess({
       output: JSON.stringify(this.stateData.toJSON()),
       taskToken: this.token,
-    }).promise();
+    }).promise()
+      .catch((e) => {
+        if (IGNORED_EXECEPTION_LIST.indexOf(e.code) >= 0) {
+          return undefined;
+        }
+        console.log(`[ERR]: sendTaskSuccess: ${e.code}: ${e.message}`, JSON.stringify(this.stateData.toJSON()));
+        throw e;
+      });
   }
 
   async sendTaskFailure(error) {
@@ -92,7 +111,14 @@ class CloudWatchStatus {
       taskToken: this.token,
       error: error.name,
       cause: error.message,
-    }).promise();
+    }).promise()
+      .catch((e) => {
+        if (e.code === EXCEPTION_TASK_TIMEOUT) {
+          return undefined;
+        }
+        console.log(`[ERR]: sendTaskFailure: ${e.code}: ${e.message}`, error.name, error.message);
+        throw e;
+      });
   }
 }
 

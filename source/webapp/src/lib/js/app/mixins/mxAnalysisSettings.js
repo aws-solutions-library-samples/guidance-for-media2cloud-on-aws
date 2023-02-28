@@ -5,6 +5,7 @@ import SolutionManifest from '/solution-manifest.js';
 import Localization from '../shared/localization.js';
 import AppUtils from '../shared/appUtils.js';
 import ApiHelper from '../shared/apiHelper.js';
+import CognitoConnector from '../shared/cognitoConnector.js';
 import ServiceAvailability from '../shared/serviceAvailability.js';
 import FaceManager from '../shared/faceManager/index.js';
 import ServiceNames from '../shared/serviceNames.js';
@@ -143,6 +144,26 @@ const AVAILABLE_FRAMECAPTUREMODES = [
     name: Localization.Messages.FrameCaptureMode1FramePer5Seconds,
     value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_5S,
   },
+  {
+    name: Localization.Messages.FrameCaptureMode1FramePer10Seconds,
+    value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_10S,
+  },
+  {
+    name: Localization.Messages.FrameCaptureMode1FramePer30Seconds,
+    value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_30S,
+  },
+  {
+    name: Localization.Messages.FrameCaptureMode1FramePer1Minute,
+    value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_1MIN,
+  },
+  {
+    name: Localization.Messages.FrameCaptureMode1FramePer2Minutes,
+    value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_2MIN,
+  },
+  {
+    name: Localization.Messages.FrameCaptureMode1FramePer5Minutes,
+    value: SolutionManifest.FrameCaptureMode.MODE_1F_EVERY_5MIN,
+  },
 ];
 
 const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
@@ -150,15 +171,14 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
     super(...params);
     this.$settingStore = SettingStore.getSingleton();
     this.$serviceAvailability = {};
-    this.$aiOptions = {
-      ...SolutionManifest.AIML,
-    };
+    this.$aiOptions = JSON.parse(JSON.stringify(SolutionManifest.AIML));
     this.$availableFaceCollections = undefined;
     this.$availableCustomLabelModels = undefined;
     this.$availableLanguageCodes = LanguageCodes;
     this.$availableCustomVocabularies = undefined;
     this.$availableCustomLanguageModels = undefined;
     this.$availableCustomEntityRecognizers = undefined;
+    this.$canModify = CognitoConnector.getSingleton().canModify();
   }
 
   /* dervied class to implement */
@@ -230,15 +250,28 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
     this.$availableCustomEntityRecognizers = val;
   }
 
+  get canModify() {
+    return this.$canModify;
+  }
+
   async getItem(key) {
+    if (!this.canModify) {
+      return undefined;
+    }
     return this.settingStore.getItem(key);
   }
 
   async putItem(key, val) {
+    if (!this.canModify) {
+      return undefined;
+    }
     return this.settingStore.putItem(key, val);
   }
 
   async deleteItem(key) {
+    if (!this.canModify) {
+      return undefined;
+    }
     return this.settingStore.deleteItem(key);
   }
 
@@ -448,6 +481,30 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
   }
 
   createControls() {
+    if (!this.canModify) {
+      return undefined;
+    }
+
+    const form = $('<form/>')
+      .addClass('form-inline');
+
+    form.submit((event) =>
+      event.preventDefault());
+
+    const btnGroup = $('<div/>')
+      .addClass('ml-auto');
+    form.append(btnGroup);
+
+    const applyAll = $('<button/>').addClass('btn btn-outline-success ml-1')
+      .attr('data-toggle', 'tooltip')
+      .attr('data-placement', 'bottom')
+      .attr('title', Localization.Tooltips.ApplyToAllUsers)
+      .html(Localization.Buttons.ApplyToAllUsers)
+      .tooltip({
+        trigger: 'hover',
+      });
+    btnGroup.append(applyAll);
+
     const restoreOriginal = $('<button/>').addClass('btn btn-secondary ml-1')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
@@ -456,18 +513,15 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       .tooltip({
         trigger: 'hover',
       });
+    btnGroup.append(restoreOriginal);
+
+    applyAll.off('click').on('click', async () =>
+      this.storeGlobalSettings());
 
     restoreOriginal.off('click').on('click', async () =>
       this.restoreFactorySettings());
 
-    const controls = $('<form/>').addClass('form-inline')
-      .append($('<div/>').addClass('ml-auto')
-        .append(restoreOriginal));
-
-    controls.submit(event =>
-      event.preventDefault());
-
-    return controls;
+    return form;
   }
 
   createMinConfidenceRange() {
@@ -702,11 +756,16 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
         .html(custom.default));
     select.off('change').on('change', async () => {
       const val = select.val();
-      this.aiOptions[custom.name] = (val === 'undefined')
-        ? undefined
-        : /^[0-9]+$/.test(val)
-          ? Number.parseInt(val, 10)
-          : val;
+      if (val === 'undefined') {
+        this.aiOptions[custom.name] = undefined;
+      }
+      else if (/^\d+$/.test(val)) {
+        this.aiOptions[custom.name] = Number.parseInt(val, 10);
+      }
+      else {
+        this.aiOptions[custom.name] = val;
+      }
+
       if (typeof custom.onChange === 'function') {
         await custom.onChange(custom.name, this.aiOptions[custom.name]);
       }
@@ -836,16 +895,20 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
   }
 
   checkDetectionSupported(type) {
-    return (REKOGNITION_BASIC_OPTIONS.indexOf(type) >= 0
-    || OPT_FRAMEBASED === type)
-      ? this.serviceAvailability[ServiceNames.Rekognition]
-      : (TRANSCRIBE_BASIC_OPTIONS.indexOf(type) >= 0)
-        ? this.serviceAvailability[ServiceNames.Transcribe]
-        : (COMPREHEND_BASIC_OPTIONS.indexOf(type) >= 0)
-          ? this.serviceAvailability[ServiceNames.Comprehend]
-          : (TEXTRACT_BASIC_OPTIONS.indexOf(type) >= 0)
-            ? this.serviceAvailability[ServiceNames.Textract]
-            : false;
+    if (REKOGNITION_BASIC_OPTIONS.indexOf(type) >= 0 || OPT_FRAMEBASED === type) {
+      return this.serviceAvailability[ServiceNames.Rekognition];
+    }
+    if (TRANSCRIBE_BASIC_OPTIONS.indexOf(type) >= 0) {
+      return this.serviceAvailability[ServiceNames.Transcribe];
+    }
+    if (COMPREHEND_BASIC_OPTIONS.indexOf(type) >= 0) {
+      return this.serviceAvailability[ServiceNames.Comprehend];
+    }
+    if (TEXTRACT_BASIC_OPTIONS.indexOf(type) >= 0) {
+      return this.serviceAvailability[ServiceNames.Textract];
+    }
+
+    return false;
   }
 
   async checkServiceAvailability() {
@@ -965,6 +1028,9 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       input.removeAttr('disabled');
       input.prop('checked', this.aiOptions[type]);
     }
+    if (!this.canModify) {
+      input.attr('disabled', 'disabled');
+    }
   }
 
   refreshCustomFormOptions(custom) {
@@ -984,6 +1050,9 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       }
       select.append(option);
     });
+    if (!this.canModify) {
+      select.attr('disabled', 'disabled');
+    }
   }
 
   refreshMultiselectFormGroup(custom) {
@@ -1024,12 +1093,20 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
     let text = this.aiOptions[custom.name].map(x => `${x.substring(0, 5)}...`);
     text = text.length ? text : custom.default;
     btn.text(text);
+
+    if (!this.canModify) {
+      btn.attr('disabled', 'disabled');
+    }
   }
 
   refreshMinConfidenceRange() {
     const type = OPT_MINCONFIDENCE;
     const input = this.parentContainer.find(`input[data-type=${type}]`);
     input.val(this.aiOptions[OPT_MINCONFIDENCE]);
+
+    if (!this.canModify) {
+      input.attr('disabled', 'disabled');
+    }
   }
 
   refreshTextROIFormGroup() {
@@ -1046,6 +1123,12 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
   }
 
   async loadLocalSettings() {
+    /* fetch global options from S3 bucket */
+    const remotedAIOptions = await this.getGlobalAIOptions();
+    if (remotedAIOptions !== undefined) {
+      this.aiOptions = remotedAIOptions;
+    }
+
     await Promise.all([
       ...REKOGNITION_BASIC_OPTIONS,
       ...REKOGNITION_ADVANCED_OPTIONS,
@@ -1054,29 +1137,59 @@ const mxAnalysisSettings = Base => class extends mxSpinner(Base) {
       ...COMPREHEND_BASIC_OPTIONS,
       ...COMPREHEND_ADVANCED_OPTIONS,
       ...TEXTRACT_BASIC_OPTIONS,
-    ].map(key => this.getItem(key).then(val =>
-      this.aiOptions[key] = (val === undefined)
-        ? this.aiOptions[key]
-        : val)));
+    ].map((key) =>
+      this.getItem(key)
+        .then((val) =>
+          this.aiOptions[key] = (val === undefined)
+            ? this.aiOptions[key]
+            : val)));
     return this.aiOptions;
   }
 
   async restoreFactorySettings() {
-    await Promise.all([
-      ...REKOGNITION_BASIC_OPTIONS,
-      ...REKOGNITION_ADVANCED_OPTIONS,
-      ...TRANSCRIBE_BASIC_OPTIONS,
-      ...TRANSCRIBE_ADVANCED_OPTIONS,
-      ...COMPREHEND_BASIC_OPTIONS,
-      ...COMPREHEND_ADVANCED_OPTIONS,
-      ...TEXTRACT_BASIC_OPTIONS,
-    ].map(x =>
-      this.deleteItem(x)));
-    /* make sure certain contains default values */
-    this.aiOptions = {
-      ...SolutionManifest.AIML,
-    };
-    return this.refreshContent();
+    try {
+      this.loading(true);
+      await Promise.all([
+        ...REKOGNITION_BASIC_OPTIONS,
+        ...REKOGNITION_ADVANCED_OPTIONS,
+        ...TRANSCRIBE_BASIC_OPTIONS,
+        ...TRANSCRIBE_ADVANCED_OPTIONS,
+        ...COMPREHEND_BASIC_OPTIONS,
+        ...COMPREHEND_ADVANCED_OPTIONS,
+        ...TEXTRACT_BASIC_OPTIONS,
+      ].map((x) =>
+        this.deleteItem(x)));
+      /* delete global options */
+      await this.removeGlobalAIOptions();
+      /* make sure certain contains default values */
+      this.aiOptions = JSON.parse(JSON.stringify(SolutionManifest.AIML));
+      return this.refreshContent();
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    } finally {
+      this.loading(false);
+    }
+  }
+
+  async storeGlobalSettings() {
+    try {
+      this.loading(true);
+      return ApiHelper.setGlobalAIOptions(this.aiOptions);
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    } finally {
+      this.loading(false);
+    }
+  }
+
+  async getGlobalAIOptions() {
+    return ApiHelper.getGlobalAIOptions();
+  }
+
+  async removeGlobalAIOptions() {
+    return ApiHelper.deleteGlobalAIOptions();
   }
 };
 

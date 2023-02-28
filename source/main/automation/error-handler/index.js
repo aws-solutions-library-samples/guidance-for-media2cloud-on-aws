@@ -105,11 +105,17 @@ exports.handler = async (event, context) => {
     const stateMachine = event.detail.executionArn.split(':')[6];
     const uuid = input.uuid || (input.input || {}).uuid;
     const overallStatus = StateData.Statuses.Error;
-    const status = (stateMachine === Environment.StateMachines.Ingest)
-      ? StateData.Statuses.IngestError
-      : (stateMachine === Environment.StateMachines.Analysis)
-        ? StateData.Statuses.AnalysisError
-        : StateData.Statuses.Error;
+    let status;
+    switch (stateMachine) {
+      case Environment.StateMachines.Ingest:
+        status = StateData.Statuses.IngestError;
+        break;
+      case Environment.StateMachines.Analysis:
+        status = StateData.Statuses.AnalysisError;
+        break;
+      default:
+        status = StateData.Statuses.Error;
+    }
 
     if (uuid) {
       /* update status */

@@ -39,6 +39,21 @@ class FrameCaptureModeHelper {
       case FrameCaptureMode.MODE_1F_EVERY_5S:
         numerator = (1 * 1000) / 5;
         break;
+      case FrameCaptureMode.MODE_1F_EVERY_10S:
+        numerator = (1 * 1000) / 10;
+        break;
+      case FrameCaptureMode.MODE_1F_EVERY_30S:
+        numerator = Math.floor((1 * 1000) / 30);
+        break;
+      case FrameCaptureMode.MODE_1F_EVERY_1MIN:
+        numerator = Math.floor((1 * 1000) / 60);
+        break;
+      case FrameCaptureMode.MODE_1F_EVERY_2MIN:
+        numerator = Math.floor((1 * 1000) / (60 * 2));
+        break;
+      case FrameCaptureMode.MODE_1F_EVERY_5MIN:
+        numerator = Math.floor((1 * 1000) / (60 * 5));
+        break;
       default:
         numerator = 0;
     }

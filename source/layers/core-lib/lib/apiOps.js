@@ -102,4 +102,18 @@ module.exports = {
    * method: GET
    */
   Stats: 'stats',
+
+  /**
+   * @description get a list of cognito users
+   * /users
+   * method: GET
+   */
+  Users: 'users',
+
+  /**
+   * @description manage ai/ml options settings
+   * /settings/aioptions
+   * method: GET, POST, DELETE
+   */
+  AIOptionsSettings: 'settings/aioptions',
 };

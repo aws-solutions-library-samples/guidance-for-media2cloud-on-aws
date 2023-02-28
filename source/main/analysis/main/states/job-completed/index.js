@@ -36,8 +36,6 @@ class StateJobCompleted {
     /* update ingest table */
     const attrib = await this.updateIngestTable(types);
 
-    /* TODO: review this 'src' thing */
-    /* TODO: review this 'src' thing */
     this.stateData.setData('src', {
       bucket: attrib.bucket,
       key: attrib.key,

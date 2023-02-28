@@ -15,4 +15,9 @@ module.exports = {
   MODE_HALF_FPS: 1001, // half framerate
   MODE_1F_EVERY_2S: 1002, // 1 frame every 2 seconds
   MODE_1F_EVERY_5S: 1003, // 1 frame every 5 seconds
+  MODE_1F_EVERY_10S: 1004, // 1 frame every 10 seconds
+  MODE_1F_EVERY_30S: 1005, // 1 frame every 30 seconds
+  MODE_1F_EVERY_1MIN: 1011, // 1 frame every minute
+  MODE_1F_EVERY_2MIN: 1012, // 1 frame every 2 minutes
+  MODE_1F_EVERY_5MIN: 1013, // 1 frame every 5 minutes
 };

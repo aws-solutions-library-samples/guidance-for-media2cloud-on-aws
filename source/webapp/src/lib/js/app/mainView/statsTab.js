@@ -5,7 +5,6 @@ import AnalysisTypes from '../shared/analysis/analysisTypes.js';
 import Localization from '../shared/localization.js';
 import ApiHelper from '../shared/apiHelper.js';
 import AppUtils from '../shared/appUtils.js';
-import MediaFactory from '../shared/media/mediaFactory.js';
 import PieGraph from './stats/pieGraph.js';
 import mxSpinner from '../mixins/mxSpinner.js';
 import BaseTab from '../shared/baseTab.js';
@@ -403,17 +402,26 @@ export default class StatsTab extends mxSpinner(BaseTab) {
         name: c0.name,
         value: c0.count,
       }), []);
-    const title = (type === AGGS_TYPE_KNOWNFACES)
-      ? Localization.Messages.TopKnownFaces
-      : (type === AGGS_TYPE_LABELS)
-        ? Localization.Messages.TopLabels
-        : (type === AGGS_TYPE_MODERATIONS)
-          ? Localization.Messages.TopModerations
-          : (type === AGGS_TYPE_KEYPHRASES)
-            ? Localization.Messages.TopKeyphrases
-            : (type === AGGS_TYPE_ENTITIES)
-              ? Localization.Messages.TopEntities
-              : undefined;
+    let title;
+    switch (type) {
+      case AGGS_TYPE_KNOWNFACES:
+        title = Localization.Messages.TopKnownFaces;
+        break;
+      case AGGS_TYPE_LABELS:
+        title = Localization.Messages.TopLabels;
+        break;
+      case AGGS_TYPE_MODERATIONS:
+        title = Localization.Messages.TopModerations;
+        break;
+      case AGGS_TYPE_KEYPHRASES:
+        title = Localization.Messages.TopKeyphrases;
+        break;
+      case AGGS_TYPE_ENTITIES:
+        title = Localization.Messages.TopEntities;
+        break;
+      default:
+        title = undefined;
+    }
     const graph = new PieGraph(title, datasets, {
       formatter: '<strong>{b}</strong>: {c} documents',
     });

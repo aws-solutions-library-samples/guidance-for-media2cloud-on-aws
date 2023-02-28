@@ -87,10 +87,10 @@ export default class MediaManager {
       return undefined;
     }
     const medias = Array.isArray(media) ? media : [media];
-    for (let i = 0; i < medias.length; i++) {
-      const type = medias[i].type;
+    for (let media of medias) {
+      const type = media.type;
       if (this.collection[type] && this.collection[type].items !== undefined) {
-        this.collection[type].items.push(medias[i]);
+        this.collection[type].items.push(media);
       }
     }
     return medias;
@@ -307,6 +307,21 @@ export default class MediaManager {
     if (payload.overallStatus === SolutionManifest.Statuses.Error) {
       await media.setError();
       return this.eventSource.trigger(MediaManager.Event.Media.Error, [media]);
+    }
+    return media;
+  }
+
+  async lazyGetByUuid(uuid) {
+    let media = this.findMediaByUuid(uuid);
+    if (media) {
+      return media;
+    }
+    media = await MediaFactory.lazyCreateMedia(uuid)
+      .catch((e) =>
+        e);
+    if (media instanceof Error) {
+      console.error(encodeURIComponent(media.message));
+      return undefined;
     }
     return media;
   }

@@ -22,3 +22,9 @@ export class AWSConsoleTranscribe {
     return `https://console.aws.amazon.com/transcribe/home?region=${SolutionManifest.Region}#job-details/${name}`;
   }
 }
+
+export class AWSConsoleCongito {
+  static getUserPoolLink(userPoolId) {
+    return `https://${SolutionManifest.Region}.console.aws.amazon.com/cognito/users/?region=${SolutionManifest.Region}#pool/${userPoolId}/users`;
+  }
+}

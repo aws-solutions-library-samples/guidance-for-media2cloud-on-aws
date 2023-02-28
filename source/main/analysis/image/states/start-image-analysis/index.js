@@ -18,6 +18,9 @@ const {
   Retry,
   Environment,
 } = require('core-lib');
+const {
+  SigV4,
+} = require('core-lib');
 
 const ANALYSIS_TYPE = 'image';
 const CATEGORY = 'rekog-image';
@@ -55,7 +58,7 @@ class StateStartImageAnalysis {
 
   async process() {
     const aiOptions = this.stateData.input.aiOptions;
-    let results = await Promise.all([
+    let results = Promise.all([
       this.startCeleb(aiOptions),
       this.startFace(aiOptions),
       this.startFaceMatch(aiOptions),
@@ -63,17 +66,17 @@ class StateStartImageAnalysis {
       this.startModeration(aiOptions),
       this.startText(aiOptions),
     ]);
-    results = results.filter(x => x).reduce((acc, cur) => ({
-      ...acc,
-      ...cur,
-    }), {});
 
-    const stateExecution = this.stateData.event.stateExecution;
+    results = (await results)
+      .filter((x) =>
+        x)
+      .reduce((acc, cur) => ({
+        ...acc,
+        ...cur,
+      }), {});
+
     this.stateData.setData(ANALYSIS_TYPE, {
       status: StateData.Statuses.Completed,
-      startTime: new Date(stateExecution.StartTime).getTime(),
-      endTime: new Date().getTime(),
-      executionArn: stateExecution.Id,
       [CATEGORY]: results,
     });
     this.stateData.setCompleted();

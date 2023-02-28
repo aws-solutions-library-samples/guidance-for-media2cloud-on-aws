@@ -35,8 +35,7 @@ class CreateLabelTrackIterator extends BaseCreateTrackIterator {
   createTimeseriesData(name, datasets) {
     let desc;
     const timestamps = {};
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       if (!desc && (dataset.Label.Parents || []).length > 0) {
         desc = dataset.Label.Parents.map(x => x.Name).join(';');
       }

@@ -24,8 +24,8 @@ const BacklogJob = require('../backlogJob');
 class TranscribeBacklogJob extends BacklogJob {
   static get ServiceApis() {
     return {
-      StartMedicalTranscriptionJob: 'transcribe:startMedicalTranscriptionJob',
-      StartTranscriptionJob: 'transcribe:startTranscriptionJob',
+      StartMedicalTranscriptionJob: 'transcribe:startmedicaltranscriptionjob',
+      StartTranscriptionJob: 'transcribe:starttranscriptionjob',
     };
   }
 
@@ -58,11 +58,14 @@ class TranscribeBacklogJob extends BacklogJob {
 
   bindToFunc(serviceApi) {
     const transcribe = this.getTranscribeInstance();
-    return (serviceApi === TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob)
-      ? transcribe.startMedicalTranscriptionJob.bind(transcribe)
-      : (serviceApi === TranscribeBacklogJob.ServiceApis.StartTranscriptionJob)
-        ? transcribe.startTranscriptionJob.bind(transcribe)
-        : undefined;
+    switch (serviceApi) {
+      case TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob:
+        return transcribe.startMedicalTranscriptionJob.bind(transcribe);
+      case TranscribeBacklogJob.ServiceApis.StartTranscriptionJob:
+        return transcribe.startTranscriptionJob.bind(transcribe);
+      default:
+        return undefined;
+    }
   }
 
   async startAndRegisterJob(id, serviceApi, params) {
@@ -86,11 +89,7 @@ class TranscribeBacklogJob extends BacklogJob {
     if (response instanceof Error) {
       response = await this.testJob(serviceApi, serviceParams, response);
     }
-    return {
-      JobId: (response.TranscriptionJob)
-        ? response.TranscriptionJob.TranscriptionJobName
-        : response.MedicalTranscriptionJob.MedicalTranscriptionJobName,
-    };
+    return response;
   }
 
   async testJob(serviceApi, serviceParams, originalError) {
@@ -130,6 +129,11 @@ class TranscribeBacklogJob extends BacklogJob {
 
   conflictException(code) {
     return (code === 'ConflictException');
+  }
+
+  parseJobId(data) {
+    return (data.TranscriptionJob || {}).TranscriptionJobName
+      || (data.MedicalTranscriptionJob || {}).MedicalTranscriptionJobName;
   }
 }
 

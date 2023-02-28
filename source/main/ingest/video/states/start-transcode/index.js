@@ -1,14 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const FS = require('fs');
 const PATH = require('path');
 const {
@@ -19,6 +10,11 @@ const {
   FrameCaptureModeHelper,
   TranscodeError,
 } = require('core-lib');
+const {
+  BacklogClient: {
+    MediaConvertBacklogJob,
+  },
+} = require('service-backlog-lib');
 
 const CATEGORY = 'transcode';
 const API_NAME = 'video';
@@ -84,40 +80,48 @@ class StateStartTranscode {
     if (!data.mediainfo) {
       throw new TranscodeError('missing mediainfo');
     }
-    const response = await this.createJob();
+
+    const params = await this.createJobTemplate();
     /* done with mediainfo, remove mediainfo block to reduce the stateData payload size */
     [
       'video',
       'audio',
       'container',
-    ].forEach(x => delete this.stateData.data.mediainfo[x]);
+    ].forEach(x =>
+      delete this.stateData.data.mediainfo[x]);
+
+    const stateOutput = await this.createJob(params);
 
     const output = this.makeOutputPrefix(dest.prefix);
     this.stateData.setStarted();
     this.stateData.setData(CATEGORY, {
-      startTime: new Date().getTime(),
-      jobId: response.Job.Id,
+      ...stateOutput,
       output,
     });
 
+    const id = stateOutput.backlogId;
+    const responseData = this.stateData.toJSON();
     await ServiceToken.register(
-      this.stateData.data[CATEGORY].jobId,
+      id,
       this.stateData.event.token,
       CATEGORY,
       API_NAME,
-      this.stateData.toJSON()
+      responseData
     );
-    return this.stateData.toJSON();
+
+    return responseData;
   }
 
-  async createJob() {
-    const template = await this.createJobTemplate();
-    const mediaconvert = new AWS.MediaConvert({
-      apiVersion: '2017-08-29',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-      endpoint: Environment.MediaConvert.Host,
-    });
-    return mediaconvert.createJob(template).promise();
+  async createJob(params) {
+    /* use backlog system */
+    const uniqueId = CommonUtils.uuid4();
+
+    const backlog = new MediaConvertBacklogJob();
+    return backlog.createJob(uniqueId, params)
+      .then(() => ({
+        startTime: new Date().getTime(),
+        backlogId: uniqueId,
+      }));
   }
 
   async createJobTemplate() {
@@ -136,7 +140,7 @@ class StateStartTranscode {
     }
 
     const template = {
-      Role: Environment.MediaConvert.Role,
+      Role: Environment.DataAccess.RoleArn,
       Settings: {
         OutputGroups: ogs.filter(x => x),
         AdAvailOffset: 0,
@@ -204,15 +208,15 @@ class StateStartTranscode {
       return [audio[0].iD];
     }
     /* #3: multiple audio tracks and contain stereo track */
-    for (let i = 0; i < audio.length; i++) {
-      if (this.getChannels(audio[i]) >= 2) {
-        return [audio[i].iD];
+    for (let track of audio) {
+      if (this.getChannels(track) >= 2) {
+        return [track.iD];
       }
     }
     /* #4: multiple audio tracks and contain Dolby E track */
-    for (let i = 0; i < audio.length; i++) {
-      if (audio[i].format === 'Dolby E') {
-        return [audio[i].iD];
+    for (let track of audio) {
+      if (track.format === 'Dolby E') {
+        return [track.iD];
       }
     }
     /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
@@ -261,15 +265,15 @@ class StateStartTranscode {
       return [reordered[0].trackIdx];
     }
     /* #3: multiple audio tracks and contain stereo track */
-    for (let i = 0; i < reordered.length; i++) {
-      if (this.getChannels(reordered[i]) >= 2) {
-        return [reordered[i].trackIdx];
+    for (let track of reordered) {
+      if (this.getChannels(track) >= 2) {
+        return [track.trackIdx];
       }
     }
     /* #4: multiple audio tracks and contain Dolby E track */
-    for (let i = 0; i < reordered.length; i++) {
-      if (reordered[i].format === 'Dolby E') {
-        return [reordered[i].trackIdx];
+    for (let track of reordered) {
+      if (track.format === 'Dolby E') {
+        return [track.trackIdx];
       }
     }
     /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
@@ -308,9 +312,9 @@ class StateStartTranscode {
         width,
         height,
       ] = this.downscaleOutput();
-      for (let i = 0; i < outputs.length; i++) {
-        outputs[i].VideoDescription.Width = width;
-        outputs[i].VideoDescription.Height = height;
+      for (let output of outputs) {
+        output.VideoDescription.Width = width;
+        output.VideoDescription.Height = height;
       }
     }
     /* make sure each output has at least one output stream */
@@ -361,14 +365,13 @@ class StateStartTranscode {
     if (!queue) {
       return undefined;
     }
-    const mediaconvert = new AWS.MediaConvert({
-      apiVersion: '2017-08-29',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-      endpoint: Environment.MediaConvert.Host,
-    });
+    const mediaconvert = (new MediaConvertBacklogJob())
+      .getMediaConvertInstance();
     const response = await mediaconvert.getQueue({
       Name: queue,
-    }).promise().catch(() => undefined);
+    }).promise()
+      .catch(() =>
+        undefined);
     return ((response || {}).Queue || {}).Arn;
   }
 

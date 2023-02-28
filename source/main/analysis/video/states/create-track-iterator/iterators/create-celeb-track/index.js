@@ -35,8 +35,7 @@ class CreateCelebTrackIterator extends BaseCreateTrackIterator {
   createTimeseriesData(name, datasets) {
     let desc;
     const timestamps = {};
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       const box = dataset.Celebrity.BoundingBox || (dataset.Celebrity.Face || {}).BoundingBox;
       if (!box) {
         continue;
