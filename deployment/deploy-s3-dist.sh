@@ -76,8 +76,7 @@ while [[ $# -gt 0 ]]; do
       ;;
       -r|--single-region)
       SINGLE_REGION=true
-      shift # past argument
-      shift # past value
+      shift # key
       ;;
       -a|--acl)
       ACL_SETTING="$2"
