@@ -92,7 +92,6 @@ class BaseCollectResultsIterator {
       /* make sure we allocate enough time for the next iteration */
       const remained = this.stateData.getRemainingTime();
       const consumed = new Date() - t0;
-      console.log(`COMPLETED: frame #${data.cursor - 1} [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
       if (this.stateData.quitNow() || (remained - (consumed * 1.2) <= 0)) {
         break;
       }

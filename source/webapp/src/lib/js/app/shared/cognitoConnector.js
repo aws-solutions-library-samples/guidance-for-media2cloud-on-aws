@@ -9,10 +9,12 @@ const ID_EVENTSOURCE = `cognito-${AppUtils.randomHexstring()}`;
 const ON_SESSION_REFRESH = 'cognito:session:refresh';
 const ON_SESSION_SIGNIN = 'cognito:session:signin';
 const ON_SESSION_SIGNOUT = 'cognito:session:signout';
+const ATTR_COGNITO_GROUPS = 'cognito:groups';
 
 export default class CognitoConnector {
   constructor() {
     this.$user = undefined;
+    this.$assignedGroup = undefined;
     this.$sessionTimer = undefined;
     this.$userPool = new AmazonCognitoIdentity.CognitoUserPool({
       UserPoolId: SolutionManifest.Cognito.UserPoolId,
@@ -72,6 +74,14 @@ export default class CognitoConnector {
     this.$sessionTimer = val;
   }
 
+  get assignedGroup() {
+    return this.$assignedGroup;
+  }
+
+  set assignedGroup(val) {
+    this.$assignedGroup = val;
+  }
+
   getCognitoIdpEndpoint() {
     return `cognito-idp.${SolutionManifest.Region}.amazonaws.com/${SolutionManifest.Cognito.UserPoolId}`;
   }
@@ -110,6 +120,7 @@ export default class CognitoConnector {
       const username = this.user.username;
       this.user.signOut();
       this.user = undefined;
+      this.assignedGroup = undefined;
       throw Error(`session expired for ${username}`);
     }
     return this.user;
@@ -138,6 +149,7 @@ export default class CognitoConnector {
    */
   async onFailure(resolve, reject, e) {
     this.user = undefined;
+    this.assignedGroup = undefined;
     return reject(new Error(e.message));
   }
 
@@ -229,6 +241,7 @@ export default class CognitoConnector {
       identityCredentials.getPromise().then(() => {
         AWS.config.credentials = identityCredentials;
         AWS.config.region = SolutionManifest.Region;
+        this.assignedGroup = (idToken.payload[ATTR_COGNITO_GROUPS] || [])[0];
         this.monitorSession(idToken.getExpiration());
         resolve(identityCredentials);
       });
@@ -356,5 +369,18 @@ export default class CognitoConnector {
         onFailure: this.onFailure.bind(this, resolve, reject),
       });
     });
+  }
+
+  canRead() {
+    return this.assignedGroup !== undefined;
+  }
+
+  canWrite() {
+    return this.assignedGroup === SolutionManifest.Cognito.Group.Admin
+      || this.assignedGroup === SolutionManifest.Cognito.Group.Creator;
+  }
+
+  canModify() {
+    return this.assignedGroup === SolutionManifest.Cognito.Group.Admin;
   }
 }

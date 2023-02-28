@@ -13,15 +13,23 @@ const {
   JobStatusError,
   Environment,
 } = require('core-lib');
-const TranscribeStatusChangeEvent = require('./transcribeStatusChangeEvent');
 const BacklogStatusChangeEvent = require('./backlog/backlogStatusChangeEvent');
 const RekognitionStatusChangeEvent = require('./backlog/rekognitionStatusChangeEvent');
+const TranscribeStatusChangeEvent = require('./backlog/transcribeStatusChangeEvent');
 const ComprehendStatusChangeEvent = require('./backlog/comprehendStatusChangeEvent');
 const CustomLabelsStatusChangeEvent = require('./backlog/customLabelsStatusChangeEvent');
 
 const CATEGORY_REKOGNITION = 'rekognition:';
+const CATEGORY_TRANSCRIBE = 'transcribe:';
 const CATEGORY_COMPREHEND = 'comprehend:';
 const CATEGORY_CUSTOM = 'custom:';
+
+const EXCEPTION_TASK_TIMEOUT = 'TaskTimedOut';
+const EXCEPTION_TASK_NOTEXIST = 'TaskDoesNotExist';
+const IGNORED_EXECEPTION_LIST = [
+  EXCEPTION_TASK_TIMEOUT,
+  EXCEPTION_TASK_NOTEXIST,
+];
 
 class CloudWatchStatus {
   constructor(event, context) {
@@ -73,11 +81,11 @@ class CloudWatchStatus {
 
   async process() {
     let instance;
-    if (this.source === TranscribeStatusChangeEvent.SourceType) {
-      instance = new TranscribeStatusChangeEvent(this);
-    } else if (this.source === BacklogStatusChangeEvent.SourceType) {
+    if (this.source === BacklogStatusChangeEvent.SourceType) {
       if (this.detail.serviceApi.indexOf(CATEGORY_REKOGNITION) === 0) {
         instance = new RekognitionStatusChangeEvent(this);
+      } else if (this.detail.serviceApi.indexOf(CATEGORY_TRANSCRIBE) === 0) {
+        instance = new TranscribeStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_COMPREHEND) === 0) {
         instance = new ComprehendStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_CUSTOM) === 0) {
@@ -97,7 +105,14 @@ class CloudWatchStatus {
     })).sendTaskSuccess({
       output: JSON.stringify(this.stateData.toJSON()),
       taskToken: this.token,
-    }).promise();
+    }).promise()
+      .catch((e) => {
+        if (IGNORED_EXECEPTION_LIST.indexOf(e.code) >= 0) {
+          return undefined;
+        }
+        console.log(`[ERR]: sendTaskSuccess: ${e.code}: ${e.message}`, JSON.stringify(this.stateData.toJSON()));
+        throw e;
+      });
   }
 
   async sendTaskFailure(error) {
@@ -108,7 +123,14 @@ class CloudWatchStatus {
       taskToken: this.token,
       error: error.name,
       cause: error.message,
-    }).promise();
+    }).promise()
+      .catch((e) => {
+        if (e.code === EXCEPTION_TASK_TIMEOUT) {
+          return undefined;
+        }
+        console.log(`[ERR]: sendTaskFailure: ${e.code}: ${e.message}`, error.name, error.message);
+        throw e;
+      });
   }
 }
 

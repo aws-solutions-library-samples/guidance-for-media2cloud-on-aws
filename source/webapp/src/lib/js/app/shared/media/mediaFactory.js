@@ -52,17 +52,46 @@ export default class MediaFactory {
     return media;
   }
 
+  static async lazyCreateMedia(uuid) {
+    const data = await ApiHelper.getRecord(uuid);
+    if (!Object.keys(data).length) {
+      throw new Error(`${uuid} contains no data`);
+    }
+    let media;
+    switch (data.type) {
+      case MediaTypes.Video:
+      case 'mxf':
+        media = new VideoMedia(data);
+        break;
+      case MediaTypes.Audio:
+        media = new PodcastMedia(data);
+        break;
+      case MediaTypes.Image:
+        media = new PhotoMedia(data);
+        break;
+      case MediaTypes.Document:
+        media = new DocumentMedia(data);
+        break;
+      default:
+        throw new Error(`${uuid} type '${data.type}' not supported`);
+    }
+    return media;
+  }
+
   static async createPreviewComponent(media, optionalSearchResults) {
     await media.getAnalysisResults();
-    return media.type === MediaTypes.Video
-      ? new VideoPreview(media, optionalSearchResults)
-      : media.type === MediaTypes.Audio
-        ? new PodcastPreview(media, optionalSearchResults)
-        : media.type === MediaTypes.Image
-          ? (new PhotoPreview(media, optionalSearchResults)).preload()
-          : media.type === MediaTypes.Document
-            ? (new DocumentPreview(media, optionalSearchResults)).preload()
-            : undefined;
+    switch (media.type) {
+      case MediaTypes.Video:
+        return new VideoPreview(media, optionalSearchResults);
+      case MediaTypes.Audio:
+        return new PodcastPreview(media, optionalSearchResults);
+      case MediaTypes.Image:
+        return (new PhotoPreview(media, optionalSearchResults)).preload();
+      case MediaTypes.Document:
+        return (new DocumentPreview(media, optionalSearchResults)).preload();
+      default:
+        return undefined;
+    }
   }
 
   static async fetchMediainfo(data) {

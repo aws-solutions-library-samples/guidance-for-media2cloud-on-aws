@@ -19,6 +19,55 @@ const REQUIRED_ENVS = [
   'ENV_PROXY_BUCKET',
 ];
 
+function parseEvent(event, context) {
+  const stateMachine = Environment.StateMachines.ImageAnalysis;
+  let parsed = event;
+  if (!parsed.parallelStateOutputs) {
+    return new StateData(stateMachine, parsed, context);
+  }
+  if (!parsed.stateExecution) {
+    throw new Error('fail to parse event.stateExecution');
+  }
+  /* parse execution input object */
+  const uuid = parsed.stateExecution.Input.uuid;
+  const input = parsed.stateExecution.Input.input;
+  const startTime = parsed.stateExecution.StartTime;
+  const executionArn = parsed.stateExecution.Id;
+  delete parsed.stateExecution;
+  if (!uuid || !input) {
+    throw new Error('fail to find uuid or input from event.stateExecution');
+  }
+  /* parse parallel state outputs */
+  const parallelStateOutputs = parsed.parallelStateOutputs;
+  delete parsed.parallelStateOutputs;
+
+  /* merging data.image output */
+  let merged = {};
+  while (parallelStateOutputs.length) {
+    const stateOutput = parallelStateOutputs.shift();
+    merged = {
+      ...merged,
+      ...stateOutput.data.image,
+    };
+  }
+
+  parsed = {
+    ...parsed,
+    uuid,
+    input,
+    progress: 0,
+    data: {
+      image: {
+        ...merged,
+        startTime,
+        executionArn,
+        status: StateData.Statuses.NotStarted,
+      },
+    },
+  };
+  return new StateData(stateMachine, parsed, context);
+}
+
 exports.handler = async (event, context) => {
   console.log(`event = ${JSON.stringify(event, null, 2)}; context = ${JSON.stringify(context, null, 2)};`);
 
@@ -28,7 +77,8 @@ exports.handler = async (event, context) => {
       throw new AnalysisError(`missing enviroment variables, ${missing.join(', ')}`);
     }
 
-    const stateData = new StateData(Environment.StateMachines.ImageAnalysis, event, context);
+    /* merge parallel state outputs */
+    const stateData = parseEvent(event, context);
 
     /* state routing */
     let instance;

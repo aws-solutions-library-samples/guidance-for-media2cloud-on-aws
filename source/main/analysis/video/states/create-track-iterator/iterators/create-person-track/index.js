@@ -35,8 +35,7 @@ class CreatePersonTrackIterator extends BaseCreateTrackIterator {
   createTimeseriesData(name, datasets) {
     const timestamps = {};
     let desc;
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       const details = dataset.Person;
       if (!details.BoundingBox) {
         continue;

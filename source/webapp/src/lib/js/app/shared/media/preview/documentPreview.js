@@ -154,8 +154,7 @@ export default class DocumentPreview extends BasePreview {
   createLineDetails(carouselItem, blocks) {
     const items = [];
     const lines = (blocks || []).filter(x => x.BlockType === 'LINE');
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (let line of lines) {
       items.push(this.createCanvasButton(carouselItem, {
         text: line.Text,
         coord: line.Geometry.Polygon,
@@ -180,8 +179,7 @@ export default class DocumentPreview extends BasePreview {
       x.BlockType === 'KEY_VALUE_SET');
     const keys = [];
     const values = [];
-    for (let i = 0; i < keyValSets.length; i++) {
-      const keyValSet = keyValSets[i];
+    for (let keyValSet of keyValSets) {
       if (keyValSet.EntityTypes[0] === 'KEY') {
         keys.push(keyValSet);
       } else {

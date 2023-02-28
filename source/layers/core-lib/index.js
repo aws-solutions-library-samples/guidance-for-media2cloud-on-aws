@@ -4,6 +4,7 @@
 const SQL = require('sqlstring');
 const AdmZip = require('adm-zip');
 const NodeWebVtt = require('node-webvtt');
+const SigV4 = require('aws4');
 const Environment = require('./lib/environment');
 const AnalysisTypes = require('./lib/analysisTypes');
 const AIML = require('./lib/aiml');
@@ -63,4 +64,5 @@ module.exports = {
   AdmZip,
   Indexer,
   NodeWebVtt,
+  SigV4,
 };

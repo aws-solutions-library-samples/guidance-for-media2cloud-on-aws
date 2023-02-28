@@ -149,6 +149,7 @@ class MediaInfoCommand {
         container: this.container.map(x => MediaInfoCommand.minifyPayload(x)),
         audio: this.audio.map(x => MediaInfoCommand.minifyPayload(x)),
         video: this.video.map(x => MediaInfoCommand.minifyPayload(x)),
+        timecode: this.timecode,
       };
   }
 
@@ -177,6 +178,24 @@ class MediaInfoCommand {
         x.$.type.toLowerCase() !== 'general'
         && x.$.type.toLowerCase() !== 'audio'
         && x.$.type.toLowerCase() !== 'video');
+  }
+
+  get timecode() {
+    if (!this.jsonData) {
+      return undefined;
+    }
+    const tracks = ((this.jsonData.mediaInfo.media || {}).track || [])
+      .filter((x) =>
+        (x.type || '').toLowerCase() === 'time code'
+        && x.timeCodeFirstFrame !== undefined
+        && x.format !== undefined);
+    return (tracks.length === 0)
+      ? undefined
+      : {
+        type: tracks[0].type,
+        format: tracks[0].format,
+        timeCodeFirstFrame: tracks[0].timeCodeFirstFrame,
+      };
   }
 
   toJSON() {
@@ -312,6 +331,7 @@ class MediaInfoCommand {
         ...process.env,
         LD_LIBRARY_PATH: ldLibraryPath,
       },
+      maxBuffer: 20 * 1024 * 1024,
     };
     const params = [
       ...MediaInfoCommand.Constants.Command.Options,
@@ -365,8 +385,7 @@ class MediaInfoCommand {
     const modified = Object.assign({}, data);
     modified.mediaInfo.media.$.ref = ref;
 
-    for (let i = 0; i < modified.mediaInfo.media.track.length; i++) {
-      const track = modified.mediaInfo.media.track[i];
+    for (let track of modified.mediaInfo.media.track) {
       if (track.completeName !== undefined) {
         track.completeName = ref;
       }
@@ -384,7 +403,7 @@ class MediaInfoCommand {
     function camelCaseKey(k0, obj) {
       const k1 = (k0 === '_' || k0 === '$')
         ? k0
-        : k0.replace(/^([A-Za-z])|[\s-_.]{1,}(\w)/g, (ignored, p1, p2) =>
+        : k0.replace(/^([A-Za-z])|[\s-_.]+(\w)/g, (ignored, p1, p2) =>
           ((p2) ? p2.toUpperCase() : p1.toLowerCase())).replace(/[\s-_.]$/, '');
       if (k1 !== k0) {
         obj[k1] = obj[k0];
@@ -417,7 +436,7 @@ class MediaInfoCommand {
         v1 = true;
       } else if (/^false$/i.test(v1)) {
         v1 = false;
-      } else if (/^[-|+]{0,1}\d+$/.test(v1) || /^[-|+]{0,1}\d+\.\d+$/.test(v1)) {
+      } else if (/^[-|+]?\d+$/.test(v1) || /^[-|+]?\d+\.\d+$/.test(v1)) {
         const num = Number.parseFloat(v1);
         if (num >= Number.MIN_SAFE_INTEGER && num <= Number.MAX_SAFE_INTEGER) {
           v1 = num;

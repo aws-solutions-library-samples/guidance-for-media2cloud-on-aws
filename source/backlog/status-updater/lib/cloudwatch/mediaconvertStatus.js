@@ -38,9 +38,21 @@ class MediaConvertStatus {
     return this.detail.jobId;
   }
 
+  get errorMessage() {
+    return this.detail.errorMessage;
+  }
+
   async process() {
+    /* optional output */
+    let optional;
+    if (this.errorMessage) {
+      optional = {
+        ...optional,
+        errorMessage: this.errorMessage,
+      };
+    }
     const backlog = new BacklogJob();
-    return backlog.deleteJob(this.jobId, this.status);
+    return backlog.deleteJob(this.jobId, this.status, optional);
   }
 }
 

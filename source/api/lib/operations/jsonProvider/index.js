@@ -20,11 +20,14 @@ class JsonProvider {
   }
 
   static getProvider(data) {
-    return CloudfirstProvider.isSupported(data)
-      ? JsonProvider.Provider.CloudFirst
-      : DefaultProvider.isSupported(data)
-        ? JsonProvider.Provider.AWS
-        : undefined;
+    if (CloudfirstProvider.isSupported(data)) {
+      return JsonProvider.Provider.CloudFirst;
+    }
+    if (DefaultProvider.isSupported(data)) {
+      return JsonProvider.Provider.AWS;
+    }
+
+    return undefined;
   }
 
   static async createProvider(params) {

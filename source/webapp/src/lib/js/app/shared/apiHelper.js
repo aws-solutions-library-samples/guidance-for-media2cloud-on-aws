@@ -19,6 +19,8 @@ const ENDPOINTS = {
   CustomLanguageModels: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomLanguageModels}`,
   CustomEntityRecognizers: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomEntityRecognizers}`,
   Stats: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Stats}`,
+  Users: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Users}`,
+  AIOptionsSettings: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.AIOptionsSettings}`,
 };
 
 export default class ApiHelper {
@@ -132,5 +134,33 @@ export default class ApiHelper {
       ...options,
       collectionId,
     });
+  }
+
+  /* user management */
+  static async getUsers() {
+    return AppUtils.authHttpRequest('GET', ENDPOINTS.Users);
+  }
+
+  static async addUsers(users) {
+    return AppUtils.authHttpRequest('POST', ENDPOINTS.Users, undefined, users);
+  }
+
+  static async deleteUser(user) {
+    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.Users, {
+      user,
+    });
+  }
+
+  /* manage aiOptions settings */
+  static async getGlobalAIOptions() {
+    return AppUtils.authHttpRequest('GET', ENDPOINTS.AIOptionsSettings);
+  }
+
+  static async setGlobalAIOptions(aiOptions) {
+    return AppUtils.authHttpRequest('POST', ENDPOINTS.AIOptionsSettings, undefined, aiOptions);
+  }
+
+  static async deleteGlobalAIOptions() {
+    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.AIOptionsSettings);
   }
 }

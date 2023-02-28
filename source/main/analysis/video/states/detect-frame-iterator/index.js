@@ -40,23 +40,33 @@ class StateDetectFrameIterator {
 
   async process() {
     const data = this.stateData.data;
-    const iterator = (data[SUBCATEGORY_LABEL])
-      ? new DetectLabelIterator(this.stateData)
-      : (data[SUBCATEGORY_MODERATION])
-        ? new DetectModerationIterator(this.stateData)
-        : (data[SUBCATEGORY_TEXT])
-          ? new DetectTextIterator(this.stateData)
-          /* use combo detection */
-          : (data[SUBCATEGORY_FACE] && (data[SUBCATEGORY_CELEB] || data[SUBCATEGORY_FACEMATCH]))
-            ? new DetectIdentityComboIterator(this.stateData)
-            /* no combo detection */
-            : (data[SUBCATEGORY_CELEB])
-              ? new DetectCelebIterator(this.stateData)
-              : (data[SUBCATEGORY_FACE])
-                ? new DetectFaceIterator(this.stateData)
-                : (data[SUBCATEGORY_FACEMATCH])
-                  ? new DetectFaceMatchIterator(this.stateData)
-                  : undefined;
+    let iterator;
+    if (data[SUBCATEGORY_LABEL]) {
+      iterator = new DetectLabelIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_MODERATION]) {
+      iterator = new DetectModerationIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_TEXT]) {
+      iterator = new DetectTextIterator(this.stateData);
+    }
+    /* use combo detection */
+    else if (data[SUBCATEGORY_FACE] && (data[SUBCATEGORY_CELEB] || data[SUBCATEGORY_FACEMATCH])) {
+      iterator = new DetectIdentityComboIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_CELEB]) {
+      iterator = new DetectCelebIterator(this.stateData)
+    }
+    /* no combo detection */
+    else if (data[SUBCATEGORY_FACE]) {
+      iterator = new DetectFaceIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACEMATCH]) {
+      iterator = new DetectFaceMatchIterator(this.stateData);
+    }
+    else {
+      iterator = undefined;
+    }
     if (!iterator) {
       const e = `iterator '${Object.keys(data).join(',')}' not impl`;
       console.error(e);

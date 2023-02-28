@@ -16,7 +16,7 @@
   "author": "aws-mediaent-solutions",
   "dependencies": {
     "adm-zip": "^0.4.11",
-    "aws-sdk": "^2.1033.0",
+    "aws-sdk": "^2.1173.0",
     "aws-xray-sdk": "^3.3.4"
   },
   "devDependencies": {

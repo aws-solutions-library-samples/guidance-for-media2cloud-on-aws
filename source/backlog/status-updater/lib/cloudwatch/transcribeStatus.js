@@ -5,6 +5,9 @@ const {
   BacklogJob,
 } = require('service-backlog-lib');
 
+const STATUS_COMPLETED = 'COMPLETED';
+const STATUS_FAILED = 'FAILED';
+
 class TranscribeStatus {
   constructor(parent) {
     this.$parent = parent;
@@ -31,16 +34,28 @@ class TranscribeStatus {
   }
 
   get status() {
-    return this.event.detail.TranscriptionJobStatus;
+    return this.detail.TranscriptionJobStatus;
+  }
+
+  get failureReason() {
+    return this.detail.FailureReason;
   }
 
   get jobId() {
-    return this.event.detail.TranscriptionJobName;
+    return this.detail.TranscriptionJobName;
   }
 
   async process() {
+    /* optional output */
+    let optional;
+    if (this.failureReason) {
+      optional = {
+        ...optional,
+        errorMessage: this.failureReason,
+      };
+    }
     const backlog = new BacklogJob();
-    return backlog.deleteJob(this.jobId, this.status);
+    return backlog.deleteJob(this.jobId, this.status, optional);
   }
 }
 

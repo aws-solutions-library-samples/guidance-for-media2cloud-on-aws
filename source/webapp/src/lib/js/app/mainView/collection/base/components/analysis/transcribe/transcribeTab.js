@@ -32,13 +32,7 @@ export default class TranscribeTab extends BaseAnalysisTab {
           .html(Localization.Messages.SubtitleSwitch)));
 
     const view = this.previewComponent.getSubtitleView();
-    view.on(VideoPreview.Events.Track.Loaded, (event, track) => {
-      /*
-      if (this.previewComponent.trackIsSub(track)) {
-        input.prop('checked', true);
-      }
-      */
-    });
+    
     return col.append(toggle).append(view);
   }
 }

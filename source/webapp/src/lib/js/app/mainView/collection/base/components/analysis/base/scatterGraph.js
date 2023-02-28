@@ -11,25 +11,13 @@ export default class ScatterGraph extends mxReadable(class {}) {
   constructor(datasets) {
     super();
     this.$datasets = datasets.filter(x => x.data.length > 0);
+    this.$labels = this.$datasets.map((x) =>
+      x.label);
     this.$graphContainer = $('<div/>').addClass('scatter-graph')
       .attr('id', `scatter-${AppUtils.randomHexstring()}`);
     const options = this.makeGraphOptions(this.$datasets);
-    options.series = this.$datasets.map(x => ({
-      name: x.label,
-      type: 'scatter',
-      large: true,
-      largeThreshold: 5000,
-      data: x.data.map(d => ([d.x, d.y])),
-    }));
     const graph = echarts.init(this.$graphContainer[0]);
-    const onDataPoint = this.onDataPointClickEvent.bind(this, this.$datasets);
-    const onLegendChanged = this.onLegendSelectChangedEvent.bind(this, this.$datasets);
-    const onInverseLegends = this.onInverseLegendsEvent.bind(this, this.$datasets);
-    const onRendered = this.onRenderedEvent.bind(this, graph);
-    graph.on('click', async (event) => onDataPoint(event));
-    graph.on('legendselectchanged', async (event) => onLegendChanged(event));
-    graph.on('legendinverseselect', async (event) => onInverseLegends(event));
-    graph.on('rendered', async () => onRendered());
+    this.registerGraphEvents(this.$datasets, graph);
     graph.setOption(options);
     this.$graph = graph;
   }
@@ -69,6 +57,10 @@ export default class ScatterGraph extends mxReadable(class {}) {
     this.$datasets = val;
   }
 
+  get labels() {
+    return this.$labels;
+  }
+
   get graphId() {
     return this.graphContainer.prop('id');
   }
@@ -78,9 +70,17 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   makeGraphOptions(datasets) {
+    const legends = datasets
+      .sort((a, b) =>
+        b.appearance - a.appearance)
+      .map((x) => ({
+        name: x.label,
+      }));
+
     const legend = {
       type: 'scroll',
       orient: 'horizontal',
+      data: legends,
       selected: datasets.reduce((a0, c0) => ({
         ...a0,
         [c0.label]: false,
@@ -134,13 +134,16 @@ export default class ScatterGraph extends mxReadable(class {}) {
       min: 0,
       interval: 1,
     };
+
+    let pencentage = Math.round((Math.min(datasets[0].duration, 60 * 1000) / datasets[0].duration) * 100);
+    pencentage = Math.max(pencentage, 10);
     const dataZoom = [
       {
         type: 'slider',
         show: true,
         xAxisIndex: [0],
         start: 0,
-        end: 10,
+        end: pencentage,
         minValueSpan: 2 * 1000,
         labelFormatter: (x) => AppUtils.readableDuration(x, true),
       },
@@ -151,6 +154,13 @@ export default class ScatterGraph extends mxReadable(class {}) {
       formatter: ((x) =>
         `<span style="color:${x.color}">${x.seriesName}</span> (x${x.data[1]})<br/>at ${AppUtils.readableDuration(x.data[0], true)}`),
     };
+    const series = datasets.map(x => ({
+      name: x.label,
+      type: 'scatter',
+      large: true,
+      largeThreshold: 5000,
+      data: x.data.map(d => ([d.x, d.y])),
+    }));
     return {
       legend,
       grid,
@@ -158,6 +168,7 @@ export default class ScatterGraph extends mxReadable(class {}) {
       yAxis,
       dataZoom,
       tooltip,
+      series,
     };
   }
 
@@ -236,5 +247,61 @@ export default class ScatterGraph extends mxReadable(class {}) {
     return this.graph.dispatchAction({
       type: 'legendInverseSelect',
     });
+  }
+
+  registerGraphEvents(datasets, graph) {
+    const onRendered = this.onRenderedEvent.bind(this, graph);
+    graph.off('rendered').on('rendered', async () =>
+      onRendered());
+
+    const onDataPoint = this.onDataPointClickEvent.bind(this, datasets);
+    graph.off('click').on('click', async (event) =>
+      onDataPoint(event));
+
+    const onLegendChanged = this.onLegendSelectChangedEvent.bind(this, datasets);
+    graph.off('legendselectchanged').on('legendselectchanged', async (event) =>
+      onLegendChanged(event));
+
+    const onInverseLegends = this.onInverseLegendsEvent.bind(this, datasets);
+    graph.off('legendinverseselect').on('legendinverseselect', async (event) =>
+      onInverseLegends(event));
+  }
+
+  updateLegends(legends) {
+    const datasets = this.datasets;
+    const graphOption = this.graph.getOption();
+
+    /* get a list of labels that are currently selected */
+    const selected = [];
+    for (let legend of graphOption.legend) {
+      const labels = Object.keys(legend.selected);
+      while (labels.length) {
+        const label = labels.shift();
+        if (legend.selected[label] === true) {
+          const found = datasets.find((x) =>
+            x.label === label);
+          if (found) {
+            selected.push({
+              name: found.label,
+              enabled: false,
+              basename: found.basename,
+            });
+          }
+          legend.selected[label] = false;
+        }
+      }
+      /* update legends */
+      this.graph.setOption({
+        legend: {
+          data: legends,
+          selected: legend.selected,
+        },
+      });
+    }
+
+    /* send events to update other components */
+    if (selected.length > 0) {
+      this.graphContainer.trigger(ScatterGraph.Events.Legend.Changed, [selected]);
+    }
   }
 }

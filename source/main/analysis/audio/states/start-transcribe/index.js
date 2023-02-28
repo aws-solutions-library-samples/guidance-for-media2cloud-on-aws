@@ -1,14 +1,5 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const PATH = require('path');
 const CRYPTO = require('crypto');
 const {
@@ -18,8 +9,14 @@ const {
   CommonUtils,
   ServiceToken,
 } = require('core-lib');
+const {
+  BacklogClient: {
+    TranscribeBacklogJob,
+  },
+} = require('service-backlog-lib');
 
 const CATEGORY = 'transcribe';
+const JOBNAME_MAXLEN = 200;
 
 class StateStartTranscribe {
   constructor(stateData) {
@@ -39,23 +36,30 @@ class StateStartTranscribe {
 
   async process() {
     const params = await this.makeParams();
+    const id = params.TranscriptionJobName;
+
+    /* start transcription job */
+    const transcribe = new TranscribeBacklogJob();
+    await transcribe.startTranscriptionJob(id, params);
+
     this.stateData.setData(CATEGORY, {
       jobId: params.TranscriptionJobName,
       output: params.OutputKey,
       startTime: new Date().getTime(),
     });
     this.stateData.setStarted();
+
     /* register token to dynamodb table */
+    const stateData = this.stateData.toJSON();
     await ServiceToken.register(
       params.TranscriptionJobName,
       this.stateData.event.token,
       CATEGORY,
       CATEGORY,
-      this.stateData.toJSON()
+      stateData
     );
-    /* start transcribe */
-    await this.retryStartTranscriptionJob(params);
-    return this.stateData.toJSON();
+
+    return stateData;
   }
 
   async makeParams() {
@@ -66,6 +70,7 @@ class StateStartTranscribe {
     }
     const aiOptions = this.stateData.input.aiOptions;
     const id = this.makeUniqueJobName();
+    const mediaFileUri = `s3://${PATH.join(bucket, key)}`;
     const outPrefix = this.makeOutputPrefix();
     const modelSettings = (aiOptions.customLanguageModel)
       ? {
@@ -82,7 +87,7 @@ class StateStartTranscribe {
     return {
       TranscriptionJobName: id,
       Media: {
-        MediaFileUri: undefined,
+        MediaFileUri: mediaFileUri,
       },
       JobExecutionSettings: {
         AllowDeferredExecution: true,
@@ -105,7 +110,17 @@ class StateStartTranscribe {
   }
 
   makeUniqueJobName() {
-    return `${Environment.Solution.Metrics.Uuid}_${this.stateData.uuid}_${CRYPTO.randomBytes(8).toString('hex')}`;
+    /* https://docs.aws.amazon.com/transcribe/latest/APIReference/API_StartTranscriptionJob.html#transcribe-StartTranscriptionJob-request-TranscriptionJobName */
+    const solutionUuid = Environment.Solution.Metrics.Uuid;
+    const randomId = CRYPTO.randomBytes(4).toString('hex');
+    const maxLen = JOBNAME_MAXLEN - solutionUuid.length - randomId.length - 2;
+    let name = PATH.parse(this.stateData.input.audio.key).name;
+    name = name.replace(/[^0-9a-zA-Z._-]/g, '').slice(0, maxLen);
+    return [
+      solutionUuid,
+      name,
+      randomId,
+    ].join('_');
   }
 
   makeOutputPrefix() {
@@ -121,49 +136,6 @@ class StateStartTranscribe {
       prefix = prefix.replace(/[^a-zA-Z0-9_.!*'()/-]/g, '_');
     }
     return prefix;
-  }
-
-  async retryStartTranscriptionJob(data) {
-    const bucket = this.stateData.input.destination.bucket;
-    const key = this.stateData.input.audio.key;
-    const hostname = [
-      (process.env.AWS_REGION === 'us-east-1') ? 's3' : `s3-${process.env.AWS_REGION}`,
-      'amazonaws.com',
-    ].join('.');
-    const attempts = [
-      `s3://${bucket}/${key}`,
-      // TODO: TO REMOVE!
-      `https://${hostname}/${bucket}/${key}`,
-      `https://${hostname}/${bucket}/${encodeURIComponent(key)}`,
-      `https://${hostname}/${bucket}/${encodeURIComponent(key)}`.replace(/%20/g, '+'),
-      `https://${hostname}/${bucket}/${encodeURI(key)}`,
-      `https://${hostname}/${bucket}/${encodeURI(key)}`.replace(/%20/g, '+'),
-    ];
-
-    const transcribe = new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    let response;
-    while (attempts.length) {
-      const uri = attempts.shift();
-      const params = {
-        ...data,
-        Media: {
-          MediaFileUri: uri,
-        },
-      };
-      response = await transcribe.startTranscriptionJob(params).promise().catch(e => e);
-      console.log(JSON.stringify(response, null, 2));
-      if (!(response instanceof Error)) {
-        console.log(`startTranscriptionJob(${this.stateData.uuid}) = ${JSON.stringify(params, null, 2)}`);
-        break;
-      }
-    }
-    if (response instanceof Error) {
-      throw response;
-    }
-    return response;
   }
 }
 

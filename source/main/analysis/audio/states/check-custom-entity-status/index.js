@@ -60,11 +60,14 @@ class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
     }).promise();
 
     const jobStatus = response.EntitiesDetectionJobProperties.JobStatus;
-    return (STATUS_PROCESSING.indexOf(jobStatus) >= 0)
-      ? this.onProgress(response)
-      : (STATUS_FAILED.indexOf(jobStatus) >= 0)
-        ? this.onError(response)
-        : this.onCompleted(response);
+    if (STATUS_PROCESSING.indexOf(jobStatus) >= 0) {
+      return this.onProgress(response);
+    }
+    if (STATUS_FAILED.indexOf(jobStatus) >= 0) {
+      return this.onError(response);
+    }
+
+    return this.onCompleted(response);
   }
 
   async onCompleted(data) {

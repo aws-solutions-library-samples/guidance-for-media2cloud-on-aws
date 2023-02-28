@@ -459,7 +459,8 @@ export default class SearchCategorySlideComponent extends BaseSlideComponent {
   }
 
   makeTableRowItem(name) {
-    const td = $('<td/>').addClass('h-100 align-middle text-center b-300');
+    const td = $('<td/>')
+      .addClass('w-96min align-middle text-center b-300');
     if (name && name.length) {
       return td.append(name);
     }
@@ -468,15 +469,23 @@ export default class SearchCategorySlideComponent extends BaseSlideComponent {
   }
 
   makeTableRowItemByMediaType(type) {
-    const bkgdColor = (type === MediaTypes.Video)
-      ? 'bg-success'
-      : (type === MediaTypes.Podcast)
-        ? 'bg-primary'
-        : (type === MediaTypes.Photo)
-          ? 'bg-secondary'
-          : (type === MediaTypes.Document)
-            ? 'bg-warning'
-            : undefined;
+    let bkgdColor;
+    switch (type) {
+      case MediaTypes.Video:
+        bkgdColor = 'bg-success';
+        break;
+      case MediaTypes.Podcast:
+        bkgdColor = 'bg-primary';
+        break;
+      case MediaTypes.Photo:
+        bkgdColor = 'bg-secondary';
+        break;
+      case MediaTypes.Document:
+        bkgdColor = 'bg-warning';
+        break;
+      default:
+        bkgdColor = undefined;
+    }
     return this.makeTableRowItem(type)
       .addClass(bkgdColor)
       .addClass('text-white');
@@ -493,14 +502,18 @@ export default class SearchCategorySlideComponent extends BaseSlideComponent {
       metadata.basename,
       ...Object.values(metadata.attributes || {}),
     ].filter((x) => {
-      for (let i = 0; i < terms.length; i++) {
-        if (x.toLowerCase().indexOf(terms[i]) >= 0) {
+      for (let term of terms) {
+        if (String(x).toLowerCase().indexOf(term) >= 0) {
           return true;
         }
       }
       return false;
     });
-    return this.makeTableRowItem(matched);
+
+    const container = $('<p/>')
+      .addClass('p-overflow')
+      .append(matched);
+    return this.makeTableRowItem(container);
   }
 
   async createThumbnail(media) {

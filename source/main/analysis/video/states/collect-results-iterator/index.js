@@ -44,25 +44,37 @@ class StateCollectResultsIterator {
 
   async process() {
     const data = this.stateData.data;
-    const iterator = (data[SUBCATEGORY_CELEB])
-      ? new CollectCelebIterator(this.stateData)
-      : (data[SUBCATEGORY_FACE])
-        ? new CollectFaceIterator(this.stateData)
-        : (data[SUBCATEGORY_FACEMATCH])
-          ? new CollectFaceMatchIterator(this.stateData)
-          : (data[SUBCATEGORY_LABEL])
-            ? new CollectLabelIterator(this.stateData)
-            : (data[SUBCATEGORY_MODERATION])
-              ? new CollectModerationIterator(this.stateData)
-              : (data[SUBCATEGORY_PERSON])
-                ? new CollectPersonIterator(this.stateData)
-                : (data[SUBCATEGORY_SEGMENT])
-                  ? new CollectSegmentIterator(this.stateData)
-                  : (data[SUBCATEGORY_TEXT])
-                    ? new CollectTextIterator(this.stateData)
-                    : (data[SUBCATEGORY_CUSTOMLABEL])
-                      ? new CollectCustomLabelIterator(this.stateData)
-                      : undefined;
+    let iterator;
+    if (data[SUBCATEGORY_CELEB]) {
+      iterator = new CollectCelebIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACE]) {
+      iterator = new CollectFaceIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACEMATCH]) {
+      iterator = new CollectFaceMatchIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_LABEL]) {
+      iterator = new CollectLabelIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_MODERATION]) {
+      iterator = new CollectModerationIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_PERSON]) {
+      iterator = new CollectPersonIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_SEGMENT]) {
+      iterator = new CollectSegmentIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_TEXT]) {
+      iterator = new CollectTextIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_CUSTOMLABEL]) {
+      iterator = new CollectCustomLabelIterator(this.stateData);
+    }
+    else {
+      iterator = undefined;
+    }
     if (!iterator) {
       const e = `iterator '${Object.keys(data).join(',')}' not impl`;
       console.error(e);

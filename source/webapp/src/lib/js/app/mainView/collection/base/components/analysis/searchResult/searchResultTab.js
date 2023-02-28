@@ -46,6 +46,11 @@ export default class SearchResultTab extends BaseAnalysisTab {
     const tbody = $('<tbody/>');
     table.append(tbody);
 
+    if (!searchResults.indices.length) {
+      return container.append($('<span/>').addClass('lead')
+        .append(Localization.Messages.SearchQueryFailed));
+    }
+
     /* search in document */
     const indices = searchResults.indices.filter((x) =>
       x !== INDEX_INGEST)
@@ -54,16 +59,12 @@ export default class SearchResultTab extends BaseAnalysisTab {
         [c0]: true,
       }), {});
     const uuid = this.previewComponent.media.uuid;
-    const results = await ApiHelper.searchInDocument(uuid, {
+    const results = (await ApiHelper.searchInDocument(uuid, {
       ...indices,
       query: searchResults.query,
       exact: searchResults.exact,
     }).then((res) => res.indices)
-      .catch((e) => undefined);
-    if (!results) {
-      return container.append($('<span/>').addClass('lead')
-        .append(Localization.Messages.SearchQueryFailed));
-    }
+      .catch(() => undefined)) || {};
 
     /* known faces */
     const knownFaces = this.makeTableRowItem([
@@ -196,8 +197,7 @@ export default class SearchResultTab extends BaseAnalysisTab {
   mergeResults(categories, searchResults) {
     const matched = {};
     let containTimecodes = false;
-    for (let i = 0; i < categories.length; i++) {
-      const category = categories[i];
+    for (let category of categories) {
       const keys = Object.keys(searchResults[category] || {});
       while (keys.length) {
         const key = keys.shift();

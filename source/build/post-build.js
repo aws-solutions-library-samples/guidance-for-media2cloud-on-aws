@@ -51,27 +51,32 @@ function parseCmdline() {
   while (args.length) {
     options[args.shift().slice(2)] = args.shift();
   }
-  if (command === COMMAND.ROLLUP) {
-    if (!options.input) {
-      return usage('\'--input\' must be specified');
-    }
-    if (!options.output) {
-      return usage('\'--output\' must be specified');
-    }
-  } else if (command === COMMAND.BUILDHTML) {
-    if (!options.html) {
-      return usage('\'--html\' must be specified');
-    }
-  } else if (command === COMMAND.MINIFY) {
-    if (!options.dir) {
-      return usage('\'--dir\' must be specified');
-    }
-  } else if (command === COMMAND.INJECTSRI) {
-    if (!options.html) {
-      return usage('\'--html\' must be specified');
-    }
-  } else {
-    return usage(`command '${command}' not supported`);
+  switch (command) {
+    case COMMAND.ROLLUP:
+      if (!options.input) {
+        return usage('\'--input\' must be specified');
+      }
+      if (!options.output) {
+        return usage('\'--output\' must be specified');
+      }
+      break;
+    case COMMAND.BUILDHTML:
+      if (!options.html) {
+        return usage('\'--html\' must be specified');
+      }
+      break;
+    case COMMAND.MINIFY:
+      if (!options.dir) {
+        return usage('\'--dir\' must be specified');
+      }
+      break;
+    case COMMAND.INJECTSRI:
+      if (!options.html) {
+        return usage('\'--html\' must be specified');
+      }
+      break;
+    default:
+      return usage(`command '${command}' not supported`);
   }
   options.command = command;
   return options;
@@ -231,7 +236,6 @@ function insertSRI(line, rootDir, regex) {
 
 function createBackupCopy(path) {
   const buffer = FS.readFileSync(path);
-  // FS.writeFileSync(`${path}.bak`, buffer);
   return buffer;
 }
 

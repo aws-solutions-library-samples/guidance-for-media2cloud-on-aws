@@ -98,8 +98,8 @@ class DDBStreamEvent {
               return false;
             }
             /* if object is one of the prefixes, don't delete the object */
-            for (let i = 0; i < PROXY_PREFIXES.length; i++) {
-              if (x.Key.indexOf(PROXY_PREFIXES[i]) > 0) {
+            for (let prefix of PROXY_PREFIXES) {
+              if (x.Key.indexOf(prefix) > 0) {
                 return false;
               }
             }
@@ -214,14 +214,21 @@ class DDBStreamEvent {
   }
 
   async process() {
-    const responses = await Promise.all(this.records.map((x) =>
-      ((x.event === EVENT_REMOVE)
-        ? this.onRemoveEvent(x)
-        : (x.event === EVENT_INSERT)
-          ? this.onInsertEvent(x)
-          : (x.event === EVENT_MODIFY)
-            ? this.onModifyEvent(x)
-            : undefined)));
+    const responses = await Promise.all(this.records.map((x) => {
+      switch (x.event) {
+        case EVENT_REMOVE:
+          this.onRemoveEvent(x);
+          break;
+        case EVENT_INSERT:
+          this.onInsertEvent(x);
+          break;
+        case EVENT_MODIFY:
+          this.onModifyEvent(x);
+          break;
+        default:
+          return undefined;
+      }
+    }));
     return responses;
   }
 }

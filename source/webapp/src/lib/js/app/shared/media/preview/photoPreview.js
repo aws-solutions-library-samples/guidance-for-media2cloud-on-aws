@@ -116,19 +116,25 @@ export default class PhotoPreview extends BasePreview {
       return undefined;
     }
     const data = JSON.parse(response.Body);
-    return data.CelebrityFaces
-      ? this.createCelebCanvas(data)
-      : data.FaceDetails
-        ? this.createFaceCanvas(data)
-        : data.FaceMatches
-          ? this.createFaceMatchCanvas(data)
-          : data.Labels
-            ? this.createLabelCanvas(data)
-            : data.ModerationLabels
-              ? this.createModerationCanvas(data)
-              : data.TextDetections
-                ? this.createTextCanvas(data)
-                : undefined;
+    if (data.CelebrityFaces) {
+      return this.createCelebCanvas(data);
+    }
+    if (data.FaceDetails) {
+      return this.createFaceCanvas(data);
+    }
+    if (data.FaceMatches) {
+      return this.createFaceMatchCanvas(data);
+    }
+    if (data.Labels) {
+      return this.createLabelCanvas(data);
+    }
+    if (data.ModerationLabels) {
+      return this.createModerationCanvas(data);
+    }
+    if (data.TextDetections) {
+      return this.createTextCanvas(data);
+    }
+    return undefined;
   }
 
   createCelebCanvas(data) {

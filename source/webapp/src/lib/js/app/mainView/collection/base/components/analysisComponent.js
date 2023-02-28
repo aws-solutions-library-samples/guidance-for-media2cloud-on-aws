@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import CognitoConnector from '../../../../shared/cognitoConnector.js';
 import AnalysisTypes from '../../../../shared/analysis/analysisTypes.js';
 /* analysis summary */
 import StatisticsTab from './analysis/statistics/statisticsTab.js';
@@ -14,6 +15,7 @@ import PersonTab from './analysis/rekognition/video/personTab.js';
 import SegmentTab from './analysis/rekognition/video/segmentTab.js';
 import TextTab from './analysis/rekognition/video/textTab.js';
 /* rekog image */
+import ImageCaptionTab from './analysis/rekognition/image/imageCaption.js';
 import CelebImageTab from './analysis/rekognition/image/celebImageTab.js';
 import LabelImageTab from './analysis/rekognition/image/labelImageTab.js';
 import FaceMatchImageTab from './analysis/rekognition/image/faceMatchImageTab.js';
@@ -34,86 +36,131 @@ import CustomLabelTab from './analysis/rekognition/video/customLabelTab.js';
 import SearchResultTab from './analysis/searchResult/searchResultTab.js';
 /* ReAnalyze */
 import ReAnalyzeTab from './analysis/reAnalyze/reAnalzeTab.js';
+/* knowledge graph */
+import KnowledgeGraphTab from './analysis/knowledgeGraph/knowledgeGraphTab.js';
 
 export default class AnalysisComponent {
   constructor(previewComponent) {
+    let defaultStats = true;
     this.$tabControllers = [];
     if (previewComponent.searchResults) {
       this.$tabControllers.push(new SearchResultTab(previewComponent, true));
-    } else {
-      this.$tabControllers.push(new StatisticsTab(previewComponent, true));
-      if (previewComponent.media.getTranscribeResults()) {
-        this.$tabControllers.push(new TranscribeTab(previewComponent));
-      }
-      const rekog = previewComponent.media.getRekognitionResults();
-      let types = Object.keys(rekog || {});
-      types.forEach((type) => {
-        const datas = [].concat(rekog[type]);
-        datas.forEach((data) => {
-          const controller = type === AnalysisTypes.Rekognition.Celeb
-            ? new CelebTab(previewComponent, data)
-            : type === AnalysisTypes.Rekognition.Label
-              ? new LabelTab(previewComponent, data)
-              : type === AnalysisTypes.Rekognition.FaceMatch
-                ? new FaceMatchTab(previewComponent, data)
-                : type === AnalysisTypes.Rekognition.Face
-                  ? new FaceTab(previewComponent, data)
-                  : type === AnalysisTypes.Rekognition.Person
-                    ? new PersonTab(previewComponent, data)
-                    : type === AnalysisTypes.Rekognition.Moderation
-                      ? new ModerationTab(previewComponent, data)
-                      : type === AnalysisTypes.Rekognition.Segment
-                        ? new SegmentTab(previewComponent, data)
-                        : type === AnalysisTypes.Rekognition.CustomLabel
-                          ? new CustomLabelTab(previewComponent, data)
-                          : type === AnalysisTypes.Rekognition.Text
-                            ? new TextTab(previewComponent, data)
-                            : undefined;
-          if (controller) {
-            this.$tabControllers.push(controller);
-          }
-        });
-      });
-      const rekogImage = previewComponent.media.getRekognitionImageResults();
-      types = Object.keys(rekogImage || {});
-      types.forEach((type) => {
-        const datas = [].concat(rekogImage[type]);
-        datas.forEach((data) => {
-          const controller = type === AnalysisTypes.Rekognition.Celeb
-            ? new CelebImageTab(previewComponent, data)
-            : type === AnalysisTypes.Rekognition.Label
-              ? new LabelImageTab(previewComponent, data)
-              : type === AnalysisTypes.Rekognition.FaceMatch
-                ? new FaceMatchImageTab(previewComponent, data)
-                : type === AnalysisTypes.Rekognition.Face
-                  ? new FaceImageTab(previewComponent, data)
-                  : type === AnalysisTypes.Rekognition.Text
-                    ? new TextImageTab(previewComponent, data)
-                    : type === AnalysisTypes.Rekognition.Moderation
-                      ? new ModerationImageTab(previewComponent, data)
-                      : undefined;
-          if (controller) {
-            this.$tabControllers.push(controller);
-          }
-        });
-      });
-      const comprehend = previewComponent.media.getComprehendResults();
-      Object.keys(comprehend || {}).forEach((type) => {
-        const controller = type === AnalysisTypes.Comprehend.Keyphrase
-          ? new KeyphraseTab(previewComponent)
-          : type === AnalysisTypes.Comprehend.Entity
-            ? new EntityTab(previewComponent)
-            : type === AnalysisTypes.Comprehend.Sentiment
-              ? new SentimentTab(previewComponent)
-              : undefined;
+      defaultStats = false;
+    }
+    this.$tabControllers.push(new StatisticsTab(previewComponent, defaultStats));
+    if (KnowledgeGraphTab.canSupport()) {
+      this.$tabControllers.push(new KnowledgeGraphTab(previewComponent));
+    }
+    if (previewComponent.media.getTranscribeResults()) {
+      this.$tabControllers.push(new TranscribeTab(previewComponent));
+    }
+    const rekog = previewComponent.media.getRekognitionResults();
+    let types = Object.keys(rekog || {});
+    types.forEach((type) => {
+      const datas = [].concat(rekog[type]);
+      datas.forEach((data) => {
+        let controller;
+        switch (type) {
+          case AnalysisTypes.Rekognition.Celeb:
+            controller = new CelebTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Label:
+            controller = new LabelTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.FaceMatch:
+            controller = new FaceMatchTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Face:
+            controller = new FaceTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Person:
+            controller = new PersonTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Moderation:
+            controller = new ModerationTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Segment:
+            controller = new SegmentTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.CustomLabel:
+            controller = new CustomLabelTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Text:
+            controller = new TextTab(previewComponent, data);
+            break;
+          default:
+            controller = undefined;
+        }
         if (controller) {
           this.$tabControllers.push(controller);
         }
       });
-      const textract = previewComponent.media.getTextractResults();
-      if (textract) {
-        this.$tabControllers.push(new TextractTab(previewComponent));
+    });
+    /* BLIP model */
+    const caption = previewComponent.media.getImageAutoCaptioning();
+    if (caption) {
+      this.$tabControllers.push(new ImageCaptionTab(previewComponent));
+    }
+    const rekogImage = previewComponent.media.getRekognitionImageResults();
+    types = Object.keys(rekogImage || {});
+    types.forEach((type) => {
+      const datas = [].concat(rekogImage[type]);
+      datas.forEach((data) => {
+        let controller;
+        switch (type) {
+          case AnalysisTypes.Rekognition.Celeb:
+            controller = new CelebImageTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Label:
+            controller = new LabelImageTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.FaceMatch:
+            controller = new FaceMatchImageTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Face:
+            controller = new FaceImageTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Text:
+            controller = new TextImageTab(previewComponent, data);
+            break;
+          case AnalysisTypes.Rekognition.Moderation:
+            controller = new ModerationImageTab(previewComponent, data);
+            break;
+          default:
+            controller = undefined;
+        }
+        if (controller) {
+          this.$tabControllers.push(controller);
+        }
+      });
+    });
+    const comprehend = previewComponent.media.getComprehendResults();
+    Object.keys(comprehend || {}).forEach((type) => {
+      let controller;
+      switch (type) {
+        case AnalysisTypes.Comprehend.Keyphrase:
+          controller = new KeyphraseTab(previewComponent);
+          break;
+        case AnalysisTypes.Comprehend.Entity:
+          controller = new EntityTab(previewComponent);
+          break;
+        case AnalysisTypes.Comprehend.Sentiment:
+          controller = new SentimentTab(previewComponent);
+          break;
+        default:
+          controller = undefined;
       }
+      if (controller) {
+        this.$tabControllers.push(controller);
+      }
+    });
+    const textract = previewComponent.media.getTextractResults();
+    if (textract) {
+      this.$tabControllers.push(new TextractTab(previewComponent));
+    }
+    /* permission */
+    const canWrite = CognitoConnector.getSingleton().canWrite();
+    if (canWrite) {
       this.$tabControllers.push(new ReAnalyzeTab(previewComponent));
     }
   }

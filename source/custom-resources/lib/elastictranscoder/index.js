@@ -89,9 +89,6 @@ class ETS extends mxBaseResponse(class {}) {
     return this.responseData;
   }
 
-  /**
-   * TODO: need to check OldResponseProperty to decide what to do...
-   */
   async update() {
     await this.purge();
     await this.create();
@@ -107,9 +104,12 @@ class ETS extends mxBaseResponse(class {}) {
  */
 exports.CreatePipeline = async (event, context) => {
   const instance = new ETS(event, context);
-  return (instance.isRequestType('Delete'))
-    ? instance.purge()
-    : (instance.isRequestType('Update'))
-      ? instance.update()
-      : instance.create();
+  if (instance.isRequestType('Delete')) {
+    return instance.purge();
+  }
+  if (instance.isRequestType('Update')) {
+    return instance.update();
+  }
+
+  return instance.create();
 };

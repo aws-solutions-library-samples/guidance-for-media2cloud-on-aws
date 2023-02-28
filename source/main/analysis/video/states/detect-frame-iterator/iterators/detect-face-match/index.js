@@ -53,7 +53,7 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
           FrameNumber: frameNo,
           Person: {
             /* use ExternalImageId to generate an unique integer */
-            Index: CRYPTO.createHash('md5').update(id).digest()
+            Index: CRYPTO.createHash('sha256').update(id).digest()
               .reduce((a0, c0) => a0 + c0, 0),
             BoundingBox: boundingbox || data.SearchedFaceBoundingBox,
             Confidence: data.SearchedFaceConfidence,

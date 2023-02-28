@@ -80,6 +80,10 @@ exports.handler = async (event, context) => {
       case 'InvalidateCache':
         handler = require('./lib/cloudfront').InvalidateCache;
         break;
+      /* sagemaker */
+      case 'DescribeSageMakerEndpoint':
+        handler = require('./lib/sagemaker').DescribeSageMakerEndpoint;
+        break;
       default:
         break;
     }

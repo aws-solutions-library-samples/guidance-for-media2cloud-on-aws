@@ -14,7 +14,7 @@ const STATUS_PROCESSING = 'PROCESSING';
 class ComprehendStatusChangeEvent extends BacklogStatusChangeEvent {
   async process() {
     if (this.status !== STATUS_PROCESSING) {
-      console.error(`ERR: ComprehendStatusChangeEvent.process: ${this.status} status not handled`);
+      console.error(`ComprehendStatusChangeEvent.process: ${this.status} status not handled`);
       return undefined;
     }
     /* #1: get state data from service token table */

@@ -13,6 +13,7 @@ export default class IotSubscriber {
   constructor() {
     this.$mqtt = undefined;
     this.$clientId = undefined;
+    this.$connected = false;
     this.$eventSource = $('<div/>').attr('id', ID_IOTSUBSCRIBE);
     $(ID_DEMOAPP).append(this.$eventSource);
     this.$cognito = CognitoConnector.getSingleton();
@@ -58,12 +59,23 @@ export default class IotSubscriber {
     return this.$cognito;
   }
 
+  get connected() {
+    return this.$connected;
+  }
+
+  set connected(val) {
+    this.$connected = !!val;
+  }
+
   /**
    * @function connect
    * @description connecto Iot message broker
    */
   async connect() {
     try {
+      if (this.connected) {
+        return;
+      }
       const username = (this.cognito.user || {}).username || 'anonymous';
       this.clientId = `${username}-${AppUtils.randomHexstring()}`;
       this.mqtt = AWSIoTData.device({
@@ -86,6 +98,7 @@ export default class IotSubscriber {
     this.mqtt.on('connect', () => {
       console.log(`${this.clientId} connected to IoT`);
       this.mqtt.subscribe(SolutionManifest.IotTopic);
+      this.connected = true;
     });
 
     this.mqtt.on('reconnect', () => {

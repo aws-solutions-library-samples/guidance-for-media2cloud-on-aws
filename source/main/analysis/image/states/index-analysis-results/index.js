@@ -46,19 +46,29 @@ class StateIndexAnalysisResults {
         JSON.parse(res.Body))
       .catch((e) =>
         console.error(`[ERR]: CommonUtils.download: ${subCategory}: ${bucket}/${key}: ${e.code} ${e.message}`));
-    const datasets = (subCategory === AnalysisTypes.Rekognition.Celeb)
-      ? this.parseCeleb(data)
-      : (subCategory === AnalysisTypes.Rekognition.Face)
-        ? this.parseFace(data)
-        : (subCategory === AnalysisTypes.Rekognition.FaceMatch)
-          ? this.parseFaceMatch(data)
-          : (subCategory === AnalysisTypes.Rekognition.Label)
-            ? this.parseLabel(data)
-            : (subCategory === AnalysisTypes.Rekognition.Moderation)
-              ? this.parseModeration(data)
-              : (subCategory === AnalysisTypes.Rekognition.Text)
-                ? this.parseText(data)
-                : undefined;
+    let datasets;
+    switch (subCategory) {
+      case AnalysisTypes.Rekognition.Celeb:
+        datasets = this.parseCeleb(data);
+        break;
+      case AnalysisTypes.Rekognition.Face:
+        datasets = this.parseFace(data);
+        break;
+      case AnalysisTypes.Rekognition.FaceMatch:
+        datasets = this.parseFaceMatch(data);
+        break;
+      case AnalysisTypes.Rekognition.Label:
+        datasets = this.parseLabel(data);
+        break;
+      case AnalysisTypes.Rekognition.Moderation:
+        datasets = this.parseModeration(data);
+        break;
+      case AnalysisTypes.Rekognition.Text:
+        datasets = this.parseText(data);
+        break;
+      default:
+        datasets = undefined;
+    }
     if (datasets && datasets.length > 0) {
       const uuid = this.stateData.uuid;
       const indexer = new Indexer();
@@ -129,9 +139,20 @@ class StateIndexAnalysisResults {
     const texts = ((data || {}).TextDetections || [])
       .map((x) =>
         x.DetectedText.trim());
-    return [...new Set(texts)].map((name) => ({
+
+    const uniques = [
+      ...new Set(texts),
+    ].map((name) => ({
       name,
     }));
+
+    const caption = this.stateData.data[ANALYSIS_TYPE].caption;
+    if (caption && caption.length > 0) {
+      uniques.push({
+        name: caption,
+      });
+    }
+    return uniques;
   }
 
   setCompleted() {

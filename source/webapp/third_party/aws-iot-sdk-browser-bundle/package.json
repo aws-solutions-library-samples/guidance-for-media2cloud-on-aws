@@ -13,7 +13,7 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "aws-iot-device-sdk": "^2.2.6",
+    "aws-iot-device-sdk": "^2.2.12",
     "aws-sdk": "^2.1033.0"
   },
   "devDependencies": {}

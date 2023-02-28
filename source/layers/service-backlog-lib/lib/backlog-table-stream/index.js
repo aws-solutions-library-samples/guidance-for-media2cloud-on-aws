@@ -103,19 +103,28 @@ class BacklogTableStream {
 
   async onREMOVE() {
     const serviceApi = this.oldImage.serviceApi;
-    const instance = RekognitionBacklogJob.isService(serviceApi)
-      ? new RekognitionBacklogJob()
-      : TranscribeBacklogJob.isService(serviceApi)
-        ? new TranscribeBacklogJob()
-        : ComprehendBacklogJob.isService(serviceApi)
-          ? new ComprehendBacklogJob()
-          : TextractBacklogJob.isService(serviceApi)
-            ? new TextractBacklogJob()
-            : MediaConvertBacklogJob.isService(serviceApi)
-              ? new MediaConvertBacklogJob()
-              : CustomBacklogJob.isService(serviceApi)
-                ? new CustomBacklogJob()
-                : undefined;
+    let instance;
+    if (RekognitionBacklogJob.isService(serviceApi)) {
+      instance = new RekognitionBacklogJob();
+    }
+    else if (TranscribeBacklogJob.isService(serviceApi)) {
+      instance = new TranscribeBacklogJob();
+    }
+    else if (ComprehendBacklogJob.isService(serviceApi)) {
+      instance = new ComprehendBacklogJob();
+    }
+    else if (TextractBacklogJob.isService(serviceApi)) {
+      instance = new TextractBacklogJob();
+    }
+    else if (MediaConvertBacklogJob.isService(serviceApi)) {
+      instance = new MediaConvertBacklogJob();
+    }
+    else if (CustomBacklogJob.isService(serviceApi)) {
+      instance = new CustomBacklogJob();
+    }
+    else {
+      instance = undefined;
+    }
     if (!instance) {
       return undefined;
     }

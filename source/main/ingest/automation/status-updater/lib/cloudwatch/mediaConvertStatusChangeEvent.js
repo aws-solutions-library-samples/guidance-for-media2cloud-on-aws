@@ -8,55 +8,23 @@ const {
   ServiceToken,
 } = require('core-lib');
 
+const STATUS_SUCCEEDED = 'COMPLETE';
+const STATUS_FAILED = [
+  'CANCELED',
+  'ERROR',
+];
+const ALLOWED_STATUSES = [
+  ...STATUS_FAILED,
+  STATUS_SUCCEEDED,
+];
+
 class MediaConvertStatusChangeEvent {
   constructor(parent) {
     this.$parent = parent;
-    this.$service = undefined;
-    this.$api = undefined;
-  }
-
-  static get SourceType() {
-    return 'aws.mediaconvert';
-  }
-
-  static get Mapping() {
-    return {
-      SUBMITTED: StateData.Statuses.Started,
-      PROGRESSING: StateData.Statuses.InProgress,
-      STATUS_UPDATE: StateData.Statuses.InProgress,
-      COMPLETE: StateData.Statuses.Completed,
-      CANCELED: StateData.Statuses.Error,
-      ERROR: StateData.Statuses.Error,
-    };
-  }
-
-  static get Event() {
-    return {
-      Completed: 'COMPLETE',
-      Canceled: 'CANCELED',
-      Error: 'ERROR',
-      InProgress: 'STATUS_UPDATE',
-    };
   }
 
   get parent() {
     return this.$parent;
-  }
-
-  get api() {
-    return this.$api;
-  }
-
-  set api(val) {
-    this.$api = val;
-  }
-
-  get service() {
-    return this.$service;
-  }
-
-  set service(val) {
-    this.$service = val;
   }
 
   get event() {
@@ -87,103 +55,65 @@ class MediaConvertStatusChangeEvent {
     this.parent.stateData = val;
   }
 
-  get status() {
-    return this.detail.status;
+  get backlogId() {
+    return this.detail.id;
   }
 
   get jobId() {
     return this.detail.jobId;
   }
 
+  get status() {
+    return this.detail.status;
+  }
+
   get timestamp() {
-    return this.detail.timestamp;
-  }
-
-  get outputGroupDetails() {
-    return this.detail.outputGroupDetails;
-  }
-
-  get jobPercentComplete() {
-    return (this.detail.jobProgress || {}).jobPercentComplete || 0;
-  }
-
-  get errorMessage() {
-    return this.detail.errorMessage;
-  }
-
-  get errorCode() {
-    return this.detail.errorCode;
+    return new Date(this.event.time).getTime();
   }
 
   async process() {
-    const response = await ServiceToken.getData(this.jobId).catch(() => undefined);
+    if (ALLOWED_STATUSES.indexOf(this.status) < 0) {
+      console.error(`ERR: MediaConvertStatusChangeEvent.process: ${this.status} status not handled`);
+      return undefined;
+    }
+
+    const response = await ServiceToken.getData(this.backlogId)
+      .catch(() =>
+        undefined);
     if (!response || !response.service || !response.token || !response.api) {
       throw new JobStatusError(`fail to get token, ${this.jobId}`);
     }
 
-    this.token = response.token;
-    this.service = response.service;
-    this.api = response.api;
-
+    const stateMachine = (response.api === 'audio')
+      ? Environment.StateMachines.AudioIngest
+      : Environment.StateMachines.VideoIngest;
+    response.data.data[response.service] = {
+      ...response.data.data[response.service],
+      jobId: this.jobId,
+      endTime: this.timestamp,
+    };
     this.stateData = new StateData(
-      Environment.StateMachines.Ingest,
+      stateMachine,
       response.data,
       this.context
     );
+    this.token = response.token;
 
-    let completed = true;
-    switch (this.status) {
-      case MediaConvertStatusChangeEvent.Event.Completed:
-        await this.onCompleted();
-        break;
-      case MediaConvertStatusChangeEvent.Event.InProgress:
-        await this.onProgress();
-        completed = false;
-        break;
-      case MediaConvertStatusChangeEvent.Event.Canceled:
-      case MediaConvertStatusChangeEvent.Event.Error:
-      default:
-        await this.onError();
-        break;
+    if (this.status === STATUS_SUCCEEDED) {
+      this.stateData.setCompleted();
+      await this.parent.sendTaskSuccess();
+    } else {
+      const error = (this.errorMessage)
+        ? new JobStatusError(this.errorMessage)
+        : new JobStatusError(`${this.jobId} ${this.status}`);
+      this.stateData.setFailed(error);
+      await this.parent.sendTaskFailure(error);
     }
-    if (completed) {
-      await ServiceToken.unregister(this.jobId).catch(() => undefined);
-    }
+    /* #4: remove record from service token table */
+    await ServiceToken.unregister(this.backlogId)
+      .catch(() =>
+        undefined);
     return this.stateData.toJSON();
-  }
-
-  async onCompleted() {
-    this.stateData.setData(this.service, {
-      ...this.stateData.data[this.service],
-      jobId: this.jobId,
-      endTime: this.timestamp,
-    });
-
-    this.stateData.setCompleted();
-    return this.parent.sendTaskSuccess();
-  }
-
-  async onError() {
-    const error = (this.status === MediaConvertStatusChangeEvent.Event.Canceled)
-      ? new JobStatusError('user canceled job')
-      : (this.status === MediaConvertStatusChangeEvent.Event.Error)
-        ? new JobStatusError(`${this.errorMessage} (${this.errorCode})`)
-        : new JobStatusError();
-
-    this.stateData.setData(this.service, {
-      ...this.stateData.data[this.service],
-      jobId: this.jobId,
-      timestamp: this.timestamp,
-      status: MediaConvertStatusChangeEvent.Mapping[this.status] || StateData.Statuses.Error,
-    });
-
-    this.stateData.setFailed(error);
-    return this.parent.sendTaskFailure(error);
-  }
-
-  async onProgress() {
-    this.stateData.setProgress(this.jobPercentComplete);
-    return undefined;
   }
 }
 

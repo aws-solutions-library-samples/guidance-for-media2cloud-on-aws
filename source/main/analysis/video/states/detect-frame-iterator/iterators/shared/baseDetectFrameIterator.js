@@ -126,7 +126,6 @@ class BaseDetectFrameIterator {
     );
     const name = BaseDetectFrameIterator.makeFrameCaptureFileName(idx);
     const key = PATH.join(frameCapture.prefix, name);
-    // console.log(`PROCESSING: [#${idx}]: ${name} (${frameNo} / ${timestamp})`);
     const dataset = await this.detectFrame(data.bucket, key, frameNo, timestamp);
     if (dataset) {
       this.dataset.splice(this.dataset.length, 0, ...dataset);

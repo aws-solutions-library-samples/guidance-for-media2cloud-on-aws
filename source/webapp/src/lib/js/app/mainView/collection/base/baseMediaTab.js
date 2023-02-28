@@ -3,11 +3,14 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
+import CognitoConnector from '../../../shared/cognitoConnector.js';
 import AppUtils from '../../../shared/appUtils.js';
 import mxSpinner from '../../../mixins/mxSpinner.js';
 import BaseTabPlugins from '../../../shared/baseTabPlugins.js';
 import BaseCategorySlideComponent from './baseCategorySlideComponent.js';
 import BasePreviewSlideComponent from './basePreviewSlideComponent.js';
+
+const ERR_DELETE_MEDIA_NOT_ALLOWED = Localization.Alerts.DeleteMediaNotAllowed;
 
 export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
   constructor(defaultTab, tabName, plugins) {
@@ -23,6 +26,7 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
     };
     this.$categorySlideComponent = undefined;
     this.$previewSlideComponent = undefined;
+    this.$canWrite = CognitoConnector.getSingleton().canWrite();
   }
 
   get categorySlideComponent() {
@@ -31,6 +35,10 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
 
   get previewSlideComponent() {
     return this.$previewSlideComponent;
+  }
+
+  get canWrite() {
+    return this.$canWrite;
   }
 
   async show() {
@@ -47,6 +55,9 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
 
   async createCarousel() {
     this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Removing, async (event, media) => {
+      if (!this.canWrite) {
+        return this.showPermissionErrorDialog(media);
+      }
       if (media.overallStatus === SolutionManifest.Statuses.Processing) {
         return this.showProcessingDialog(media);
       }
@@ -59,11 +70,12 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
       return undefined;
     });
     this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Selected, async (event, media, optionalSearchResults) => {
-      if (media.overallStatus === SolutionManifest.Statuses.Processing) {
-        return this.showProcessingDialog(media);
-      }
-      if (media.overallStatus === SolutionManifest.Statuses.Error) {
-        return this.showErrorDialog(media);
+      switch (media.overallStatus) {
+        case SolutionManifest.Statuses.Processing:
+          return this.showProcessingDialog(media);
+        case SolutionManifest.Statuses.Error:
+          return this.showErrorDialog(media);
+        default: //do nothing
       }
       this.loading(true);
       await this.previewSlideComponent.setMedia(media, optionalSearchResults);
@@ -99,15 +111,20 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
 
     carousel.on('slide.bs.carousel', async (event) => {
       const id = $(event.relatedTarget).prop('id');
-      if (id === this.previewSlideComponent.slideId) {
-        return this.previewSlideComponent.show();
+      switch (id) {
+        case this.previewSlideComponent.slideId:
+          return this.previewSlideComponent.show();
+        case this.categorySlideComponent.slideId:
+          return this.categorySlideComponent.show();
+        default:
+          return undefined;
       }
-      if (id === this.categorySlideComponent.slideId) {
-        return this.categorySlideComponent.show();
-      }
-      return undefined;
     });
     return carousel;
+  }
+
+  async showPermissionErrorDialog(media) {
+    return this.showDialog(media.basename, ERR_DELETE_MEDIA_NOT_ALLOWED);
   }
 
   async showProcessingDialog(media) {

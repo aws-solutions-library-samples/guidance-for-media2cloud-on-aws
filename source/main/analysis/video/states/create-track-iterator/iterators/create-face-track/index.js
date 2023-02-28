@@ -31,8 +31,7 @@ class CreateFaceTrackIterator extends BaseCreateTrackIterator {
 
   createTimeseriesData(name, datasets) {
     const timestamps = {};
-    for (let i = 0; i < datasets.length; i++) {
-      const dataset = datasets[i];
+    for (let dataset of datasets) {
       if (!dataset.Face.BoundingBox || !dataset.Face.Gender) {
         continue;
       }

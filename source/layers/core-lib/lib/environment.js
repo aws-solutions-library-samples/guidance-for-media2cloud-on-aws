@@ -74,7 +74,6 @@ module.exports = {
   },
   MediaConvert: {
     Host: process.env.ENV_MEDIACONVERT_HOST,
-    Role: process.env.ENV_MEDIACONVERT_ROLE,
   },
   SNS: {
     Topic: process.env.ENV_SNS_TOPIC_ARN,
@@ -115,5 +114,8 @@ module.exports = {
   },
   S3: {
     ExpectedBucketOwner: process.env.ENV_EXPECTED_BUCKET_OWNER,
+  },
+  Cognito: {
+    UserPoolId: process.env.ENV_USER_POOL_ID,
   },
 };

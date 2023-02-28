@@ -93,19 +93,22 @@ class ComprehendBacklogJob extends BacklogJob {
 
   bindToFunc(serviceApi) {
     const comprehend = this.getComprehendInstance();
-    return (serviceApi === ComprehendBacklogJob.ServiceApis.StartDocumentClassificationJob)
-      ? comprehend.startDocumentClassificationJob.bind(comprehend)
-      : (serviceApi === ComprehendBacklogJob.ServiceApis.StartDominantLanguageDetectionJob)
-        ? comprehend.startDominantLanguageDetectionJob.bind(comprehend)
-        : (serviceApi === ComprehendBacklogJob.ServiceApis.StartEntitiesDetectionJob)
-          ? comprehend.startEntitiesDetectionJob.bind(comprehend)
-          : (serviceApi === ComprehendBacklogJob.ServiceApis.StartKeyPhrasesDetectionJob)
-            ? comprehend.startKeyPhrasesDetectionJob.bind(comprehend)
-            : (serviceApi === ComprehendBacklogJob.ServiceApis.StartSentimentDetectionJob)
-              ? comprehend.startSentimentDetectionJob.bind(comprehend)
-              : (serviceApi === ComprehendBacklogJob.ServiceApis.StartTopicsDetectionJob)
-                ? comprehend.startTopicsDetectionJob.bind(comprehend)
-                : undefined;
+    switch (serviceApi) {
+      case ComprehendBacklogJob.ServiceApis.StartDocumentClassificationJob:
+        return comprehend.startDocumentClassificationJob.bind(comprehend);
+      case ComprehendBacklogJob.ServiceApis.StartDominantLanguageDetectionJob:
+        return comprehend.startDominantLanguageDetectionJob.bind(comprehend);
+      case ComprehendBacklogJob.ServiceApis.StartEntitiesDetectionJob:
+        return comprehend.startEntitiesDetectionJob.bind(comprehend);
+      case ComprehendBacklogJob.ServiceApis.StartKeyPhrasesDetectionJob:
+        return comprehend.startKeyPhrasesDetectionJob.bind(comprehend);
+      case ComprehendBacklogJob.ServiceApis.StartSentimentDetectionJob:
+        return comprehend.startSentimentDetectionJob.bind(comprehend);
+      case ComprehendBacklogJob.ServiceApis.StartTopicsDetectionJob:
+        return comprehend.startTopicsDetectionJob.bind(comprehend);
+      default:
+        return undefined;
+    }
   }
 
   async startAndRegisterJob(id, serviceApi, params) {

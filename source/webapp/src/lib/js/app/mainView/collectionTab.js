@@ -8,6 +8,7 @@ import PhotoTab from './collection/photoTab.js';
 import PodcastTab from './collection/podcastTab.js';
 import DocumentTab from './collection/documentTab.js';
 import SearchTab from './collection/searchTab.js';
+import RecommendTab from './collection/recommendTab.js';
 import BaseTab from '../shared/baseTab.js';
 
 export default class CollectionTab extends BaseTab {
@@ -32,10 +33,15 @@ export default class CollectionTab extends BaseTab {
       new PodcastTab(false, plugins),
       new DocumentTab(false, plugins),
       new SearchTab(false, plugins),
-    ].reduce((acc, cur) => ({
-      ...acc,
-      [cur.tabId]: cur,
-    }), {});
+    ];
+    if (RecommendTab.canSupport()) {
+      this.$tabControllers.push(new RecommendTab(false, plugins));
+    }
+    this.$tabControllers = this.$tabControllers
+      .reduce((acc, cur) => ({
+        ...acc,
+        [cur.tabId]: cur,
+      }), {});
     this.$plugins = plugins;
   }
 

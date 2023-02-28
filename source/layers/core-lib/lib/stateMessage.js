@@ -57,11 +57,14 @@ class StateMessage {
   }
 
   get overallStatus() {
-    return (this.status.indexOf(Statuses.Error) >= 0)
-      ? Statuses.Error
-      : (this.status === Statuses.AnalysisCompleted)
-        ? Statuses.Completed
-        : Statuses.Processing;
+    if (this.status.indexOf(Statuses.Error) >= 0) {
+      return Statuses.Error;
+    }
+    if (this.status === Statuses.AnalysisCompleted) {
+      return Statuses.Completed;
+    }
+
+    return Statuses.Processing;
   }
 
   get status() {

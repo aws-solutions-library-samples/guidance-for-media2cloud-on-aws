@@ -33,7 +33,7 @@ exports.InvalidateCache = async (event, context) => {
     if (missing.length) {
       throw new Error(`missing ${missing.join(', ')}`);
     }
-    const reference = (data.LastUpdated || new Date().toISOString()).replace(/[^0-9]/g, '');
+    const reference = (data.LastUpdated || new Date().toISOString()).replace(/\D/g, '');
     const cf = new AWS.CloudFront({
       apiVersion: '2020-05-31',
       customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,

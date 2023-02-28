@@ -59,16 +59,14 @@ class MediaConvertBacklogJob extends BacklogJob {
       : undefined;
   }
 
-  async startJob(serviceApi, serviceParams) {
-    return super.startJob(serviceApi, serviceParams)
-      .then(data => ({
-        JobId: data.Job.Id,
-      }));
-  }
-
   async startAndRegisterJob(id, serviceApi, params) {
     const serviceParams = {
       ...params,
+      /* merge user metadata */
+      UserMetadata: {
+        ...params.UserMetadata,
+        backlogId: id,
+      },
       ClientRequestToken: id,
       Role: DataAccess.RoleArn,
     };
@@ -76,7 +74,10 @@ class MediaConvertBacklogJob extends BacklogJob {
   }
 
   noMoreQuotasException(code) {
-    return false;
+    return (
+      (code === 'TooManyRequestsException') ||
+      (code === 'LimitExceededException')
+    );
   }
 
   parseJobId(data) {

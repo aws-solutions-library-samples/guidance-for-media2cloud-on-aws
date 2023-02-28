@@ -293,14 +293,6 @@ class ModerationItem extends BaseItem {
   get [Symbol.toStringTag]() {
     return 'ModerationItem';
   }
-
-  get cueText() {
-    return [
-      this.name,
-      this.parentName ? `<c.small>${this.parentName}</c>` : undefined,
-      `<c.confidence>(${Number.parseFloat(this.confidence).toFixed(2)})</c>`,
-    ].filter(x => x).join('\n');
-  }
 }
 
 class PersonItem extends BaseItem {

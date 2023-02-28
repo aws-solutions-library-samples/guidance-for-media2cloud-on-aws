@@ -28,13 +28,21 @@ class CloudWatchStatus {
   }
 
   async process() {
-    const instance = (this.source === MediaConvertStatus.SourceType)
-      ? new MediaConvertStatus(this)
-      : (this.source === TranscribeStatus.SourceType)
-        ? new TranscribeStatus(this)
-        : (this.source === CustomLabelsStateMachineStatus.SourceType)
-          ? new CustomLabelsStateMachineStatus(this)
-          : undefined;
+    let instance;
+    switch (this.source) {
+      case MediaConvertStatus.SourceType:
+        instance = new MediaConvertStatus(this);
+        break;
+      case TranscribeStatus.SourceType:
+        instance = new TranscribeStatus(this);
+        break;
+      case CustomLabelsStateMachineStatus.SourceType:
+        instance = new CustomLabelsStateMachineStatus(this);
+        break;
+      default:
+        instance = undefined;
+    }
+    
     if (!instance) {
       throw new Error(`${this.source} not supported`);
     }

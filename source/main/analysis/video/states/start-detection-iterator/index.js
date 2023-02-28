@@ -44,25 +44,37 @@ class StateStartDetectionIterator {
 
   async process() {
     const data = this.stateData.data;
-    const iterator = (data[SUBCATEGORY_CELEB])
-      ? new StartCelebIterator(this.stateData)
-      : (data[SUBCATEGORY_FACE])
-        ? new StartFaceIterator(this.stateData)
-        : (data[SUBCATEGORY_FACEMATCH])
-          ? new StartFaceMatchIterator(this.stateData)
-          : (data[SUBCATEGORY_LABEL])
-            ? new StartLabelIterator(this.stateData)
-            : (data[SUBCATEGORY_MODERATION])
-              ? new StartModerationIterator(this.stateData)
-              : (data[SUBCATEGORY_PERSON])
-                ? new StartPersonIterator(this.stateData)
-                : (data[SUBCATEGORY_SEGMENT])
-                  ? new StartSegmentIterator(this.stateData)
-                  : (data[SUBCATEGORY_TEXT])
-                    ? new StartTextIterator(this.stateData)
-                    : (data[SUBCATEGORY_CUSTOMLABEL])
-                      ? new StartCustomLabelIterator(this.stateData)
-                      : undefined;
+    let iterator;
+    if (data[SUBCATEGORY_CELEB]) {
+      iterator = new StartCelebIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACE]) {
+      iterator = new StartFaceIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_FACEMATCH]) {
+      iterator = new StartFaceMatchIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_LABEL]) {
+      iterator = new StartLabelIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_MODERATION]) {
+      iterator = new StartModerationIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_PERSON]) {
+      iterator = new StartPersonIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_SEGMENT]) {
+      iterator = new StartSegmentIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_TEXT]) {
+      iterator = new StartTextIterator(this.stateData);
+    }
+    else if (data[SUBCATEGORY_CUSTOMLABEL]) {
+      iterator = new StartCustomLabelIterator(this.stateData);
+    }
+    else {
+      iterator = undefined;
+    }
     if (!iterator) {
       const e = `iterator '${Object.keys(data).join(',')}' not impl`;
       console.error(e);

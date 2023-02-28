@@ -41,29 +41,36 @@ class TimecodeUtils {
   }
 
   static lookupFramerate(enumFPS) {
-    return enumFPS === EnumFrameRate.FPS_23_976
-      ? [24000, 1001]
-      : enumFPS === EnumFrameRate.FPS_24
-        ? [24000, 1000]
-        : enumFPS === EnumFrameRate.FPS_25
-          ? [25000, 1000]
-          : enumFPS === EnumFrameRate.FPS_29_97
-            ? [30000, 1001]
-            : enumFPS === EnumFrameRate.FPS_30
-              ? [30000, 1000]
-              : enumFPS === EnumFrameRate.FPS_59_94
-                ? [60000, 1001]
-                : enumFPS === EnumFrameRate.FPS_60
-                  ? [60000, 1000]
-                  : undefined;
+    switch (enumFPS) {
+      case EnumFrameRate.FPS_23_976:
+        return [24000, 1001];
+      case EnumFrameRate.FPS_24:
+        return [24000, 1000];
+      case EnumFrameRate.FPS_25:
+        return [25000, 1000];
+      case EnumFrameRate.FPS_29_97:
+        return [30000, 1001];
+      case EnumFrameRate.FPS_30:
+        return [30000, 1000];
+      case EnumFrameRate.FPS_59_94:
+        return [60000, 1001];
+      case EnumFrameRate.FPS_60:
+        return [60000, 1000];
+      default:
+        return undefined;
+    }
   }
 
   toTimecode(num) {
-    return this.dropFrame
-      ? this.enumFPS === EnumFrameRate.FPS_23_976
-        ? this.toPseudoDropFrameTimecode(num)
-        : this.toDropFrameTimecode(num)
-      : this.toNonDropFrameTimecode(num);
+    if (this.dropFrame) {
+      if (this.enumFPS === EnumFrameRate.FPS_23_976) {
+        return this.toPseudoDropFrameTimecode(num);
+      }
+      else {
+        return this.toDropFrameTimecode(num);
+      }
+    }
+    return this.toNonDropFrameTimecode(num);
   }
 
   toNonDropFrameTimecode(num) {
@@ -177,11 +184,16 @@ class TimecodeUtils {
   }
 
   fromTimecode(hours, minutes, seconds, frames) {
-    return this.dropFrame
-      ? this.enumFPS === EnumFrameRate.FPS_23_976
-        ? this.fromPseudoDropFrameTimecode(hours, minutes, seconds, frames)
-        : this.fromDropFrameTimecode(hours, minutes, seconds, frames)
-      : this.fromNonDropFrameTimecode(hours, minutes, seconds, frames);
+    if (this.dropFrame) {
+      if (this.enumFPS === EnumFrameRate.FPS_23_976) {
+        return this.fromPseudoDropFrameTimecode(hours, minutes, seconds, frames);
+      }
+      else {
+        return this.fromDropFrameTimecode(hours, minutes, seconds, frames);
+      }
+    }
+
+    return this.fromNonDropFrameTimecode(hours, minutes, seconds, frames);
   }
 
   fromNonDropFrameTimecode(hours, minutes, seconds, frames) {

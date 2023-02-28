@@ -300,8 +300,8 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     this.loading(true);
     const medias = await this.mediaManager.scanRecordsByCategory(this.mediaType);
     if (medias) {
-      for (let i = 0; i < medias.length; i++) {
-        await this.onMediaAdded(medias[i]);
+      for (let media of medias) {
+        await this.onMediaAdded(media);
       }
     }
     this.loading(false);

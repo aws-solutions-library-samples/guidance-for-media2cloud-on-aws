@@ -51,6 +51,14 @@ open-source
 *.key
 *.vtt
 
+### Coverage folders for testing
+coverage
+coverage-reports
+source/test
+source/test/*
+source/coverage-reports
+.scannerwork/
+
 ### ignore webapp compiled JS files
 source/webapp/common-bundle-dev.js
 source/webapp/solution-manifest.js

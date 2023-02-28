@@ -65,7 +65,7 @@ function parseEvent(event, context) {
   /* i.e., customlabel */
   const merged = {};
   const iterators = parallelStateOutputs.filter(x =>
-    ((x.data || {}).iterators || {}).length > 0)
+    ((x.data || {}).iterators || []).length > 0)
     .reduce((a0, c0) =>
       a0.concat(c0.data.iterators.reduce((a1, c1) =>
         a1.concat({

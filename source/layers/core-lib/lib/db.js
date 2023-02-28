@@ -38,7 +38,6 @@ class DB {
     this.$partitionKey = params.PartitionKey;
 
     this.$sortKey = params.SortKey;
-    this.$sortKeyType = undefined;
 
     this.$instance = new AWS.DynamoDB.DocumentClient({
       apiVersion: '2012-08-10',
@@ -70,14 +69,6 @@ class DB {
 
   get sortKey() {
     return this.$sortKey;
-  }
-
-  get sortKeyType() {
-    return this.$sortKeyType;
-  }
-
-  set sortKeyType(val) {
-    this.$sortKeyType = val;
   }
 
   /**
@@ -215,10 +206,6 @@ class DB {
    * @param {string} [projection] - selected field(s) to return
    */
   async fetch(primaryValue, sortValue, projection) {
-    if (this.sortKey && this.sortKeyType === undefined) {
-      await this.describe();
-    }
-
     const params = {
       TableName: this.table,
       ExpressionAttributeNames: {
@@ -233,7 +220,7 @@ class DB {
     if (this.sortKey) {
       params.ExpressionAttributeNames['#x1'] = this.sortKey;
       params.ExpressionAttributeValues[':v1'] = sortValue;
-      params.KeyConditionExpression = (this.sortKeyType === 'string')
+      params.KeyConditionExpression = (typeof sortValue === 'string')
         ? `${params.KeyConditionExpression} and begins_with(#x1, :v1)`
         : `${params.KeyConditionExpression} and #x1 >= :v1`;
     }
@@ -275,38 +262,6 @@ class DB {
     }
 
     return this.instance.delete(params).promise();
-  }
-
-  /**
-   * @function describe
-   * @description find out the primary and sort key attribute
-   */
-  async describe() {
-    const instance = new AWS.DynamoDB({
-      apiVersion: '2012-08-10',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-
-    const response = await instance.describeTable({
-      TableName: this.table,
-    }).promise();
-
-    const {
-      Table: {
-        AttributeDefinitions,
-      },
-    } = response;
-
-    if (this.sortKey) {
-      const sortKey = AttributeDefinitions.find(x =>
-        x.AttributeName === this.sortKey);
-
-      this.sortKeyType = (sortKey.AttributeType === 'S')
-        ? 'string'
-        : 'number';
-    }
-
-    return response;
   }
 
   async dropColumns(primaryValue, sortValue, attributes) {

@@ -5,8 +5,11 @@ import Localization from '../../../../../../../shared/localization.js';
 import DatasetStore from '../../../../../../../shared/localCache/datasetStore.js';
 import ScatterGraph from '../../base/scatterGraph.js';
 import BaseRekognitionImageTab from '../image/baseRekognitionImageTab.js';
+import AppUtils from '../../../../../../../shared/appUtils.js';
 
 const COL_TAB = 'col-11';
+const TOGGLE_ALL = Localization.Messages.ToggleAll;
+const SEARCH_SPECIFIC_LABEL = Localization.Messages.SearchSpecificLabel;
 
 export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   constructor(category, previewComponent, data, defaultTab = false) {
@@ -252,17 +255,130 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   }
 
   createToggleAll() {
-    const input = $('<input/>').attr('type', 'checkbox');
-    input.off('click').on('click', async (event) =>
-      this.scatterGraph.toggleAllLegends(input.prop('checked')));
+    const formGroup = $('<div/>')
+      .addClass('form-group px-0 mt-2 mb-2');
 
-    const toggle = $('<div/>').addClass('form-group px-0 mt-2 mb-2')
-      .append($('<div/>').addClass('input-group')
-        .append($('<label/>').addClass('xs-switch')
-          .append(input)
-          .append($('<span/>').addClass('xs-slider round')))
-        .append($('<span/>').addClass('lead ml-2')
-          .html(Localization.Messages.ToggleAll)));
-    return toggle;
+    const inputGroup = $('<div/>')
+      .addClass('input-group');
+    formGroup.append(inputGroup);
+
+    /* toggle button */
+    const toggle = $('<input/>')
+      .attr('type', 'checkbox');
+
+    const slider = $('<span/>')
+      .addClass('xs-slider round');
+
+    const xswitch = $('<label/>')
+      .addClass('xs-switch');
+
+    xswitch.append(toggle)
+      .append(slider);
+    inputGroup.append(xswitch);
+
+    const desc = $('<span/>')
+      .addClass('lead ml-2')
+      .append(TOGGLE_ALL);
+    inputGroup.append(desc);
+
+    toggle.off('click').on('click', async (event) =>
+      this.scatterGraph.toggleAllLegends(toggle.prop('checked')));
+
+    /* search */
+    const dropdown = $('<div/>')
+      .addClass('dropdown col-3 p-0 ml-auto');
+    inputGroup.append(dropdown);
+
+    const id = `dropdown-${AppUtils.randomHexstring()}`;
+    const searchField = $('<input/>')
+      .addClass('form-control form-control-sm')
+      .attr('type', 'text')
+      .attr('id', id)
+      .attr('autocomplete', 'off')
+      .attr('data-toggle', 'dropdown')
+      .attr('aria-haspopup', true)
+      .attr('aria-expanded', false)
+      .attr('placeholder', SEARCH_SPECIFIC_LABEL);
+    dropdown.append(searchField);
+
+    const menu = $('<div/>')
+      .addClass('dropdown-menu col-12 lead-xs')
+      .attr('aria-labelledby', id);
+    dropdown.append(menu);
+    /* initial terms */
+    const all = this.scatterGraph.labels.map((x) =>
+      this.createDropdownItem(x, dropdown, searchField, toggle));
+    menu.append(all);
+
+    searchField.on('keyup', () => {
+      const val = searchField.val();
+      let matched = this.scatterGraph.labels;
+      if (val.length > 0) {
+        const regex = new RegExp(val, 'gi');
+        matched = this.scatterGraph.labels
+          .filter((x) =>
+            x.match(regex));
+      }
+      matched = matched.map((x) =>
+        this.createDropdownItem(x, dropdown, searchField, toggle));
+      menu.children().remove();
+      menu.append(matched);
+      dropdown.dropdown('show');
+    });
+
+    /* clear search result */
+    const clear = $('<button/>')
+      .addClass('btn btn-sm btn-secondary')
+      .append($('<i/>').addClass('far fa-times-circle'));
+    inputGroup.append(clear);
+
+    clear.on('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const val = searchField.val();
+      if (val.length > 0) {
+        searchField.val('');
+        /* reset legends */
+        let legends = this.scatterGraph.datasets
+          .map((x) =>
+            x.label);
+        this.scatterGraph.updateLegends(legends);
+        /* reset search results */
+        legends = legends.map((x) =>
+          this.createDropdownItem(x, dropdown, searchField, toggle));
+        menu.children().remove();
+        menu.append(legends);
+        dropdown.dropdown('hide');
+        /* uncheck toggle */
+        toggle.prop('checked', false);
+      }
+    });
+
+    return formGroup;
+  }
+
+  createDropdownItem(item, dropdown, searchField, toggle) {
+    const anchor = $('<a/>')
+      .addClass('dropdown-item')
+      .attr('href', '#')
+      .attr('data-value', item)
+      .append(item);
+    anchor.on('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const selected = anchor.data('value');
+      searchField.val(selected);
+      dropdown.dropdown('hide');
+      const legends = this.scatterGraph.datasets
+        .filter((x) =>
+          x.label === selected)
+        .map((x) =>
+          x.label);
+      this.scatterGraph.updateLegends(legends);
+      toggle.prop('checked', false);
+    });
+    return anchor;
   }
 }

@@ -178,13 +178,17 @@ class M0 {
     ] = (mime || '').split('/').filter(x => x).map(x => x.toLowerCase());
 
     // eslint-disable-next-line
-    return (type === 'video' || type === 'audio' || type === 'image')
-      ? type
-      : (subtype === 'mxf' || subtype === 'gxf')
-        ? 'video'
-        : (subtype === 'pdf')
-          ? 'document'
-          : subtype;
+    if (type === 'video' || type === 'audio' || type === 'image') {
+      return type;
+    }
+    if (subtype === 'mxf' || subtype === 'gxf'){
+      return 'video';
+    }
+    if (subtype === 'pdf') {
+      return 'document';
+    }
+
+    return subtype;
   }
 }
 
@@ -885,11 +889,13 @@ const mxCommonUtils = Base => class extends Base {
    */
   static async compressData(target, slice = 255) {
     const size = Math.max(10, slice);
-    const t = (target instanceof Buffer)
-      ? target
-      : (typeof target === 'string')
-        ? target
-        : JSON.stringify(target);
+    let t;
+    if (target instanceof Buffer || typeof target === 'string') {
+      t = target;
+    }
+    else {
+      t = JSON.stringify(target);
+    }
 
     let buf = await new Promise((resolve, reject) => {
       ZLIB.gzip(t, (err, res) =>
@@ -1035,7 +1041,7 @@ const mxValidation = Base => class extends Base {
    * @param {string} val - id
    */
   static validateCognitoIdentityId(val = '') {
-    return /^[a-z]{2,}-[a-z]{2,}-[0-9]{1}:[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/.test(val);
+    return /^[a-z]{2,}-[a-z]{2,}-\d{1}:[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/.test(val);
   }
 
   /**
@@ -1127,6 +1133,16 @@ const mxValidation = Base => class extends Base {
    */
   static validateEmailAddress(val = '') {
     return /^(([^<>()[\].,;:\s@"]+(\.[^<>()[\].,;:\s@"]+)*)|(".+"))@(([^<>()[\].,;:\s@"]+\.)+[^<>()[\].,;:\s@"]{2,})$/i.test(val);
+  }
+
+  /**
+   * @static
+   * @function validateUsername
+   * @description validate username
+   * @param {string} val
+   */
+  static validateUsername(val = '') {
+    return /^[a-zA-Z0-9._%+-]{1,128}$/.test(val);
   }
 
   /**
