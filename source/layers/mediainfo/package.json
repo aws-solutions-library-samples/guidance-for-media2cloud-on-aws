@@ -6,9 +6,7 @@
   "private": true,
   "author": "aws-specialist-sa-emea",
   "license": "ISC",
-  "dependencies": {
-    "xml2js": "^0.4.19"
-  },
+  "dependencies": {},
   "scripts": {
     "pretest": "npm install",
     "test": "jest --coverage --coverageDirectory=../../test/coverage-reports/jest/layers/mediainfo/",

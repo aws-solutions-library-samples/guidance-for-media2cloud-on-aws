@@ -103,12 +103,14 @@ Resources:
         UpdateReplacePolicy: Retain
         Properties:
             BucketName: !Sub ${ResourcePrefix}-${AWS::AccountId}-${AWS::Region}-logs
+            OwnershipControls:
+                Rules:
+                    - ObjectOwnership: ObjectWriter
             BucketEncryption:
                 ServerSideEncryptionConfiguration:
                     -
                       ServerSideEncryptionByDefault:
                           SSEAlgorithm: AES256
-            AccessControl: LogDeliveryWrite
             LifecycleConfiguration:
                 Rules:
                     -
@@ -167,6 +169,9 @@ Resources:
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
             AccessControl: LogDeliveryWrite
+            OwnershipControls:
+                Rules:
+                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_ingest_bucket/
@@ -265,6 +270,9 @@ Resources:
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
             AccessControl: LogDeliveryWrite
+            OwnershipControls:
+                Rules:
+                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_proxy_bucket/
@@ -351,6 +359,9 @@ Resources:
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
             AccessControl: LogDeliveryWrite
+            OwnershipControls:
+                Rules:
+                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_web_bucket/
