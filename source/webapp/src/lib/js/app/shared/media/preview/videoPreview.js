@@ -213,7 +213,7 @@ export default class VideoPreview extends BasePreview {
   trackIsEnabled(label) {
     if (this.player) {
       const tracks = this.player.remoteTextTracks();
-      for (let track of tracks) {
+      for (let track of tracks.tracks_) {
         if (track.label === label) {
           return track.mode === 'showing';
         }
@@ -262,7 +262,7 @@ export default class VideoPreview extends BasePreview {
   async trackToggle(label, on) {
     if (this.player) {
       const tracks = this.player.remoteTextTracks();
-      for (let track of tracks) {
+      for (let track of tracks.tracks_) {
         if (track.label === label) {
           track.mode = (on) ? 'showing' : 'hidden';
           return this.markerToggle(track, on);
