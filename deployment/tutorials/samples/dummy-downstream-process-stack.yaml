@@ -62,7 +62,7 @@ Resources:
         Properties:
             FunctionName: downstream-collect-results
             Description: (Media2Cloud Tutorial) Downstream Process state machine lambda
-            Runtime: nodejs14.x
+            Runtime: nodejs16.x
             MemorySize: 256
             Timeout: 900
             Handler: index.handler

@@ -127,6 +127,8 @@ Resources:
                     -
                       ServerSideEncryptionByDefault:
                           SSEAlgorithm: aws:kms
+            VersioningConfiguration:
+                Status: Enabled
 
     BucketArtifactPolicy:
         Type: AWS::S3::BucketPolicy
@@ -137,8 +139,10 @@ Resources:
                     -
                         Effect: Deny
                         Principal: "*"
-                        Action: "*"
-                        Resource: !Sub "arn:aws:s3:::${BucketArtifact}/*"
+                        Action: "s3:*"
+                        Resource: 
+                            - !Sub "arn:aws:s3:::${BucketArtifact}/*"
+                            - !Sub "arn:aws:s3:::${BucketArtifact}"
                         Condition:
                             Bool:
                                 "aws:SecureTransport": false
@@ -176,6 +180,8 @@ Resources:
                     -
                       ServerSideEncryptionByDefault:
                           SSEAlgorithm: aws:kms
+            VersioningConfiguration:
+                Status: Enabled
 
     BucketOutputPolicy:
         Type: AWS::S3::BucketPolicy
@@ -186,8 +192,10 @@ Resources:
                     -
                         Effect: Deny
                         Principal: "*"
-                        Action: "*"
-                        Resource: !Sub "arn:aws:s3:::${BucketOutput}/*"
+                        Action: "s3:*"
+                        Resource: 
+                            - !Sub "arn:aws:s3:::${BucketOutput}/*"
+                            - !Sub "arn:aws:s3:::${BucketOutput}"
                         Condition:
                             Bool:
                                 "aws:SecureTransport": false
@@ -403,7 +411,7 @@ Resources:
                     phases:
                         install:
                             runtime-versions:
-                                nodejs: 10
+                                nodejs: 16
                             commands:
                                 - echo "== Node Version = `node --version` =="
                         pre_build:
@@ -549,7 +557,7 @@ Resources:
                     phases:
                         install:
                             runtime-versions:
-                                nodejs: 10
+                                nodejs: 16
                             commands:
                                 - echo "== Node Version = `node --version` =="
                         pre_build:

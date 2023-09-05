@@ -1,6 +1,6 @@
 {
   "name": "bootstrap-bundle",
-  "version": "4.6.1",
+  "version": "1.0.0",
   "description": "download bootstrap dist for browser",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,11 @@
     "build:postbuild": "rm -rf temp",
     "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
   },
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {}
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {},
+  "private": true
 }

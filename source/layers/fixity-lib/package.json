@@ -1,11 +1,14 @@
 {
   "name": "fixity-lib",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "media2cloud layer for fixity",
   "main": "index.js",
   "private": true,
-  "author": "aws-mediaent-solutions",
-  "license": "ISC",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
   "dependencies": {
     "rusha": "^0.8.13",
     "spark-md5": "^3.0.0"

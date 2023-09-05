@@ -19,7 +19,7 @@ Mappings:
             Version: OpenSearch_1.3
     Node:
         Runtime:
-            Version: nodejs14.x
+            Version: nodejs16.x
 
 Parameters:
     S3Bucket:
@@ -130,7 +130,7 @@ Resources:
                     Key: SolutionId
                     Value: !Ref SolutionId
             VersioningConfiguration:
-                Status: Suspended
+                Status: Enabled
 
     LogsBucketPolicy:
         Type: AWS::S3::BucketPolicy

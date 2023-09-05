@@ -280,7 +280,7 @@ const context = {
             ENV_SOLUTION_ID: 'Test_ENV_Variable',
             ENV_RESOURCE_PREFIX: 'Test_ENV_Variable',
             ENV_SOLUTION_UUID: 'Test_ENV_Variable',
-            ENV_ANONYMOUS_USAGE: 'Test_ENV_Variable',
+            ENV_ANONYMIZED_USAGE: 'Test_ENV_Variable',
             ENV_IOT_HOST: 'Test_ENV_Variable',
             ENV_IOT_TOPIC: 'Test_ENV_Variable',
             ENV_PROXY_BUCKET: 'Test_ENV_Variable',

@@ -61,7 +61,7 @@ __
 ## Building and customizing the solution
 
 * **Prerequisites:** building the solution requires the following tools to be installed on your system.
-  * [NodeJS 14.x](https://nodejs.org/en/download/)
+  * [NodeJS 16.x](https://nodejs.org/en/download/)
   * [AWS Command Line Interface (CLI)](https://aws.amazon.com/cli/)
   * [jq](https://stedolan.github.io/jq/)
 * Create a bucket in the AWS region you would like to deploy the solution. For example, ```media2cloud-template-us-east-1``` in us-east-1 region.
@@ -142,6 +142,6 @@ __
 
 ## Collection of operational metrics
 
-This solution collects anonymous operational metrics to help AWS improve the
+This solution collects anonymized operational metrics to help AWS improve the
 quality of features of the solution. For more information, including how to disable
 this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/media2cloud/collection-of-operational-metrics.html).

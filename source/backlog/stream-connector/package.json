@@ -1,6 +1,6 @@
 {
   "name": "backlog-stream-connector",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "description": "Backlog Stream Connector handles changes on Backlog table, triggered by Amazon DynamoDB Stream",
   "main": "index.js",
   "private": true,
@@ -13,8 +13,11 @@
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
-  "author": "aws-specialist-sa-emea",
-  "license": "MIT-0",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
   "devDependencies": {
     "service-backlog-lib": "file:../../layers/service-backlog-lib",
     "@babel/plugin-transform-modules-commonjs": "^7.19.6",

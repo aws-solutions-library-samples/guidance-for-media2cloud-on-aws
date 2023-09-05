@@ -21,7 +21,6 @@ const {
   IotStatus,
   ApiOps,
   SNS,
-  Errors,
   TimelineQ,
   WebVttCue,
   WebVttTrack,
@@ -38,12 +37,25 @@ const {
   Indexer,
   NodeWebVtt,
   SigV4,
+  ConfigurationError,
+  IngestError,
+  AnalysisError,
+  IndexError,
+  ChecksumError,
+  RestoreError,
+  JobStatusError,
+  GroundTruthError,
+  TranscodeError,
+  NotImplError,
+  FixityError,
 } = require('core-lib'); 
 const StringBuilder = require('node-stringbuilder');
+const https = require('https');
 
 
 const AWS = require('aws-sdk-mock');
 const SDK = require('aws-sdk');
+const { request } = require('http');
 AWS.setSDKInstance(SDK);
 
 const stateMachine = 'test-state-machine';
@@ -393,6 +405,24 @@ describe('Test DB', () => {
 
   afterEach(() => {
     AWS.restore('DynamoDB.DocumentClient');
+  });
+
+  test('Test constructor with missing parameters', () => {
+    const constructor = () => {
+      new DB({});
+    };
+    expect(constructor).toThrow(Error);
+    expect(constructor).toThrow(`missing Table, PartitionKey`);
+  });
+
+  test('Test DB toStringTag', () => {
+    const stringTag = Object.prototype.toString.call(
+      new DB({
+        Table: 'testTable',
+        PartitionKey: 'testPartitionKey'
+      })
+    );
+    expect(stringTag).toBe('[object DB]');
   });
 
   test('Test scanIndex', async () => {
@@ -1341,3 +1371,133 @@ describe('Test mxValidation', () => {
     expect(CommonUtils.validateS3Uri('s3://bu/key')).toBe(false);
   });
 });
+
+describe('Test Metrics', () => {
+  const httpsCache = https;
+  const requestWriteMock = jest.fn();
+  const requestOnMock = jest.fn();
+  const requestEndMock = jest.fn();
+
+  beforeAll(() => {
+    // Mute console.log output for internal functions
+    console.log = jest.fn();
+  });
+
+  beforeEach(() => {
+    https.request = jest.fn(() => ({
+      write: requestWriteMock,
+      on: requestOnMock,
+      end: requestEndMock,
+    }));
+  });
+
+  afterEach(() => {
+    https.request = httpsCache.request;
+    jest.resetModules() // Most important - it clears the cache
+  })
+
+  test('Test Constants', () => {
+    const metricsConstants = Metrics.Constants;
+    expect(metricsConstants.Host).toBe('metrics.awssolutionsbuilder.com');
+    expect(metricsConstants.Path).toBe('/generic');
+  });
+
+  test('Test sendAnonymizedData', async () => {
+    Metrics.sendAnonymizedData('this is a test data');
+    expect(https.request.mock.calls.length).toBe(1);
+    expect(https.request.mock.lastCall[0]).toEqual({
+      hostname: Metrics.Constants.Host,
+      port: 443,
+      path: Metrics.Constants.Path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    const parsedRequestWriteCallParam = JSON.parse(requestWriteMock.mock.lastCall[0]);
+    expect(parsedRequestWriteCallParam.Data).toBe('this is a test data');
+    expect(requestOnMock.mock.calls.length).toBe(1);
+    expect(requestEndMock.mock.calls.length).toBe(1);
+  });
+});
+
+describe('Test Errors', () => {
+  test('Test ConfigurationError', () => {
+    const error = new ConfigurationError();
+    expect(error.name).toBe('ConfigurationError');
+    expect(error.message).toBe('1000 - configuration error');
+    expect(error.errorCode).toBe(1000);
+  });
+
+  test('Test IngestError', () => {
+    const error = new IngestError();
+    expect(error.name).toBe('IngestError');
+    expect(error.message).toBe('1001 - unknown ingest error');
+    expect(error.errorCode).toBe(1001);
+  });
+
+  test('Test AnalysisError', () => {
+    const error = new AnalysisError();
+    expect(error.name).toBe('AnalysisError');
+    expect(error.message).toBe('1002 - unknown analysis error');
+    expect(error.errorCode).toBe(1002);
+  });
+
+  test('Test IndexError', () => {
+    const error = new IndexError();
+    expect(error.name).toBe('IndexError');
+    expect(error.message).toBe('1003 - unknown index error');
+    expect(error.errorCode).toBe(1003);
+  });
+
+  test('Test ChecksumError', () => {
+    const error = new ChecksumError();
+    expect(error.name).toBe('ChecksumError');
+    expect(error.message).toBe('1004 - unknown checksum error');
+    expect(error.errorCode).toBe(1004);
+  });
+
+  test('Test RestoreError', () => {
+    const error = new RestoreError();
+    expect(error.name).toBe('RestoreError');
+    expect(error.message).toBe('1005 - unknown restore error');
+    expect(error.errorCode).toBe(1005);
+  });
+
+  test('Test JobStatusError', () => {
+    const error = new JobStatusError();
+    expect(error.name).toBe('JobStatusError');
+    expect(error.message).toBe('1006 - unknown job status error');
+    expect(error.errorCode).toBe(1006);
+  });
+
+  test('Test GroundTruthError', () => {
+    const error = new GroundTruthError();
+    expect(error.name).toBe('GroundTruthError');
+    expect(error.message).toBe('1007 - unknown ground truth error');
+    expect(error.errorCode).toBe(1007);
+  });
+
+  test('Test TranscodeError', () => {
+    const error = new TranscodeError();
+    expect(error.name).toBe('TranscodeError');
+    expect(error.message).toBe('1008 - unknown transcode error');
+    expect(error.errorCode).toBe(1008);
+  });
+
+  test('Test NotImplError', () => {
+    const error = new NotImplError();
+    expect(error.name).toBe('NotImplError');
+    expect(error.message).toBe('1009 - not impl');
+    expect(error.errorCode).toBe(1009);
+  });
+
+  test('Test FixityError', () => {
+    const error = new FixityError();
+    expect(error.name).toBe('FixityError');
+    expect(error.message).toBe('1010 - unknown fixity error');
+    expect(error.errorCode).toBe(1010);
+  });
+});
+
+

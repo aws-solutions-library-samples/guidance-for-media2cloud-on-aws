@@ -31,10 +31,11 @@ popd
 #
 # Testing lambda packages
 #
-PACKAGES=(\
-  "layers/core-lib" \ 
-  "layers/mediainfo" \ 
-  "layers/service-backlog-lib/" \
+PACKAGES=(
+  "layers/core-lib" 
+  "layers/mediainfo" 
+  "main/ingest/document" 
+  "layers/service-backlog-lib/"
 )
 
 for package in "${PACKAGES[@]}"; do

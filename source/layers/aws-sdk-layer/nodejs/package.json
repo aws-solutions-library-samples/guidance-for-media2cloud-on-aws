@@ -1,11 +1,14 @@
 {
   "name": "aws-sdk-layer",
-  "version": "2.991.0",
+  "version": "1.0.0",
   "description": "layer for aws-sdk",
   "main": "index.js",
   "private": true,
-  "author": "aws-mediaent-solutions",
-  "license": "ISC",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
   "dependencies": {
     "aws-sdk": "^2.1173.0",
     "aws-xray-sdk": "^3.3.4"

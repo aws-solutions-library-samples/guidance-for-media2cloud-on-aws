@@ -1,6 +1,6 @@
 {
   "name": "crypto-js-bundle",
-  "version": "3.1.9-1",
+  "version": "1.0.0",
   "description": "Crypto JS",
   "main": "index.js",
   "scripts": {
@@ -9,10 +9,14 @@
     "build:minify": "terser node_modules/crypto-js/crypto-js.js -o ./dist/js/crypto-js.min.js",
     "build": "npm-run-all -s build:clean build:minify"
   },
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "crypto-js": "^3.1.9-1"
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
   },
-  "devDependencies": {}
+  "license": "Apache-2.0",
+  "dependencies": {
+    "crypto-js": "^4.1.1"
+  },
+  "devDependencies": {},
+  "private": true
 }

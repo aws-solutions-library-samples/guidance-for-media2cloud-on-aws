@@ -11,6 +11,7 @@
  *  and limitations under the License.                                                                                *
  *********************************************************************************************************************/
 const {
+  MediaInfoError,
   MediaInfoCommand,
   XBuilder
 } = require('mediainfo');
@@ -76,6 +77,12 @@ jest.mock('child_process', () => {
   };
 });
 
+describe('Test MediaInfoError', () => {
+  const error = new MediaInfoError();
+  expect(error.name).toBe('MediaInfoError');
+  expect(error.message).toBe('1900 - unknown mediainfo error');
+  expect(error.errorCode).toBe(1900);
+});
 
 describe('Test MediaInfoCommand', () => {
   beforeAll(() => {
@@ -132,6 +139,9 @@ describe('Test MediaInfoCommand', () => {
     expect(response.container.length).toBeGreaterThan(0);
     expect(response.audio.length).toBeGreaterThan(0);
     expect(response.video.length).toBe(0);
+
+    response = mi.others;
+    expect(response.length).toBe(1);
   });
 
   test('Test presign', async () => {

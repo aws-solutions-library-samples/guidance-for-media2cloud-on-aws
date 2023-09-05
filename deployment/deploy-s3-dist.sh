@@ -76,8 +76,7 @@ while [[ $# -gt 0 ]]; do
       ;;
       -r|--single-region)
       SINGLE_REGION=true
-      shift # past argument
-      shift # past value
+      shift # key
       ;;
       -a|--acl)
       ACL_SETTING="$2"
@@ -103,7 +102,7 @@ done
   usage && \
   exit 1
 
-ACCOUNTID=$(aws sts get-caller-identity | jq .Account | tr -d \")
+ACCOUNTID=$(aws sts get-caller-identity --output json | jq .Account | tr -d \")
 [ -z "$ACCOUNTID" ] && \
   echo "error: fail to get AWS Account ID" && \
   exit 1
@@ -126,7 +125,7 @@ function copy_to_bucket() {
   local bucket=$2
   local dest=s3://${bucket}/${SOLUTION}/${VERSION}/
   # get bucket region and ensure bucket is owned by the same AWS account. LocationConstraint returns null if bucket is in us-east-1 region
-  local location=$(aws s3api get-bucket-location --bucket ${bucket} --expected-bucket-owner ${ACCOUNTID} | jq .LocationConstraint | tr -d \")
+  local location=$(aws s3api get-bucket-location --bucket ${bucket} --expected-bucket-owner ${ACCOUNTID} --output json | jq .LocationConstraint | tr -d \")
   [ -z "$location" ] && \
     echo "Bucket '${bucket}' either doesn't exist or doesn't belong to accountId '${ACCOUNTID}'. exiting..." && \
     exit 1

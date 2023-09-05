@@ -14,7 +14,7 @@ Mappings:
             Name: demo
     Node:
         Runtime:
-            Version: nodejs14.x
+            Version: nodejs16.x
     Cognito:
         Group:
             Viewer: viewer
@@ -40,9 +40,9 @@ Parameters:
     CustomUserAgent:
         Type: String
         Description: CustomUserAgent
-    AnonymousUsage:
+    AnonymizedUsage:
         Type: String
-        Description: AnonymousUsage
+        Description: AnonymizedUsage
     CustomResourcesLambdaArn:
         Type: String
         Description: CustomResourcesLambdaArn
@@ -299,7 +299,7 @@ Resources:
                     ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
                     ENV_SOLUTION_ID: !Ref SolutionId
                     ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
-                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
+                    ENV_ANONYMIZED_USAGE: !Ref AnonymizedUsage
                     ENV_SOLUTION_UUID: !Ref SolutionUuid
                     ENV_IOT_HOST: !Ref IotHost
                     ENV_IOT_TOPIC: !Ref IotTopic

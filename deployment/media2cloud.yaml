@@ -31,9 +31,9 @@ Mappings:
             S3Key: _settings/aioptions.json
     Node:
         Runtime:
-            Version: nodejs14.x
+            Version: nodejs16.x
     Send:
-        AnonymousUsage:
+        AnonymizedUsage:
             Data: "Yes"
     Cognito:
         Group:
@@ -100,13 +100,16 @@ Parameters:
     KnowledgeGraphEndpoint:
         Type: String
         Description: specify the API endpoint of the Knowledge Graph database. Leave it blank to disable the feature.
+        Default: ""
     KnowledgeGraphApiKey:
         Type: String
         Description: specify the API Key of the Knowledge Graph API endpoint. Leave it blank to disable the feature.
+        Default: ""
     # BLIP model (auto caption for image)
     BlipImageArn:
         Type: String
         Description: specify the ECR image Arn of the Auto Captioning feature (BLIP model), ie., {{account}}.dkr.ecr.{{region}}.amazonaws.com/{{repo}}:{{tag}}. Leave it blank to disable the feature.
+        Default: ""
 
 Metadata:
     AWS::CloudFormation::Interface:
@@ -573,9 +576,9 @@ Resources:
                     - Solution
                     - Project
                     - CustomUserAgent
-                AnonymousUsage: !FindInMap
+                AnonymizedUsage: !FindInMap
                     - Send
-                    - AnonymousUsage
+                    - AnonymizedUsage
                     - Data
                 CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
                 CustomResourcesRoleName: !Ref CustomResourcesRole
@@ -681,9 +684,9 @@ Resources:
                     - Solution
                     - Project
                     - CustomUserAgent
-                AnonymousUsage: !FindInMap
+                AnonymizedUsage: !FindInMap
                     - Send
-                    - AnonymousUsage
+                    - AnonymizedUsage
                     - Data
                 CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
                 CustomResourcesRoleName: !Ref CustomResourcesRole
@@ -987,9 +990,9 @@ Resources:
                     - Solution
                     - Project
                     - Version
-                AnonymousUsage: !FindInMap
+                AnonymizedUsage: !FindInMap
                     - Send
-                    - AnonymousUsage
+                    - AnonymizedUsage
                     - Data
                 OpenSearchCluster: !Ref OpenSearchCluster
                 SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid

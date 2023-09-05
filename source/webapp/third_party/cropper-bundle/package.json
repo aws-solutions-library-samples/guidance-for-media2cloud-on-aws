@@ -1,6 +1,6 @@
 {
   "name": "cropper-bundle",
-  "version": "1.4.3",
+  "version": "1.0.0",
   "description": "simply copy cropper js to dist folder",
   "main": "index.js",
   "scripts": {
@@ -9,10 +9,14 @@
     "build:copy": "cp -v ./node_modules/cropperjs/dist/cropper.min.js ./dist/js && cp -v ./node_modules/cropperjs/dist/cropper.min.css ./dist/css",
     "build": "npm-run-all -s build:clean build:copy"
   },
-  "author": "",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
   "license": "Apache-2.0",
   "dependencies": {
     "cropperjs": "^1.4.3"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "private": true
 }

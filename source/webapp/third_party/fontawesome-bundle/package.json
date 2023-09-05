@@ -1,6 +1,6 @@
 {
   "name": "fontawesome-bundle",
-  "version": "5.13.0",
+  "version": "1.0.0",
   "description": "fontawesome free icons for browser",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,11 @@
     "build:postbuild": "rm -rf temp",
     "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
   },
-  "author": "",
-  "license": "Font Awesome Free License",
-  "devDependencies": {}
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {},
+  "private": true
 }

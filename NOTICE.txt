@@ -19,7 +19,8 @@ THIRD PARTY COMPONENTS
 **********************
 This software includes third party software subject to the following copyrights:
 
-AWS SDK under the Apache License Version 2.0
+aws-sdk under the Apache License Version 2.0
+aws-xray-sdk under the Apache License Version 2.0
 Amazon Cognito Identity SDK for JavaScript under the Apache License Version 2.0
 AWS IoT SDK for JavaScript under the Apache License Version 2.0
 Elasticsearch Node.js client under the Apache License Version 2.0
@@ -48,3 +49,21 @@ tar-stream under the Massachusetts Institute of Technology (MIT) license
 Jimp under the Massachusetts Institute of Technology (MIT) license
 PDF.JS under the Apache License Version 2.0
 @npcz/magic under the BSD-3-Clause License
+node-webvtt under the Massachusetts Institute of Technology (MIT) license
+@rollup/stream under the Massachusetts Institute of Technology (MIT) license
+glob under the Internet Systems Consortium (ISC) license
+rollup under the Massachusetts Institute of Technology (MIT) license
+terser under the BSD-2-Clause License
+@elastic/elasticsearch under the Apache License Version 2.0
+aws4 under the Massachusetts Institute of Technology (MIT) license
+mime under the Massachusetts Institute of Technology (MIT) license
+rusha under the Massachusetts Institute of Technology (MIT) license
+spark-md5 under the Massachusetts Institute of Technology (MIT) license
+jimp under the Massachusetts Institute of Technology (MIT) license
+pdfjs-dist under the Apache License Version 2.0
+canvas under the Massachusetts Institute of Technology (MIT) license
+amazon-cognito-identity-js under the Apache License Version 2.0
+aws-iot-device-sdk under the Apache License Version 2.0
+cropperjs under the Massachusetts Institute of Technology (MIT) license
+crypto-js under the Massachusetts Institute of Technology (MIT) license
+

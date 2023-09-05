@@ -63,13 +63,13 @@ exports.SendConfig = async (event, context) => {
     };
     const params = {
       Version: data.Version,
-      Metrics: data.AnonymousUsage,
+      Metrics: data.AnonymizedUsage,
       SearchEngine: cluster,
       [key]: (new Date()).toISOString().replace('T', ' ').replace('Z', ''),
     };
-    console.log(`sendAnonymousData = ${JSON.stringify(params, null, 2)}`);
-    const response = await Metrics.sendAnonymousData(params, env);
-    console.log(`sendAnonymousData = ${response.toString()}`);
+    console.log(`sendAnonymizedData = ${JSON.stringify(params, null, 2)}`);
+    const response = await Metrics.sendAnonymizedData(params, env);
+    console.log(`sendAnonymizedData = ${response.toString()}`);
     x0.storeResponseData('Status', 'SUCCESS');
   } catch (e) {
     console.log(`SendConfig: ${e.message}`);

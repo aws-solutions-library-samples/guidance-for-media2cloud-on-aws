@@ -1,6 +1,6 @@
 {
   "name": "aws-iot-sdk-browser-bundle",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "build aws-iot-sdk for browser",
   "main": "index.js",
   "scripts": {
@@ -10,11 +10,15 @@
     "build:minify": "terser dist/js/aws-iot-sdk-bundle.js -o ./dist/js/aws-iot-sdk-bundle.min.js",
     "build": "npm-run-all -s build:clean build:browserify build:minify"
   },
-  "author": "",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
   "license": "Apache-2.0",
   "dependencies": {
     "aws-iot-device-sdk": "^2.2.12",
     "aws-sdk": "^2.1033.0"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "private": true
 }

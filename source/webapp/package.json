@@ -1,6 +1,6 @@
 {
   "name": "m2c-webapp",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "media2cloud webapp",
   "main": "src/lib/js/app.js",
   "type": "module",
@@ -19,9 +19,13 @@
       "^.+\\.jsx?$": "babel-jest"
     }
   },
-  "author": "aws-mediaent-solutions",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.19.6",
     "jest": "^29.3.1"
-  }
+  },
+  "license": "Apache-2.0"
 }

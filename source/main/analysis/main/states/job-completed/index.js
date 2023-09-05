@@ -44,8 +44,8 @@ class StateJobCompleted {
     this.stateData.input.metrics.endTime = new Date().getTime();
     this.stateData.setCompleted(StateData.Statuses.AnalysisCompleted);
 
-    /* send anonymous data */
-    await this.sendAnonymous();
+    /* send anonymized data */
+    await this.sendAnonymized();
     /* send SNS notification */
     await SNS.send(`analysis: ${this.stateData.uuid}`, this.stateData.toJSON()).catch(() => false);
     return this.stateData.toJSON();
@@ -92,8 +92,8 @@ class StateJobCompleted {
     return db.update(uuid, type, data);
   }
 
-  async sendAnonymous() {
-    if (!Environment.Solution.Metrics.AnonymousUsage) {
+  async sendAnonymized() {
+    if (!Environment.Solution.Metrics.AnonymizedUsage) {
       return undefined;
     }
 
@@ -104,14 +104,14 @@ class StateJobCompleted {
     };
     const metrics = this.stateData.input.metrics || {};
 
-    return Metrics.sendAnonymousData({
+    return Metrics.sendAnonymizedData({
       uuid: this.stateData.uuid,
       process: 'analysis',
       requestTime: metrics.requestTime,
       contentDuration: this.stateData.input.duration || 0,
       elapsed: metrics.endTime - metrics.startTime,
       aiml,
-    }).catch(e => console.log(`sendAnonymous: ${e.message}`));
+    }).catch(e => console.log(`sendAnonymized: ${e.message}`));
   }
 }
 

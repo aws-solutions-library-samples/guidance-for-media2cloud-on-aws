@@ -14,7 +14,7 @@ const Environment = require('./environment');
 
 /**
  * @class Metrics
- * @description send anonymous data to help us to improve the solution
+ * @description send anonymized data to help us to improve the solution
  */
 class Metrics {
   static get Constants() {
@@ -26,12 +26,12 @@ class Metrics {
 
   /**
    * @static
-   * @function sendAnonymousData
-   * @description send anonymous data to aws solution builder team to help us improve the solution.
-   * @param {*} data - JSON data to send anonymously
+   * @function sendAnonymizedData
+   * @description send anonymized data to aws solution builder team to help us improve the solution.
+   * @param {*} data - anonymized JSON data to be sent
    * @param {*} env - overwrite payload parameters, used for custom-resource lambda.
    */
-  static async sendAnonymousData(data, env) {
+  static async sendAnonymizedData(data, env) {
     return new Promise((resolve, reject) => {
       const payload = Object.assign({
         Solution: Environment.Solution.Id,
