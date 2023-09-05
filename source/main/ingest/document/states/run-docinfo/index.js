@@ -1,30 +1,30 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const PATH = require('path');
+const PATH = require("path");
 const {
   DB,
   CommonUtils,
   Environment,
   StateData,
   IngestError,
-} = require('core-lib');
-const PDFLib = require('./pdfLib');
+} = require("core-lib");
+const PDFLib = require("./pdfLib");
 
-const DOCINFO = 'docinfo';
-const CATEGORY = 'transcode';
-const OUTPUT_TYPE_PROXY = 'proxy';
+const DOCINFO = "docinfo";
+const CATEGORY = "transcode";
+const OUTPUT_TYPE_PROXY = "proxy";
 
 class StateRunDocInfo {
   constructor(stateData) {
     if (!(stateData instanceof StateData)) {
-      throw new IngestError('stateData not StateData object');
+      throw new IngestError("stateData not StateData object");
     }
     this.$stateData = stateData;
   }
 
   get [Symbol.toStringTag]() {
-    return 'StateRunDocInfo';
+    return "StateRunDocInfo";
   }
 
   get stateData() {
@@ -35,7 +35,7 @@ class StateRunDocInfo {
     const src = this.stateData.input || {};
     const dest = src.destination || {};
     if (!dest.bucket || !dest.prefix) {
-      throw new IngestError('missing destination');
+      throw new IngestError("missing destination");
     }
     if (this.stateData.data === undefined) {
       this.stateData.data = {};
@@ -52,12 +52,16 @@ class StateRunDocInfo {
       /* make sure we allocate enough time for the next iteration */
       const remained = this.stateData.getRemainingTime();
       const consumed = new Date() - t0;
-      console.log(`COMPLETED: Page #${data.cursor - 1} [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
-      if (this.stateData.quitNow() || (remained - (consumed * 1.2) <= 0)) {
+      console.log(
+        `COMPLETED: Page #${data.cursor - 1} [Consumed/Remained: ${
+          consumed / 1000
+        }s / ${remained / 1000}s]`
+      );
+      if (this.stateData.quitNow() || remained - consumed * 1.2 <= 0) {
         break;
       }
     } while (data.cursor < data.numPages);
-    return (data.cursor >= data.numPages)
+    return data.cursor >= data.numPages
       ? this.setCompleted()
       : this.setProgress(Math.round((data.cursor / data.numPages) * 100));
   }
@@ -103,12 +107,12 @@ class StateRunDocInfo {
     return this.stateData.toJSON();
   }
 
-  makeOutputPrefix(prefix, keyword = '') {
-    return PATH.join(prefix, CATEGORY, keyword, '/');
+  makeOutputPrefix(prefix, keyword = "") {
+    return PATH.join(prefix, CATEGORY, keyword, "/");
   }
 
   static makePNGFileName(idx) {
-    return `${String(idx).padStart(8, '0')}.png`;
+    return `${String(idx).padStart(8, "0")}.png`;
   }
 }
 

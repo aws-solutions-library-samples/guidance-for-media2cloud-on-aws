@@ -12,7 +12,7 @@ module.exports = {
     Version: Solution.Version,
     Metrics: {
       Uuid: process.env.ENV_SOLUTION_UUID,
-      AnonymousUsage: (process.env.ENV_ANONYMOUS_USAGE || '').toUpperCase() === 'YES',
+      AnonymizedUsage: (process.env.ENV_ANONYMIZED_USAGE || '').toUpperCase() === 'YES',
       CustomUserAgent: process.env.ENV_CUSTOM_USER_AGENT
         || `AWSSOLUTION/${Solution.Id}/${Solution.Version}`,
     },

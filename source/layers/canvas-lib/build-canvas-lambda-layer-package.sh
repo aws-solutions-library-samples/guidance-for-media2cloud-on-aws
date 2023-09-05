@@ -19,10 +19,12 @@ PUBLISH_PACKAGE=0
 
 #
 # Node configuration
-# (Default to build nodejs14.x package)
+# (Default to build nodejs16.x package, lts support)
 #
-VER_NODE=14.15.4
-VER_NODE_MODULE=83
+VER_NODE=16.20.2
+VER_NODE_MODULE=93
+#VER_NODE=14.15.4
+#VER_NODE_MODULE=83
 #VER_NODE=12.20.1
 #VER_NODE_MODULE=72
 #VER_NODE=10.16.3
@@ -31,7 +33,7 @@ VER_NODE_MODULE=83
 #
 # Canvas configuration
 #
-VER_CANVAS=2.6.1
+VER_CANVAS=2.11.2
 PREBUILT_LD_PATH=/opt/nodejs/node_modules/canvas/build/Release
 
 #

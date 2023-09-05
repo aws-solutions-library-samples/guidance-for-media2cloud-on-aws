@@ -1,5 +1,4 @@
 module.exports = {
-    setupTestFrameworkScriptFile: 'tests/setup.js',
     transform: {
       '^.+\\.jsx?$': 'babel-jest',
     },
@@ -7,5 +6,10 @@ module.exports = {
     testMatch: ['**/*.spec.js'],
     coveragePathIgnorePatterns: ['<rootDir>/lib/utils.test.js'],
     coverageReporters: [['lcov', { projectRoot: '../../../../' }], 'text'],
-    setupFiles: ['<rootDir>/setEnvVars.js']
+    setupFiles: ['<rootDir>/setEnvVars.js'],
+    modulePaths: [
+      "<rootDir>/../../../layers/core-lib/node_modules/",
+      "<rootDir>/../../../layers/pdf-lib/node_modules/",
+      "<rootDir>/../../../layers/canvas-lib/node_modules/"
+    ]
   };

@@ -72,6 +72,16 @@ describe('Test BacklogTableStream', () => {
     AWS.restore('DynamoDB.Converter');
   });
 
+  test('Test gets', () => {
+    const backlog = new BacklogTableStream({}, {});
+    expect(backlog.context).toEqual({});
+    expect(backlog.keys).toBeUndefined();
+    expect(backlog.newImage).toBeUndefined();
+    expect(() => {
+      backlog.sanityCheck();
+    }).toThrow(Error);
+  });
+
   test('Test Event Insert', async () => {
     const backlog = new BacklogTableStream(eventInsert, {});
 

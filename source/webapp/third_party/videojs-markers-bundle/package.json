@@ -1,6 +1,6 @@
 {
   "name": "videojs-markers-bundle",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "videojs-markers plugins for videojs",
   "main": "index.js",
   "scripts": {
@@ -12,7 +12,11 @@
     "build:postbuild": "rm -rf temp",
     "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
   },
-  "author": "",
-  "license": "Apache 2.0",
-  "devDependencies": {}
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {},
+  "private": true
 }

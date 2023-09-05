@@ -4,16 +4,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.4] - 2023-09-05
+
+### Changed
+ 
+- Updated backend to Nodejs 16
+
+### Fixed
+
+- #20 [Incorrect reading of a parameter in the "deploy-s3-dist.sh" script](https://github.com/aws-solutions/media2cloud-on-aws/issues/20)
+- #23 [Tutorial : Create M2C Stack](https://github.com/aws-solutions/media2cloud-on-aws/issues/23)
+- #31 [Corrected some minor writing errors.](https://github.com/aws-solutions/media2cloud-on-aws/pull/31)
+- #34 [Fixed PDF to PNG Conversion.](https://github.com/aws-solutions/media2cloud-on-aws/issues/34)
+
 ## [3.1.3] - 2023-08-01
 - Fixed an issue where media analysis result is not visible in the web application
 
 ## [3.1.2] - 2023-04-20
 - Updated object ownership configuration on the S3 buckets. 
-- Security patching
+- Deploying previous versions of the solution will fail due to Amazon S3 security changes. More info on this [blog](https://aws.amazon.com/blogs/aws/heads-up-amazon-s3-security-changes-are-coming-in-april-of-2023/)
 
 ## [3.1.1] - 2023-04-3
 ### Added
 - Added package-lock.json files to all lambda packages. 
+
 ## [3.1.0] - 2023-02-28
 ### Added
 - AppRegistry integration
@@ -21,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Code fixes for SonarQube
+- CloudFormation Stack Update is not supported when upgrading from v3.0.0 to v3.1.0. A new stack must be deployed.
 
 ### Contributors
 * @sandimciin

@@ -158,10 +158,10 @@ PKG_CUSTOM_RESOURCES=
 PKG_API=
 PKG_WEBAPP=
 
-## anonymous data setting
-ANONYMOUS_DATA="Yes"
+## anonymized data setting
+ANONYMIZED_DATA="Yes"
 [ "$BUILD_ENV" == "dev" ] && \
-  ANONYMOUS_DATA="No"
+  ANONYMIZED_DATA="No"
 
 
 ## trap exit signal and make sure to remove the TMP_DIR
@@ -1009,8 +1009,8 @@ function build_cloudformation_templates() {
   sed -i'.bak' -e "s|%%PKG_MAIN_S3EVENT%%|${PKG_MAIN_S3EVENT}|g" *.yaml || exit 1
 
   ## Misc.
-  echo "Updating %%ANONYMOUS_DATA%% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%%ANONYMOUS_DATA%%|${ANONYMOUS_DATA}|g" *.yaml || exit 1
+  echo "Updating %%ANONYMIZED_DATA%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%ANONYMIZED_DATA%%|${ANONYMIZED_DATA}|g" *.yaml || exit 1
 
   echo "Updating %%SINGLE_REGION%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%SINGLE_REGION%%|${SINGLE_REGION}|g" *.yaml || exit 1

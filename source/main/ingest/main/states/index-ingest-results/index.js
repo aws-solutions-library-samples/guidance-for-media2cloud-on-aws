@@ -58,7 +58,7 @@ class StateIndexIngestResults {
       .catch((e) =>
         console.error(`[ERR]: indexDocument: ${INDEX_INGEST}: ${uuid}:`, e));
 
-    await this.sendAnonymous(result);
+    await this.sendAnonymized(result);
     this.stateData.setData('indexer', {
       terms: Object.keys(result),
     });
@@ -66,17 +66,17 @@ class StateIndexIngestResults {
     return this.stateData.toJSON();
   }
 
-  async sendAnonymous(data) {
-    if (!Environment.Solution.Metrics.AnonymousUsage) {
+  async sendAnonymized(data) {
+    if (!Environment.Solution.Metrics.AnonymizedUsage) {
       return undefined;
     }
-    return Metrics.sendAnonymousData({
+    return Metrics.sendAnonymizedData({
       uuid: this.stateData.uuid,
       process: 'ingest',
       fileSize: data.fileSize,
       duration: data.duration || 0,
       mime: data.mime,
-    }).catch(e => console.log(`sendAnonymous: ${e.message}`));
+    }).catch(e => console.log(`sendAnonymized: ${e.message}`));
   }
 }
 

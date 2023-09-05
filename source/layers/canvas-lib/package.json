@@ -1,21 +1,23 @@
 {
   "name": "canvas-lib",
-  "version": "2.6.1",
+  "version": "1.0.0",
   "description": "lambda layer of node-canvas",
   "main": "index.js",
   "private": true,
-  "author": "aws-mediaent-solutions",
-  "license": "ISC",
-  "dependencies": {
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
   },
+  "license": "Apache-2.0",
+  "dependencies": {},
   "scripts": {
     "pretest": "npm install",
     "test": "echo \"layer wrapping canvas, skipping unit test.\"",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv package.json dist",
-    "build:download": "cd dist && wget -q --no-check-certificate https://github.com/aws-kens/node-canvas/releases/download/v2.6.1-node-v83-amzn2/canvas-v2.6.1-node-v83-amzn2-glibc-x64.zip -O canvas-v2.6.1.zip",
+    "build:download": "cd dist && wget -q https://github.com/aws-kens/node-canvas/releases/download/v2.11.2-node-v93-amzn2/canvas-v2.11.2-node-16.20.2-v93-amzn2-glibc-x64.zip -O canvas-v2.11.2.zip",
     "build": "npm-run-all -s build:clean build:copy build:download",
-    "move": "cd dist && mv -v canvas-v2.6.1.zip"
+    "move": "cd dist && mv -v canvas-v2.11.2.zip"
   },
   "devDependencies": {}
 }

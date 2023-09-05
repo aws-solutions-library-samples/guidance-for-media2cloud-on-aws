@@ -1,6 +1,6 @@
 {
   "name": "mime-bundle",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "build mime for browser",
   "main": "index.js",
   "scripts": {
@@ -10,10 +10,14 @@
     "build:copy": "terser dist/js/mime.js -o ./dist/js/mime.min.js",
     "build": "npm-run-all -s build:clean build:browserify build:copy"
   },
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "mime": "^2.3.1"
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
   },
-  "devDependencies": {}
+  "license": "Apache-2.0",
+  "dependencies": {
+    "mime": "^3.0.0"
+  },
+  "devDependencies": {},
+  "private": true
 }

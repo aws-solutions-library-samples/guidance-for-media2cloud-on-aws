@@ -134,7 +134,7 @@ async function rollupCommand(options) {
   output[0] = 'import SolutionManifest from \'/solution-manifest.js\';';
 
   console.log('>>> terser.minify BEGIN...');
-  const minified = Terser.minify(output.join('\n'), {
+  const minified = await Terser.minify(output.join('\n'), {
     ecma: 6,
     // keep_classnames: true,
     // warnings: 'verbose',

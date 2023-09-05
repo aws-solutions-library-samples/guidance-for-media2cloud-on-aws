@@ -1,6 +1,6 @@
 {
   "name": "amazon-cognito-identity-bundle",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "simply copy amazon-cognito-identity-bundle dist for browser",
   "main": "index.js",
   "scripts": {
@@ -9,10 +9,14 @@
     "build:copy": "cp -v ./node_modules/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js ./dist/js",
     "build": "npm-run-all -s build:clean build:copy"
   },
-  "author": "",
+  "author": {
+    "name": "Amazon Web Services",
+    "url": "https://aws.amazon.com/solutions"
+  },
   "license": "Apache-2.0",
   "dependencies": {
     "amazon-cognito-identity-js": "*"
   },
-  "devDependencies": {}
+  "devDependencies": {},
+  "private": true
 }
