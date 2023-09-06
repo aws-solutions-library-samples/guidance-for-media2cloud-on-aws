@@ -9,8 +9,7 @@
     "url": "https://aws.amazon.com/solutions"
   },
   "dependencies": {
-    "pdfjs-dist": "3.6.172",
-    "canvas": "2.11.2"
+    "pdfjs-dist": "3.6.172"
   },
   "scripts": {
     "pretest": "npm install",
