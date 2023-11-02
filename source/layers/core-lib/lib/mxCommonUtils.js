@@ -1019,7 +1019,7 @@ const mxValidation = Base => class extends Base {
       || /[^a-z0-9-.]/.test(val)
       || /^[^a-z0-9]/.test(val)
       || /\.{2,}/.test(val)
-      || /^\d+.\d+.\d+.\d+$/.test(val)
+      || /^\d+\.\d+\.\d+\.\d+$/.test(val)
     );
   }
 
@@ -1041,7 +1041,7 @@ const mxValidation = Base => class extends Base {
    * @param {string} val - id
    */
   static validateCognitoIdentityId(val = '') {
-    return /^[a-z]{2,}-[a-z]{2,}-\d{1}:[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/.test(val);
+    return /^[a-z]{2,}-[a-z]{2,}-\d:[a-fA-F0-9]{8}(-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$/.test(val);
   }
 
   /**
@@ -1099,7 +1099,7 @@ const mxValidation = Base => class extends Base {
       || /[^a-z0-9-.]/.test(bucket)
       || /^[^a-z0-9]/.test(bucket)
       || /\.{2,}/.test(bucket)
-      || /^\d+.\d+.\d+.\d+$/.test(bucket)
+      || /^\d+\.\d+\.\d+\.\d+$/.test(bucket)
     );
   }
 

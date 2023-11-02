@@ -14,7 +14,7 @@ class WebVttTrack {
       UnitInMilliseconds: 1,
       UnitInSeconds: 1000,
       Timecode: {
-        Regex: /^(\d{2}):(\d{2}):(\d{2})\.(\d{2,})\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{2,})(.*)$/,
+        Regex: /^(\d{2}):(\d{2}):(\d{2})\.(\d{2,})\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{2,})(.*)$/, // NOSONAR - must address in future release
       },
     };
   }
