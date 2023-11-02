@@ -403,7 +403,7 @@ class MediaInfoCommand {
     function camelCaseKey(k0, obj) {
       const k1 = (k0 === '_' || k0 === '$')
         ? k0
-        : k0.replace(/^([A-Za-z])|[\s-_.]+(\w)/g, (ignored, p1, p2) =>
+        : k0.replace(/^([A-Za-z])|^([\s-_.])+(\w)/g, (ignored, p1, p2) =>
           ((p2) ? p2.toUpperCase() : p1.toLowerCase())).replace(/[\s-_.]$/, '');
       if (k1 !== k0) {
         obj[k1] = obj[k0];
