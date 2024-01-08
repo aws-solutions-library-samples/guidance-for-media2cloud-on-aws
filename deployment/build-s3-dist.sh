@@ -249,6 +249,7 @@ function build_core_lib_layer() {
   pushd "$SOURCE_DIR/layers/${package}"
   npm install
   npm run build
+
   npm run zip -- "$LAYER_CORE_LIB" .
   cp -v "./dist/${LAYER_CORE_LIB}" "$BUILD_DIST_DIR"
   # also create a local package for custom resource
@@ -760,7 +761,7 @@ function build_thirdparty_bundle() {
   local bundle_dir="$SOURCE_DIR/webapp/third_party/$bundle"
 
   pushd "$bundle_dir"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   npm run build
   [ $? -ne 0 ] && exit 1
   popd
@@ -806,7 +807,7 @@ function rollup_appjs() {
   local infile=$1
   local outfile=$2
   pushd "$SOURCE_DIR/build"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   node post-build.js rollup --input "$infile" --output "$outfile"
   [ $? -ne 0 ] && exit 1
   popd
@@ -818,7 +819,7 @@ function build_index_html() {
   echo "------------------------------------------------------------------------------"
   local file=$1
   pushd "$SOURCE_DIR/build"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   node post-build.js build-html --html "$file"
   [ $? -ne 0 ] && exit 1
   popd
@@ -830,7 +831,7 @@ function minify_jscript() {
   echo "------------------------------------------------------------------------------"
   local file=$1
   pushd "$SOURCE_DIR/build"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   node post-build.js minify --dir "$file"
   [ $? -ne 0 ] && exit 1
   popd
@@ -842,7 +843,7 @@ function compute_jscript_integrity() {
   echo "------------------------------------------------------------------------------"
   local file=$1
   pushd "$SOURCE_DIR/build"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   node post-build.js inject-sri --html "$file"
   [ $? -ne 0 ] && exit 1
   popd
@@ -855,7 +856,7 @@ function build_webapp_package() {
   local package="webapp"
   PKG_WEBAPP="${package}-${VERSION}.zip"
   pushd "$SOURCE_DIR/${package}"
-  npm install --only=prod --no-optional
+  npm install --omit=dev --omit=optional
   npm run build
 
   # start building all third party bundles
