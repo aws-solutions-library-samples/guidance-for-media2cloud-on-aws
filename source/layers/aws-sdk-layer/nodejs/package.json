@@ -10,6 +10,8 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
+    "@elastic/elasticsearch": "7.12.0",
+    "aws-elasticsearch-connector": "^9.2.0",
     "aws-sdk": "^2.1173.0",
     "aws-xray-sdk": "^3.3.4"
   },
@@ -18,9 +20,8 @@
     "test": "echo \"layer wrapping latest aws-sdk, skipping unit test.\"",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs",
     "build:copy": "cp -rv package.json dist/nodejs",
-    "build:install": "cd dist/nodejs && npm install --only=prod --no-optional",
+    "build:install": "cd dist/nodejs && npm install --omit=dev --omit=optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
-  },
-  "devDependencies": {}
+  }
 }
