@@ -9,7 +9,7 @@
     "test": "jest --coverage --coverageDirectory=../../coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index*.js package.json lib dist/",
-    "build:install": "cd dist && npm install --only=prod --no-optional",
+    "build:install": "cd dist && npm install --omit=dev --omit=optional",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
@@ -19,18 +19,14 @@
   },
   "devDependencies": {
     "@babel/plugin-transform-modules-commonjs": "^7.19.6",
+    "@elastic/elasticsearch": "7.12.0",
+    "aws-elasticsearch-connector": "^9.2.0",
     "aws-sdk": "2.831.0",
     "aws-sdk-mock": "5.8.0",
     "chai": "4.3.7",
     "core-lib": "file:../layers/core-lib",
     "jest": "^29.4.3"
   },
-  "dependencies": {
-    "adm-zip": "^0.5.9",
-    "aws-elasticsearch-connector": "^9.2.0",
-    "node-webvtt": "^1.9.4",
-    "sqlstring": "^2.3.3",
-    "tar-stream": "^3.1.6"
-  },
+  "dependencies": {},
   "license": "Apache-2.0"
 }
