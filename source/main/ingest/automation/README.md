@@ -8,7 +8,7 @@ Traditionally when you start a process that takes long time to finish, one commo
 
 While polling status works fine, it is not optimal approach as it requires resources to periodically wake up and check the status.
 
-The Media2Cloud solution uses an event-driven (async wait) approach using the [Step Functions Service Integration Pattern](https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html) where we pause the state machine execution, release the lambda resource, and wait for an _external signal_ to resume the execution. The technique allows us to optimize the use of resources and simplify the workflow. The following diagram demonstrates an event-driven approach.
+The Media2Cloud guidance uses an event-driven (async wait) approach using the [Step Functions Service Integration Pattern](https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html) where we pause the state machine execution, release the lambda resource, and wait for an _external signal_ to resume the execution. The technique allows us to optimize the use of resources and simplify the workflow. The following diagram demonstrates an event-driven approach.
 
 ![Event Driven State Machine](../../../../deployment/tutorials/images/ingest-video-async-state-machine.png)
 

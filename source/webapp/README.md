@@ -32,7 +32,7 @@ For Windows user, follow the instruction [here](http://nginx.org/en/docs/windows
 
 ### NODEJS
 
-While the frontend web applicaiton is written in JQuery, the backend (lambda function) is written in NodeJS v10.x. In order to build the solution locally, you would need to install NodeJS 10.x or above on your system.
+While the frontend web applicaiton is written in JQuery, the backend (lambda function) is written in NodeJS v10.x. In order to build the guidance locally, you would need to install NodeJS 10.x or above on your system.
 
 For MAC user, download and install from [nodejs.org](https://nodejs.org/en/download/). Alternatively, you can also use Homebrew.
 
@@ -48,7 +48,7 @@ Although we are running the webapp locally, we still communicate to the backend 
 
 __
 
-## Step 2: Clone the source code and build the solution
+## Step 2: Clone the source code and build the guidance
 
 Follow the step described in [README](../../README.md).
 

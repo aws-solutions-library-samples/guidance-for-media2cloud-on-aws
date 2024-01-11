@@ -55,7 +55,7 @@ The state machine execution input is a pass through from the [Main State Machine
 | Field | Description | Required? |
 | :-----| :-----------| :---------|
 | input.uuid | UUID of the media file used to look up the ingest data from Ingest DynamoDB Table | Mandatory |
-| _input.aiOptions.*_ | AI/ML options to run the analysis workflow. If not specified, the solution uses the default AI/ML options specified when the Amazon CloudFormation stack was created | Optional |
+| _input.aiOptions.*_ | AI/ML options to run the analysis workflow. If not specified, the guidance uses the default AI/ML options specified when the Amazon CloudFormation stack was created | Optional |
 | _input.aiOptions.minConfidence_ | Minimum confidence level to return detection results | Optional |
 | _input.aiOptions.celeb_ | Enable/disable Amazon Rekognition Celebrity Recognition detection | Optional |
 | _input.aiOptions.face_ | Enable/disable Amazon Rekognition Face detection | Optional |

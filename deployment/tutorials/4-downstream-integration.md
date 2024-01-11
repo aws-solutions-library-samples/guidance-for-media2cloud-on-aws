@@ -157,7 +157,7 @@ Make sure to replace
 The JSON document describes the event rule we are interested:
 * source of the event must be `aws.states` service
 * type of Step Functions event we care is `Step Functions Execution Status Change`
-* events we will process must be from the Main state machine of the Media2Cloud solution, `{mainStateMachineArn}`
+* events we will process must be from the Main state machine of the Media2Cloud, `{mainStateMachineArn}`
 * status we are interested in is `SUCCEEDED` referring to the state machine execution has completed
 * At last, optionally filtering out events that are not in `{region}` region.
 
