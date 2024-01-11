@@ -38,11 +38,11 @@ The state machine execution input is a pass through from the [Main State Machine
 | input.uuid | Universally unique identifier (Version 4) | Mandatory |
 | input.bucket | Ingest bucket where it stores the uploaded media file | Mandatory |
 |input.key | Location of the uploaded media file | Mandatory |
-| _input.destination.bucket_ | Proxy bucket where it stores generated proxies, thumbnail images, AI/ML metadata JSON files. If not specified, it uses the proxy bucket created by the solution | Optional |
+| _input.destination.bucket_ | Proxy bucket where it stores generated proxies, thumbnail images, AI/ML metadata JSON files. If not specified, it uses the proxy bucket created by the guidance | Optional |
 | _input.destination.prefix_ | Location of where to store generated proxies, thumbnail images, AI/ML metadata JSON files. If not specified, it uses the UUID prefix. | Optional |
 | _input.group_ | Grouping multiple uploaded media files and store them in the ingest bucket with a top-level prefix of the specified "GROUP" | Optional |
 | _input.attributes.*_ | key value pair of additional attributes of the media file, stored as object metadata. | Optional |
-| _input.aiOptions.*_ | AI/ML options to run the analysis workflow. If not specified, the solution uses the default AI/ML options specified when the Amazon CloudFormation stack was created | Optional |
+| _input.aiOptions.*_ | AI/ML options to run the analysis workflow. If not specified, the guidance uses the default AI/ML options specified when the Amazon CloudFormation stack was created | Optional |
 
 __
 
