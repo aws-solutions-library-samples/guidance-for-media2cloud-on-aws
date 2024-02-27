@@ -261,9 +261,6 @@ export default class PhotoPreview extends BasePreview {
     const items = [];
     while (data.ModerationLabels.length) {
       const moderation = data.ModerationLabels.shift();
-      if (!moderation.ParentName) {
-        continue;
-      }
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.Moderation,
         name: moderation.Name,
