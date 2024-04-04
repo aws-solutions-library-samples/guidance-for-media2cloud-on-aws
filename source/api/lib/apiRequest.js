@@ -4,6 +4,7 @@
 const {
   ApiOps,
   CommonUtils,
+  M2CException,
 } = require('core-lib');
 const AnalysisOp = require('./operations/analysisOp');
 const AssetOp = require('./operations/assetOp');
@@ -16,11 +17,14 @@ const ComprehendOp = require('./operations/comprehendOp');
 const StatsOp = require('./operations/statsOp');
 const UsersOp = require('./operations/usersOp');
 const SettingsOp = require('./operations/settingsOp');
+const GenAIOp = require('./operations/genaiOp');
+const FaceIndexerOp = require('./operations/faceIndexerOp');
 
 const OP_REKOGNITION = 'rekognition';
 const OP_TRANSCRIBE = 'transcribe';
 const OP_COMPREHEND = 'comprehend';
 const OP_SETTINGS = ApiOps.AIOptionsSettings.split('/')[0];
+const OP_GENAI = 'genai';
 
 class ApiRequest {
   constructor(event, context) {
@@ -41,7 +45,7 @@ class ApiRequest {
 
     if (this.$cognitoIdentityId
       && !CommonUtils.validateCognitoIdentityId(this.$cognitoIdentityId)) {
-      throw new Error('invalid user id');
+      throw new M2CException('invalid user id');
     }
 
     try {
@@ -126,7 +130,13 @@ class ApiRequest {
     if (op === OP_SETTINGS) {
       return new SettingsOp(this);
     }
-    throw new Error(`operation '${(this.pathParameters || {}).operation}' not supported`);
+    if (op === OP_GENAI) {
+      return new GenAIOp(this);
+    }
+    if (op === ApiOps.FaceIndexer) {
+      return new FaceIndexerOp(this);
+    }
+    throw new M2CException(`operation '${(this.pathParameters || {}).operation}' not supported`);
   }
 }
 

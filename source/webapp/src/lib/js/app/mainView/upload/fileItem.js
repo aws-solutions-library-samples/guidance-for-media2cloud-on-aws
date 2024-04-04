@@ -5,13 +5,17 @@ import Localization from '../../shared/localization.js';
 import AppUtils from '../../shared/appUtils.js';
 import mxReadable from '../../mixins/mxReadable.js';
 
+const {
+  MimeGetMime,
+} = window.MimeWrapper;
+
 class BaseFile extends mxReadable(class {}) {
   constructor(name, file, canSupport = true) {
     super();
     this.$displayName = name;
     this.$canSupport = !!canSupport;
     this.$file = file;
-    this.$mime = AppUtils.Mime.getMime(file);
+    this.$mime = MimeGetMime(file);
     this.$fileId = `file-${AppUtils.randomHexstring()}`;
   }
 
@@ -77,6 +81,7 @@ class BaseFile extends mxReadable(class {}) {
         boundary: 'window',
       });
     btnRemove.off('click').on('click', (event) => {
+      // btnRemove.tooltip('hide');
       li.trigger(BaseFile.Events.File.Remove, [this]);
     });
 
@@ -109,39 +114,27 @@ class BaseFile extends mxReadable(class {}) {
       subtype,
     ] = (this.mime || '').split('/');
 
-    switch (type) {
-      case 'video':
-        return 'far fa-file-video';
-      case 'audio':
-        return 'far fa-file-audio';
-      case 'image':
-        return 'far fa-file-image';
-      default: //do nothing
-    }
-
-    if (subtype === 'pdf') {
-      return 'far fa-file-pdf';
-    }
-    if (subtype === 'msword' || subtype === 'vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      return 'far fa-file-word';
-    }
-    if (subtype === 'vnd.ms-powerpoint' || subtype === 'vnd.openxmlformats-officedocument.presentationml.presentation') {
-      return 'far fa-file-powerpoint';
-    }
-    if (subtype === 'vnd.ms-excel' || subtype === 'vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-      return 'far fa-file-excel';
-    }
-    if (subtype === 'zip' || subtype === 'x-7z-compressed' || subtype === 'vnd.rar' || subtype === 'gzip') {
-      return 'far fa-file-archive';
-    }
-    if (subtype === 'csv') {
-      return 'fas fa-file-csv';
-    }
-    if (subtype === 'json' || subtype === 'xml') {
-      return 'far fa-file-code';
-    }
-
-    return 'far fa-file-alt';
+    return (type === 'video')
+      ? 'far fa-file-video'
+      : (type === 'audio')
+        ? 'far fa-file-audio'
+        : (type === 'image')
+          ? 'far fa-file-image'
+          : (subtype === 'pdf')
+            ? 'far fa-file-pdf'
+            : (subtype === 'msword' || subtype === 'vnd.openxmlformats-officedocument.wordprocessingml.document')
+              ? 'far fa-file-word'
+              : (subtype === 'vnd.ms-powerpoint' || subtype === 'vnd.openxmlformats-officedocument.presentationml.presentation')
+                ? 'far fa-file-powerpoint'
+                : (subtype === 'vnd.ms-excel' || subtype === 'vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                  ? 'far fa-file-excel'
+                  : (subtype === 'zip' || subtype === 'x-7z-compressed' || subtype === 'vnd.rar' || subtype === 'gzip')
+                    ? 'far fa-file-archive'
+                    : (subtype === 'csv')
+                      ? 'fas fa-file-csv'
+                      : (subtype === 'json' || subtype === 'xml')
+                        ? 'far fa-file-code'
+                        : 'far fa-file-alt';
   }
 }
 

@@ -29,47 +29,45 @@ class MD5Lib extends BaseLib {
 
     if (!this.fileSize) {
       const response = await CommonUtils.headObject(src.bucket, src.key);
-      this.fileSize = Number.parseInt(response.ContentLength, 10);
+      this.fileSize = Number(response.ContentLength);
     }
 
     this.bytesRead = 0;
 
-    const responseData = await new Promise((resolve, reject) => {
-      const spark = new Spark.ArrayBuffer();
-      if (this.intermediateHash) {
-        spark.setState(this.intermediateHash);
-      }
+    const spark = new Spark.ArrayBuffer();
+    if (this.intermediateHash) {
+      spark.setState(this.intermediateHash);
+    }
 
-      const [
-        start,
-        end,
-      ] = this.calculateByteRange();
+    const [
+      start,
+      end,
+    ] = this.calculateByteRange();
 
-      const stream = CommonUtils.createReadStream(src.bucket, src.key, {
-        Range: `bytes=${start}-${end}`,
-      });
+    const range = {
+      Range: `bytes=${start}-${end}`,
+    };
 
-      stream.on('error', e =>
-        reject(e));
+    const stream = await CommonUtils.createReadStream(
+      src.bucket,
+      src.key,
+      range
+    );
 
-      stream.on('data', async (data) => {
-        this.bytesRead += data.length;
-        spark.append(data);
-      });
+    for await (const chunk of stream) {
+      this.bytesRead += chunk.length;
+      spark.append(chunk);
+    }
 
-      stream.on('end', async () => {
-        if ((this.byteStart + this.bytesRead) >= this.fileSize) {
-          this.computed = spark.end();
-          this.setChecksumCompleted();
-        } else {
-          this.intermediateHash = spark.getState();
-          this.setChecksumInProgress();
-        }
-        resolve(this.stateData.toJSON());
-      });
-    });
+    if ((this.byteStart + this.bytesRead) >= this.fileSize) {
+      this.computed = spark.end();
+      this.setChecksumCompleted();
+    } else {
+      this.intermediateHash = spark.getState();
+      this.setChecksumInProgress();
+    }
 
-    return responseData;
+    return this.stateData.toJSON();
   }
 }
 

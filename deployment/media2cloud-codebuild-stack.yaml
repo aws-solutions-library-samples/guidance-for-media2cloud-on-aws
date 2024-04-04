@@ -1,0 +1,670 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: (%%SOLUTION_ID%%) Media2Cloud CodeBuild Stack - Build open source models and publish to Amazon ECR repository. Version %%VERSION%%
+
+Mappings:
+    Workflow:
+        CustomResources:
+            Package: "%%PKG_CUSTOM_RESOURCES%%"
+            Name: codebuild-custom-resources
+    CodeBuild:
+        Image:
+            Name: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+            Type: LINUX_CONTAINER
+        Compute:
+            Type: BUILD_GENERAL1_LARGE
+    DockerImage:
+        Faiss:
+            Package: "%%FAISS_PKG%%"
+        Shoppable:
+            Package: "%%SHOPPABLE_PKG%%"
+        ZeroshotClassifier:
+            Package: "%%ZEROSHOT_CLASSIFIER_PKG%%"
+        ZeroshotObject:
+            Package: "%%ZEROSHOT_OBJECT_PKG%%"
+    Node:
+        Runtime:
+            Version: nodejs20.x
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: S3Bucket
+    KeyPrefix:
+        Type: String
+        Description: KeyPrefix
+    SolutionId:
+        Type: String
+        Description: SolutionId
+    SolutionLowerCaseId:
+        Type: String
+        Description: SolutionLowerCaseId
+    ResourcePrefix:
+        Type: String
+        Description: ResourcePrefix
+    # model specific
+    # Faiss
+    FaissRepositoryName:
+        Type: String
+        Description: FaissRepositoryName
+    FaissImageTag:
+        Type: String
+        Description: FaissImageTag
+    FaissImageUri:
+        Type: String
+        Description: FaissImageUri
+    # Shoppable
+    ShoppableRepositoryName:
+        Type: String
+        Description: ShoppableRepositoryName
+    ShoppableImageTag:
+        Type: String
+        Description: ShoppableImageTag
+    ShoppableImageUri:
+        Type: String
+        Description: ShoppableImageUri
+    # ZeroshotClassifier
+    ZeroshotClassifierRepositoryName:
+        Type: String
+        Description: ZeroshotClassifierRepositoryName
+    ZeroshotClassifierImageTag:
+        Type: String
+        Description: ZeroshotClassifierImageTag
+    ZeroshotClassifierImageUri:
+        Type: String
+        Description: ZeroshotClassifierImageUri
+    # ZeroshotObject
+    ZeroshotObjectRepositoryName:
+        Type: String
+        Description: ZeroshotObjectRepositoryName
+    ZeroshotObjectImageTag:
+        Type: String
+        Description: ZeroshotObjectImageTag
+    ZeroshotObjectImageUri:
+        Type: String
+        Description: ZeroshotObjectImageUri
+
+Conditions:
+    bBuildFaiss: !Equals
+        - !Ref FaissImageUri
+        - ""
+    bBuildShoppable: !Equals
+        - !Ref ShoppableImageUri
+        - ""
+    bBuildZeroshotClassifier: !Equals
+        - !Ref ZeroshotClassifierImageUri
+        - ""
+    bBuildZeroshotObject: !Equals
+        - !Ref ZeroshotObjectImageUri
+        - ""
+
+Resources:
+    ################################################################################
+    #
+    # CloudFormation Custom Resource to start and wait for CodeBuild process
+    #
+    ################################################################################
+    CodeBuildCustomResourceLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                -
+                    name: !FindInMap
+                        - Workflow
+                        - CustomResources
+                        - Name
+            RetentionInDays: 7
+
+    CodeBuildCustomResourceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            # RoleName: !Sub ${ResourcePrefix}-CodeBuildResource
+            Path: /
+            AssumeRolePolicyDocument:
+                Statement:
+                    -
+                        Action: sts:AssumeRole
+                        Effect: Allow
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Policies:
+                -
+                    PolicyName: AllowStartBuild
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt CodeBuildCustomResourceLogGroup.Arn
+                            # CodeBuild
+                            -
+                                Effect: Allow
+                                Action: codebuild:StartBuild
+                                Resource:
+                                    - !GetAtt FaissCodeBuild.Arn
+                                    - !GetAtt ShoppableCodeBuild.Arn
+                                    - !GetAtt ZeroshotClassifierCodeBuild.Arn
+                                    - !GetAtt ZeroshotObjectCodeBuild.Arn
+
+    CodeBuildCustomResourceLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                -
+                    name: !FindInMap
+                        - Workflow
+                        - CustomResources
+                        - Name
+            Description: !Sub (${ResourcePrefix}) codebuild custom resource lambda to start build
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt CodeBuildCustomResourceRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - Workflow
+                            - CustomResources
+                            - Package
+
+    ################################################################################
+    #
+    # CodeBuild to build and publish docker images
+    # * IAM Role
+    # * Faiss docker image
+    #
+    ################################################################################
+    CodeBuildRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Wildcard character for CodeBuild to create loggroup
+        Properties:
+            # RoleName: !Sub ${ResourcePrefix}-CodeBuild
+            Path: /
+            AssumeRolePolicyDocument:
+                Statement:
+                    -
+                        Action: sts:AssumeRole
+                        Effect: Allow
+                        Principal:
+                            Service: codebuild.amazonaws.com
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-CodeBuildPolicy
+                    PolicyDocument:
+                        Version: 2012-10-17
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild:*
+                            # S3 - download docker package
+                            -
+                                Effect: Allow
+                                Action: s3:GetObject
+                                Resource:
+                                    - !Sub
+                                        - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                                        -
+                                            package: !FindInMap
+                                                - DockerImage
+                                                - Faiss
+                                                - Package
+                                    - !Sub
+                                        - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                                        -
+                                            package: !FindInMap
+                                                - DockerImage
+                                                - Shoppable
+                                                - Package
+                                    - !Sub
+                                        - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                                        -
+                                            package: !FindInMap
+                                                - DockerImage
+                                                - ZeroshotClassifier
+                                                - Package
+                                    - !Sub
+                                        - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                                        -
+                                            package: !FindInMap
+                                                - DockerImage
+                                                - ZeroshotObject
+                                                - Package
+                            # ECR - push docker image
+                            -
+                                Effect: Allow
+                                Action:
+                                    - ecr:CreateRepository
+                                    - ecr:GetAuthorizationToken
+                                Resource: "*"
+                            -
+                                Effect: Allow
+                                Action:
+                                    - ecr:BatchCheckLayerAvailability
+                                    - ecr:CompleteLayerUpload
+                                    - ecr:InitiateLayerUpload
+                                    - ecr:PutImage
+                                    - ecr:UploadLayerPart
+                                Resource:
+                                    - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${FaissRepositoryName}
+                                    - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ShoppableRepositoryName}
+                                    - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ZeroshotClassifierRepositoryName}
+                                    - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ZeroshotObjectRepositoryName}
+
+    # Faiss docker image
+    FaissCodeBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${ResourcePrefix}-${FaissRepositoryName}
+            Description: (Faiss) Build and publish docker image to Amazon ECR
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+            Source:
+                Type: S3
+                Location: !Sub
+                    - ${S3Bucket}/${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - DockerImage
+                            - Faiss
+                            - Package
+                BuildSpec: |
+                    version: 0.2
+                    phases:
+                        pre_build:
+                            commands:
+                                - echo "== Logging in to Amazon ECR =="
+                                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        build:
+                            commands:
+                                - echo "== Creating $IMAGE_REPO_NAME repository"
+                                - aws ecr create-repository --region $AWS_REGION --repository-name $IMAGE_REPO_NAME --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256; EXITCODE=$?
+                                - echo "== Creating $IMAGE_REPO_NAME repository (code=$EXITCODE) [COMPLETED]"
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] =="
+                                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG =="
+                                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                        post_build:
+                            commands:
+                                - echo "=== post_build - CODEBUILD_BUILD_SUCCEEDING = $CODEBUILD_BUILD_SUCCEEDING ==="
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then echo "== Sending SUCCESS signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"SUCCESS\",\"Reason\":\"Docker image published\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"ImageUri\":\"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG\"}}" "$CFN_ResponseURL"; fi
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -ne 1 ]; then echo "== Sending FAILED signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"FAILED\",\"Reason\":\"Docker image failed\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"Error\":\"Failed to build docker image\"}}" "$CFN_ResponseURL"; fi
+            Environment:
+                ComputeType: !FindInMap
+                    - CodeBuild
+                    - Compute
+                    - Type
+                Image: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Name
+                Type: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Type
+                EnvironmentVariables:
+                    -
+                        Name: AWS_REGION
+                        Value: !Ref AWS::Region
+                    -
+                        Name: AWS_ACCOUNT_ID
+                        Value: !Ref AWS::AccountId
+            Artifacts:
+                Type: NO_ARTIFACTS
+            EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+            TimeoutInMinutes: 60
+            QueuedTimeoutInMinutes: 60
+            LogsConfig:
+                CloudWatchLogs:
+                    GroupName: /aws/codebuild
+                    StreamName: !Sub ${ResourcePrefix}-${FaissRepositoryName}
+                    Status: ENABLED
+
+    FaissStartBuild:
+        Condition: bBuildFaiss
+        Type: Custom::StartBuildDelayResponse
+        Properties:
+            ServiceToken: !GetAtt CodeBuildCustomResourceLambda.Arn
+            Data:
+                projectName: !Ref FaissCodeBuild
+                environmentVariablesOverride:
+                    -
+                        name: IMAGE_REPO_NAME
+                        value: !Ref FaissRepositoryName
+                        type: PLAINTEXT
+                    -
+                        name: IMAGE_TAG
+                        value: !Ref FaissImageTag
+                        type: PLAINTEXT
+
+    # Shoppable docker image
+    ShoppableCodeBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${ResourcePrefix}-${ShoppableRepositoryName}
+            Description: (Shoppable) Build and publish docker image to Amazon ECR
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+            Source:
+                Type: S3
+                Location: !Sub
+                    - ${S3Bucket}/${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - DockerImage
+                            - Shoppable
+                            - Package
+                BuildSpec: |
+                    version: 0.2
+                    phases:
+                        pre_build:
+                            commands:
+                                - echo "== Logging in to Amazon ECR =="
+                                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        build:
+                            commands:
+                                - echo "== Creating $IMAGE_REPO_NAME repository"
+                                - aws ecr create-repository --region $AWS_REGION --repository-name $IMAGE_REPO_NAME --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256; EXITCODE=$?
+                                - echo "== Creating $IMAGE_REPO_NAME repository (code=$EXITCODE) [COMPLETED]"
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] =="
+                                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG =="
+                                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                        post_build:
+                            commands:
+                                - echo "=== post_build - CODEBUILD_BUILD_SUCCEEDING = $CODEBUILD_BUILD_SUCCEEDING ==="
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then echo "== Sending SUCCESS signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"SUCCESS\",\"Reason\":\"Docker image published\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"ImageUri\":\"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG\"}}" "$CFN_ResponseURL"; fi
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -ne 1 ]; then echo "== Sending FAILED signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"FAILED\",\"Reason\":\"Docker image failed\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"Error\":\"Failed to build docker image\"}}" "$CFN_ResponseURL"; fi
+            Environment:
+                ComputeType: !FindInMap
+                    - CodeBuild
+                    - Compute
+                    - Type
+                Image: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Name
+                Type: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Type
+                EnvironmentVariables:
+                    -
+                        Name: AWS_REGION
+                        Value: !Ref AWS::Region
+                    -
+                        Name: AWS_ACCOUNT_ID
+                        Value: !Ref AWS::AccountId
+            Artifacts:
+                Type: NO_ARTIFACTS
+            EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+            TimeoutInMinutes: 60
+            QueuedTimeoutInMinutes: 60
+            LogsConfig:
+                CloudWatchLogs:
+                    GroupName: /aws/codebuild
+                    StreamName: !Sub ${ResourcePrefix}-${ShoppableRepositoryName}
+                    Status: ENABLED
+
+    ShoppableStartBuild:
+        Condition: bBuildShoppable
+        Type: Custom::StartBuildDelayResponse
+        Properties:
+            ServiceToken: !GetAtt CodeBuildCustomResourceLambda.Arn
+            Data:
+                projectName: !Ref ShoppableCodeBuild
+                environmentVariablesOverride:
+                    -
+                        name: IMAGE_REPO_NAME
+                        value: !Ref ShoppableRepositoryName
+                        type: PLAINTEXT
+                    -
+                        name: IMAGE_TAG
+                        value: !Ref ShoppableImageTag
+                        type: PLAINTEXT
+
+    # ZeroshotClassifier docker image
+    ZeroshotClassifierCodeBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${ResourcePrefix}-${ZeroshotClassifierRepositoryName}
+            Description: (ZeroshotClassifier) Build and publish docker image to Amazon ECR
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+            Source:
+                Type: S3
+                Location: !Sub
+                    - ${S3Bucket}/${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - DockerImage
+                            - ZeroshotClassifier
+                            - Package
+                BuildSpec: |
+                    version: 0.2
+                    phases:
+                        pre_build:
+                            commands:
+                                - echo "== Logging in to Amazon ECR =="
+                                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        build:
+                            commands:
+                                - echo "== Creating $IMAGE_REPO_NAME repository"
+                                - aws ecr create-repository --region $AWS_REGION --repository-name $IMAGE_REPO_NAME --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256; EXITCODE=$?
+                                - echo "== Creating $IMAGE_REPO_NAME repository (code=$EXITCODE) [COMPLETED]"
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] =="
+                                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG =="
+                                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                        post_build:
+                            commands:
+                                - echo "=== post_build - CODEBUILD_BUILD_SUCCEEDING = $CODEBUILD_BUILD_SUCCEEDING ==="
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then echo "== Sending SUCCESS signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"SUCCESS\",\"Reason\":\"Docker image published\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"ImageUri\":\"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG\"}}" "$CFN_ResponseURL"; fi
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -ne 1 ]; then echo "== Sending FAILED signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"FAILED\",\"Reason\":\"Docker image failed\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"Error\":\"Failed to build docker image\"}}" "$CFN_ResponseURL"; fi
+            Environment:
+                ComputeType: !FindInMap
+                    - CodeBuild
+                    - Compute
+                    - Type
+                Image: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Name
+                Type: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Type
+                EnvironmentVariables:
+                    -
+                        Name: AWS_REGION
+                        Value: !Ref AWS::Region
+                    -
+                        Name: AWS_ACCOUNT_ID
+                        Value: !Ref AWS::AccountId
+            Artifacts:
+                Type: NO_ARTIFACTS
+            EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+            TimeoutInMinutes: 60
+            QueuedTimeoutInMinutes: 60
+            LogsConfig:
+                CloudWatchLogs:
+                    GroupName: /aws/codebuild
+                    StreamName: !Sub ${ResourcePrefix}-${ZeroshotClassifierRepositoryName}
+                    Status: ENABLED
+
+    ZeroshotClassifierStartBuild:
+        Condition: bBuildZeroshotClassifier
+        Type: Custom::StartBuildDelayResponse
+        Properties:
+            ServiceToken: !GetAtt CodeBuildCustomResourceLambda.Arn
+            Data:
+                projectName: !Ref ZeroshotClassifierCodeBuild
+                environmentVariablesOverride:
+                    -
+                        name: IMAGE_REPO_NAME
+                        value: !Ref ZeroshotClassifierRepositoryName
+                        type: PLAINTEXT
+                    -
+                        name: IMAGE_TAG
+                        value: !Ref ZeroshotClassifierImageTag
+                        type: PLAINTEXT
+
+    # ZeroshotObject docker image
+    ZeroshotObjectCodeBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${ResourcePrefix}-${ZeroshotObjectRepositoryName}
+            Description: (ZeroshotObject) Build and publish docker image to Amazon ECR
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+            Source:
+                Type: S3
+                Location: !Sub
+                    - ${S3Bucket}/${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - DockerImage
+                            - ZeroshotObject
+                            - Package
+                BuildSpec: |
+                    version: 0.2
+                    phases:
+                        pre_build:
+                            commands:
+                                - echo "== Logging in to Amazon ECR =="
+                                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        build:
+                            commands:
+                                - echo "== Creating $IMAGE_REPO_NAME repository"
+                                - aws ecr create-repository --region $AWS_REGION --repository-name $IMAGE_REPO_NAME --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256; EXITCODE=$?
+                                - echo "== Creating $IMAGE_REPO_NAME repository (code=$EXITCODE) [COMPLETED]"
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] =="
+                                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG =="
+                                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                        post_build:
+                            commands:
+                                - echo "=== post_build - CODEBUILD_BUILD_SUCCEEDING = $CODEBUILD_BUILD_SUCCEEDING ==="
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then echo "== Sending SUCCESS signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"SUCCESS\",\"Reason\":\"Docker image published\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"ImageUri\":\"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG\"}}" "$CFN_ResponseURL"; fi
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -ne 1 ]; then echo "== Sending FAILED signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"FAILED\",\"Reason\":\"Docker image failed\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"Error\":\"Failed to build docker image\"}}" "$CFN_ResponseURL"; fi
+            Environment:
+                ComputeType: !FindInMap
+                    - CodeBuild
+                    - Compute
+                    - Type
+                Image: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Name
+                Type: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Type
+                EnvironmentVariables:
+                    -
+                        Name: AWS_REGION
+                        Value: !Ref AWS::Region
+                    -
+                        Name: AWS_ACCOUNT_ID
+                        Value: !Ref AWS::AccountId
+            Artifacts:
+                Type: NO_ARTIFACTS
+            EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+            TimeoutInMinutes: 60
+            QueuedTimeoutInMinutes: 60
+            LogsConfig:
+                CloudWatchLogs:
+                    GroupName: /aws/codebuild
+                    StreamName: !Sub ${ResourcePrefix}-${ZeroshotObjectRepositoryName}
+                    Status: ENABLED
+
+    ZeroshotObjectStartBuild:
+        Condition: bBuildZeroshotObject
+        Type: Custom::StartBuildDelayResponse
+        Properties:
+            ServiceToken: !GetAtt CodeBuildCustomResourceLambda.Arn
+            Data:
+                projectName: !Ref ZeroshotObjectCodeBuild
+                environmentVariablesOverride:
+                    -
+                        name: IMAGE_REPO_NAME
+                        value: !Ref ZeroshotObjectRepositoryName
+                        type: PLAINTEXT
+                    -
+                        name: IMAGE_TAG
+                        value: !Ref ZeroshotObjectImageTag
+                        type: PLAINTEXT
+
+Outputs:
+    FaissImageUri:
+        Value: !If
+            - bBuildFaiss
+            - !GetAtt FaissStartBuild.ImageUri
+            - !Ref FaissImageUri
+        Description: FaissImageUri
+    ShoppableImageUri:
+        Value: !If
+            - bBuildShoppable
+            - !GetAtt ShoppableStartBuild.ImageUri
+            - !Ref ShoppableImageUri
+        Description: ShoppableImageUri
+    ZeroshotClassifierImageUri:
+        Value: !If
+            - bBuildZeroshotClassifier
+            - !GetAtt ZeroshotClassifierStartBuild.ImageUri
+            - !Ref ZeroshotClassifierImageUri
+        Description: ZeroshotClassifierImageUri
+    ZeroshotObjectImageUri:
+        Value: !If
+            - bBuildZeroshotObject
+            - !GetAtt ZeroshotObjectStartBuild.ImageUri
+            - !Ref ZeroshotObjectImageUri
+        Description: ZeroshotObjectImageUri
+    SolutionInfo:
+        Value: !Sub ${SolutionId} (${SolutionLowerCaseId})
+        Description: SolutionInfo

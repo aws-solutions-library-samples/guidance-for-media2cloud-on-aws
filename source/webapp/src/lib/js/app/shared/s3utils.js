@@ -2,74 +2,205 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
+import {
+  GetUserSession,
+  RegisterUserSessionEvent,
+  SESSION_SIGNIN,
+  SESSION_SIGNOUT,
+  SESSION_TOKEN_REFRESHED,
+} from './cognito/userSession.js';
+import AppUtils from './appUtils.js';
 
-export default class S3Utils {
-  static get Constants() {
-    return {
-      Expiration: 60 * 60 * 2,
-    };
+const {
+  S3Client,
+  HeadObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  Upload,
+  getSignedUrl,
+} = window.AWSv3;
+
+const REGION = SolutionManifest.Region;
+const EXPECTED_BUCKET_OWNER = SolutionManifest.S3.ExpectedBucketOwner;
+const EXPIRES_IN = 3600 * 2;
+const MAX_CONCURRENT_UPLOAD = 4;
+const MULTIPART_SIZE = 8 * 1024 * 1024;
+
+let _s3Client;
+
+function updateClient(userSession) {
+  _s3Client = new S3Client({
+    region: REGION,
+    credentials: userSession.fromCredentials(),
+    computeChecksums: true,
+    applyChecksum: true,
+  });
+}
+
+async function onUserSessionChangeEvent(event, session) {
+  if (event === SESSION_SIGNIN
+  || event === SESSION_TOKEN_REFRESHED) {
+    updateClient(session);
+  }
+}
+
+RegisterUserSessionEvent(
+  's3utils',
+  onUserSessionChangeEvent.bind(this)
+);
+
+/* singleton implementation */
+let _singleton;
+
+class S3Utils {
+  constructor() {
+    _singleton = this;
+    this.$id = AppUtils.randomHexstring();
   }
 
-  static getInstance(params) {
-    return new AWS.S3({
-      apiVersion: '2006-03-01',
-      computeChecksums: true,
-      signatureVersion: 'v4',
-      s3DisableBodySigning: false,
-      useAccelerateEndpoint: !!((SolutionManifest.S3 || {}).UseAccelerateEndpoint),
-      customUserAgent: SolutionManifest.CustomUserAgent,
-      ...params,
-    });
+  get id() {
+    return this.$id;
   }
 
-  static signUrl(bucket, key) {
-    return S3Utils.getInstance().getSignedUrl('getObject', {
+  async signUrl(
+    bucket,
+    key
+  ) {
+    const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      Expires: S3Utils.Constants.Expiration,
     });
+
+    return getSignedUrl(
+      _s3Client,
+      command,
+      {
+        expiresIn: EXPIRES_IN,
+      }
+    );
   }
 
-  static async getObject(bucket, key) {
-    return S3Utils.getInstance().getObject({
+  async headObject(
+    bucket,
+    key
+  ) {
+    const command = new HeadObjectCommand({
       Bucket: bucket,
       Key: key,
-      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
-    }).promise();
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+    });
+
+    return _s3Client.send(command)
+      .then((res) => {
+        delete res.$metadata;
+        return res;
+      });
   }
 
-  static async listObjects(bucket, prefix) {
-    const collection = [];
-    const s3 = S3Utils.getInstance();
+  async getObject(
+    bucket,
+    key
+  ) {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+    });
+
+    return _s3Client.send(command)
+      .then((res) => {
+        delete res.$metadata;
+        return res;
+      });
+  }
+
+  async listObjects(
+    bucket,
+    prefix
+  ) {
+    let collection = [];
     let response;
+
     do {
-      response = await s3.listObjectsV2({
+      const command = new ListObjectsV2Command({
         Bucket: bucket,
         Prefix: prefix,
         MaxKeys: 100,
         ContinuationToken: (response || {}).NextContinuationToken,
-        ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
-      }).promise();
-      collection.splice(collection.length, 0, ...response.Contents);
+        ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+      });
+
+      response = await _s3Client.send(command);
+
+      collection = collection.concat(response.Contents);
     } while ((response || {}).NextContinuationToken);
+
     return collection;
   }
 
-  static async upload(bucket, key, data, mime) {
-    return S3Utils.getInstance().upload({
+  async deleteObject(
+    bucket,
+    key
+  ) {
+    const command = new DeleteObjectCommand({
       Bucket: bucket,
       Key: key,
-      Body: data,
-      ContentType: mime,
-      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
-    }).promise();
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+    });
+
+    return _s3Client.send(command)
+      .then((res) => {
+        delete res.$metadata;
+        return res;
+      });
   }
 
-  static async deleteObject(bucket, key) {
-    return S3Utils.getInstance().deleteObject({
-      Bucket: bucket,
-      Key: key,
-      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
-    }).promise();
+  async upload(
+    params,
+    fn
+  ) {
+    const multipartUpload = new Upload({
+      client: _s3Client,
+      params: {
+        ...params,
+        ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+      },
+      queueSize: MAX_CONCURRENT_UPLOAD,
+      partSize: MULTIPART_SIZE,
+      leavePartsOnError: false,
+    });
+
+    multipartUpload.on('httpUploadProgress', (data) => {
+      if (typeof fn === 'function') {
+        fn(data);
+      } else {
+        console.log(
+          'INFO:',
+          'httpUploadProgress:',
+          data,
+          `(${params.Key})`
+        );
+      }
+    });
+
+    return multipartUpload.done();
   }
 }
+
+const GetS3Utils = () => {
+  if (_singleton === undefined) {
+    const notused_ = new S3Utils();
+
+    const session = GetUserSession();
+    updateClient(session);
+  }
+
+  return _singleton;
+};
+
+export {
+  REGION,
+  GetS3Utils,
+};

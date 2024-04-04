@@ -109,7 +109,6 @@ function copy_standard_documents() {
     "LICENSE.txt" \
     "NOTICE.txt" \
     "README.md" \
-    "solution-manifest.yaml" \
   )
   pushd "$DEPLOYMENT_DIR"/..
   pwd
@@ -130,6 +129,7 @@ function copy_source_folder() {
   find . -name "dist" -type d -exec rm -rf "{}" \; 2> /dev/null
   find . -name "node_modules" -type d -exec rm -rf "{}" \; 2> /dev/null
   find . -name "image-process-lib" -type d -exec rm -rf "{}/t" \; 2> /dev/null
+  find . -name "package-lock.json" -type f -delete
   popd
 }
 

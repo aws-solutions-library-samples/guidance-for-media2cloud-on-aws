@@ -6,14 +6,14 @@ const {
   StateData,
   AnalysisError,
 } = require('core-lib');
-const StateIndexAnalysisResults = require('./states/index-analysis-results');
 const StateStartDocumentAnalysis = require('./states/start-document-analysis');
+const StateCollectAnalysisResults = require('./states/collect-analysis-results');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_PROXY_BUCKET',
@@ -37,8 +37,8 @@ exports.handler = async (event, context) => {
       case StateData.States.StartDocumentAnalysis:
         instance = new StateStartDocumentAnalysis(stateData);
         break;
-      case StateData.States.IndexAnalysisResults:
-        instance = new StateIndexAnalysisResults(stateData);
+      case StateData.States.CollectDocumentAnalysisResults:
+        instance = new StateCollectAnalysisResults(stateData);
         break;
       default:
         break;

@@ -14,7 +14,7 @@ Mappings:
             Name: demo
     Node:
         Runtime:
-            Version: nodejs16.x
+            Version: nodejs20.x
     Cognito:
         Group:
             Viewer: viewer
@@ -40,9 +40,9 @@ Parameters:
     CustomUserAgent:
         Type: String
         Description: CustomUserAgent
-    AnonymizedUsage:
+    AnonymousUsage:
         Type: String
-        Description: AnonymizedUsage
+        Description: AnonymousUsage
     CustomResourcesLambdaArn:
         Type: String
         Description: CustomResourcesLambdaArn
@@ -55,6 +55,9 @@ Parameters:
     CoreLibLayer:
         Type: String
         Description: CoreLibLayer
+    TokenizerLayer:
+        Type: String
+        Description: TokenizerLayer
     SolutionUuid:
         Type: String
         Description: SolutionUuid
@@ -88,6 +91,9 @@ Parameters:
     OpenSearchDomainEndpoint:
         Type: String
         Description: OpenSearchDomainEndpoint
+    OpenSearchCollection:
+        Type: String
+        Description: OpenSearchCollection
     DefaultAIOptions:
         Type: String
         Description: DefaultAIOptions
@@ -97,6 +103,29 @@ Parameters:
     AIOptionsS3Key:
         Type: String
         Description: AIOptionsS3Key
+    BedrockSecondaryRegionAccess:
+        Type: String
+        Description: BedrockSecondaryRegionAccess
+    BedrockModelName:
+        Type: String
+        Description: BedrockModelName
+    BedrockModelId:
+        Type: String
+        Description: BedrockModelId
+    BedrockModelVersion:
+        Type: String
+        Description: BedrockModelVersion
+
+Conditions:
+    bOpenSearchServerless: !Not
+        - !Equals
+            - !Ref OpenSearchCollection
+            - ""
+    # allow access to Bedrock service if BedrockSecondaryRegionAccess is set
+    bBedrockSecondaryRegionAccess: !Not
+        - !Equals
+            - !Ref BedrockSecondaryRegionAccess
+            - ""
 
 Resources:
     ################################################################################
@@ -251,7 +280,39 @@ Resources:
                                 Resource:
                                     - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}
                                     - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*
+                            # OpenSearch Serverless
+                            -
+                                Effect: Allow
+                                Action: aoss:APIAccessAll
+                                Resource: !Sub arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${OpenSearchDomainName}
                             # Note: Attach Backend resources such as Step Functions and DynamoDB in the main stack
+
+    FoundationModelPolicy:
+        Condition: bBedrockSecondaryRegionAccess
+        Type: AWS::IAM::Policy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W12
+                        reason: wildcard character required for bedrock:ListFoundationModels, https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html
+        Properties:
+            Roles:
+                - !Ref ApiRole
+            PolicyName: FoundationModelInvokeEndpoint
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # Bedrock
+                    -
+                        Effect: Allow
+                        Action: bedrock:ListFoundationModels
+                        Resource: "*"
+                    # Bedrock models: Anthropic Claude V2
+                    -
+                        Effect: Allow
+                        Action: bedrock:InvokeModel
+                        Resource: !Sub arn:aws:bedrock:${BedrockSecondaryRegionAccess}::foundation-model/${BedrockModelId}
 
     ApiLambda:
         Type: AWS::Lambda::Function
@@ -276,7 +337,7 @@ Resources:
                 - Node
                 - Runtime
                 - Version
-            MemorySize: 128
+            MemorySize: 768
             Timeout: 300
             Handler: index.handler
             Role: !GetAtt ApiRole.Arn
@@ -291,6 +352,7 @@ Resources:
             Layers:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
+                - !Ref TokenizerLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -299,7 +361,7 @@ Resources:
                     ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
                     ENV_SOLUTION_ID: !Ref SolutionId
                     ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
-                    ENV_ANONYMIZED_USAGE: !Ref AnonymizedUsage
+                    ENV_ANONYMOUS_USAGE: !Ref AnonymousUsage
                     ENV_SOLUTION_UUID: !Ref SolutionUuid
                     ENV_IOT_HOST: !Ref IotHost
                     ENV_IOT_TOPIC: !Ref IotTopic
@@ -307,10 +369,21 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
+                    ENV_USE_OPENSEARCH_SERVERLESS: !If
+                        - bOpenSearchServerless
+                        - 1
+                        - 0
                     ENV_DEFAULT_AI_OPTIONS: !Ref DefaultAIOptions
                     ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
                     ENV_USER_POOL_ID: !Ref CognitoUserPool
                     ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
+                    ENV_BEDROCK_REGION: !If
+                        - bBedrockSecondaryRegionAccess
+                        - !Ref BedrockSecondaryRegionAccess
+                        - ""
+                    ENV_BEDROCK_MODEL_NAME: !Ref BedrockModelName
+                    ENV_BEDROCK_MODEL_ID: !Ref BedrockModelId
+                    ENV_BEDROCK_MODEL_VER: !Ref BedrockModelVersion
             Tags:
                 -
                     Key: SolutionId
@@ -748,6 +821,49 @@ Resources:
 
     ################################################################################
     #
+    # OpenSearch Serverless Access policy
+    #
+    ################################################################################
+    OSSFrontendAccessPolicy:
+        Condition: bOpenSearchServerless
+        Type: AWS::OpenSearchServerless::AccessPolicy
+        Properties:
+            Type: data
+            # Length: 32 characters, Pattern: ^[a-z][a-z0-9-]+$
+            Name: !Sub ${ResourcePrefix}-frontend
+            Description: Frontend Access policy
+            # Note: Principal cannot use asterisk
+            Policy: !Sub >-
+                [
+                    {
+                        "Rules": [
+                            {
+                                "ResourceType": "collection",
+                                "Resource": [
+                                    "collection/${OpenSearchCollection}"
+                                ],
+                                "Permission": [
+                                    "aoss:DescribeCollectionItems"
+                                ]
+                            },
+                            {
+                                "ResourceType": "index",
+                                "Resource": [
+                                    "index/${OpenSearchCollection}/*"
+                                ],
+                                "Permission": [
+                                    "aoss:ReadDocument"
+                                ]
+                            }
+                        ],
+                        "Principal": [
+                            "${ApiRole.Arn}"
+                        ]
+                    }
+                ]
+
+    ################################################################################
+    #
     # Cognito resources
     # * UserPool, IdentityPool, AppClient, & Authenticated role
     # * UserGroups (viewer, creator, & admin) & IAM roles and policies mapped to UserGroup
@@ -766,7 +882,7 @@ Resources:
             AdminCreateUserConfig:
                 AllowAdminCreateUserOnly: true
                 InviteMessageTemplate:
-                  EmailSubject: You are invited to AWS Media2Cloud demo portal
+                  EmailSubject: You are invited to Guidance for Media2Cloud on AWS demo portal
                   EmailMessage:
                     !Sub
                         - |-
@@ -867,7 +983,7 @@ Resources:
                             <div class="WordSection1">
                                 <h2>
                                 <span class="SubContent">
-                                    Welcome to AWS Media2Cloud demo portal<o:p></o:p>
+                                    Welcome to Guidance for Media2Cloud on AWS demo portal<o:p></o:p>
                                 </span>
                                 </h2>
 
@@ -927,7 +1043,7 @@ Resources:
 
                                 <p class="MainContent" style="padding-top: 30pt;">
                                 <span class="SubContent" style="font-size:12pt;">
-                                    <i>Team AWS Media2Cloud</i><o:p></o:p>
+                                    <i>Team AWSI MEGS</i><o:p></o:p>
                                 </span>
                                 </p>
 
@@ -957,6 +1073,8 @@ Resources:
                     RequireSymbols: true
                     RequireUppercase: true
             UserPoolName: !Sub ${ResourcePrefix}-userpool
+            UserPoolAddOns:
+                AdvancedSecurityMode: ENFORCED
 
     # Different usergroup(s)
     UserPoolGroupAdmin:
@@ -1458,3 +1576,6 @@ Outputs:
     HomePage:
         Value: !Sub https://${CloudFrontDistributionDomainName}
         Description: HomePage
+    FoundationModels:
+        Value: !Sub ${BedrockModelName}=${BedrockModelId}
+        Description: FoundationModels

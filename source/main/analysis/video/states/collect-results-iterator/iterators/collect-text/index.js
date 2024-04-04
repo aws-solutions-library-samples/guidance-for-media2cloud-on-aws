@@ -1,17 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  GetTextDetectionCommand,
+} = require('@aws-sdk/client-rekognition');
 const {
   AnalysisTypes,
-  Environment,
 } = require('core-lib');
 const BaseCollectResultsIterator = require('../shared/baseCollectResultsIterator');
 
@@ -21,15 +15,14 @@ const NAMED_KEY = 'TextDetections';
 class CollectTextIterator extends BaseCollectResultsIterator {
   constructor(stateData) {
     super(stateData, SUBCATEGORY, NAMED_KEY);
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    this.$func = rekog.getTextDetection.bind(rekog);
   }
 
   get [Symbol.toStringTag]() {
     return 'CollectTextIterator';
+  }
+
+  getRunCommand(params) {
+    return new GetTextDetectionCommand(params);
   }
 
   checkCriteria(text) {
@@ -39,26 +32,32 @@ class CollectTextIterator extends BaseCollectResultsIterator {
       : undefined;
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data
+  parseModelMetadata(dataset) {
+    return {
+      VideoMetadata: dataset.VideoMetadata,
+      TextModelVersion: dataset.TextModelVersion,
+    };
+  }
+
+  parseResults(dataset) {
+    const minConfidence = this.minConfidence;
+    /* also filter out if DetectedText is not a number or is less than 3 characters */
+    return dataset[NAMED_KEY]
       .filter((x) =>
-        (x.TextDetection || {}).Type === 'LINE')
-      .map((x) =>
-        this.checkCriteria((x.TextDetection || {}).DetectedText))
-      .filter((x) => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      try {
-        /* property name such as 'constructor' will throw error */
-        const unique = new Set(mapData[key]);
-        unique.add(seqFile);
-        mapData[key] = [...unique];
-      } catch (e) {
-        console.log('[ERR]: mapUniqueNameToSequenceFile: invalid text:', key, e.message);
-      }
-    }
-    return mapData;
+        x.TextDetection.Type === 'LINE'
+        && x.TextDetection.Confidence >= minConfidence
+        && (
+          !Number.isNaN(Number(x.TextDetection.DetectedText))
+          || /[a-zA-Z0-9]{3,}/.test(x.TextDetection.DetectedText)
+        ));
+  }
+
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.TextDetection.DetectedText)),
+    ];
   }
 }
 

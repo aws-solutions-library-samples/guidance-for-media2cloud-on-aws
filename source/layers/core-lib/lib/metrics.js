@@ -1,20 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const HTTPS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureHTTPs(require('https'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('https');
-  }
-})();
+let https = require('node:https');
 const Environment = require('./environment');
+const {
+  M2CException,
+} = require('./error');
+
+if (process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined) {
+  try {
+    const {
+      captureHTTPs,
+    } = require('aws-xray-sdk-core');
+    https = captureHTTPs(require('node:https'));
+  } catch (e) {
+    console.log('aws-xray-sdk-core not loaded');
+  }
+}
 
 /**
  * @class Metrics
- * @description send anonymized data to help us to improve the solution
+ * @description send anonymous data to help us to improve the solution
  */
 class Metrics {
   static get Constants() {
@@ -26,12 +32,12 @@ class Metrics {
 
   /**
    * @static
-   * @function sendAnonymizedData
-   * @description send anonymized data to aws solution builder team to help us improve the solution.
-   * @param {*} data - anonymized JSON data to be sent
+   * @function sendAnonymousData
+   * @description send anonymous data to aws solution builder team to help us improve the solution.
+   * @param {*} data - JSON data to send anonymously
    * @param {*} env - overwrite payload parameters, used for custom-resource lambda.
    */
-  static async sendAnonymizedData(data, env) {
+  static async sendAnonymousData(data, env) {
     return new Promise((resolve, reject) => {
       const payload = Object.assign({
         Solution: Environment.Solution.Id,
@@ -56,13 +62,13 @@ class Metrics {
         },
       };
 
-      const request = HTTPS.request(params, (response) => {
+      const request = https.request(params, (response) => {
         response.on('data', chunk =>
           buffers.push(chunk));
 
         response.on('end', () => {
           if (response.statusCode >= 400) {
-            reject(new Error(`${response.statusCode} ${response.statusMessage} ${params.hostname}`));
+            reject(new M2CException(`${response.statusCode} ${response.statusMessage} ${params.hostname}`));
             return;
           }
           resolve(Buffer.concat(buffers));

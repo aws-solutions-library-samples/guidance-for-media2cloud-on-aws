@@ -1,17 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  GetFaceDetectionCommand,
+} = require('@aws-sdk/client-rekognition');
 const {
   AnalysisTypes,
-  Environment,
 } = require('core-lib');
 const BaseCollectResultsIterator = require('../shared/baseCollectResultsIterator');
 
@@ -21,28 +15,32 @@ const NAMED_KEY = 'Faces';
 class CollectFaceIterator extends BaseCollectResultsIterator {
   constructor(stateData) {
     super(stateData, SUBCATEGORY, NAMED_KEY);
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    this.$func = rekog.getFaceDetection.bind(rekog);
   }
 
   get [Symbol.toStringTag]() {
     return 'CollectFaceIterator';
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.Face.Gender || {}).Value).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+  getRunCommand(params) {
+    return new GetFaceDetectionCommand(params);
+  }
+
+  parseResults(dataset) {
+    const minConfidence = this.minConfidence;
+    return dataset[NAMED_KEY]
+      .filter((x) =>
+        x.Face
+        && x.Face.Gender
+        && x.Face.Gender.Value
+        && x.Face.Confidence >= minConfidence);
+  }
+
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.Face.Gender.Value)),
+    ];
   }
 }
 

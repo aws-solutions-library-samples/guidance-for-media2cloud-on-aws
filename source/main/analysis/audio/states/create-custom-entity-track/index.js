@@ -6,7 +6,6 @@ const {
   AnalysisTypes,
   CommonUtils,
   TarStreamHelper,
-  Indexer,
 } = require('core-lib');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
@@ -14,7 +13,6 @@ const CATEGORY = 'comprehend';
 const SUB_CATEGORY = AnalysisTypes.Comprehend.CustomEntity;
 const DOC_BASENAME = 'document';
 const ENTITY_OUTPUT = 'output';
-const INDEX_TRANSCRIBE = 'transcribe';
 const DOCUMENTS_PER_BATCH = 25;
 const OUTPUT_JSON = 'output.json';
 
@@ -41,10 +39,12 @@ class StateCreateCustomEntityTrack extends BaseStateStartComprehend {
     if (!results[ENTITY_OUTPUT]) {
       return this.dataLessThenThreshold();
     }
-    const datasets = await this.downloadTranscribeData();
-    if (!datasets) {
+
+    const datasets = await this.getTranscribeResults();
+    if (!datasets || datasets.length === 0) {
       return this.dataLessThenThreshold();
     }
+
     const re = new RegExp(`${DOC_BASENAME}-([0-9]+).txt`);
     const detections = results[ENTITY_OUTPUT].toString()
       .split('\n').filter((x) => x)
@@ -63,7 +63,7 @@ class StateCreateCustomEntityTrack extends BaseStateStartComprehend {
         continue;
       }
       const idx = detection.Line + (detection.DocumentId * DOCUMENTS_PER_BATCH);
-      const timecode = datasets.data[idx].timecodes[0];
+      const timecode = datasets[idx].timecodes[0];
       while (detection.Entities.length) {
         const entity = detection.Entities.shift();
         metadata.push({
@@ -103,17 +103,6 @@ class StateCreateCustomEntityTrack extends BaseStateStartComprehend {
     });
     this.stateData.setCompleted();
     return this.stateData.toJSON();
-  }
-
-  async downloadTranscribeData() {
-    const indexer = new Indexer();
-    const doc = await indexer.getDocument(INDEX_TRANSCRIBE, this.stateData.uuid)
-      .catch((e) =>
-        console.error(`[ERR]: indexer.getDocument: ${this.stateData.uuid} ${JSON.stringify(e.body, null, 2)}`));
-    if (!doc || doc.data.length === 0) {
-      return undefined;
-    }
-    return doc;
   }
 }
 

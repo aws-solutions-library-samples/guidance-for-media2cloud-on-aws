@@ -3,10 +3,12 @@
 
 const BacklogTable = require('../backlog-table');
 const EBHelper = require('../shared/ebHelper');
-const Retry = require('../shared/retry');
 const {
   Topic,
 } = require('../shared/defs');
+const {
+  M2CException,
+} = require('../shared/error');
 
 const STATUS_PENDING = 'PENDING';
 const STATUS_PROCESSING = 'PROCESSING';
@@ -18,7 +20,7 @@ class BacklogJob {
 
   getServiceTopic() {
     if (!Topic.Arn || !Topic.RoleArn) {
-      throw new Error('missing environment variables');
+      throw new M2CException('missing environment variables');
     }
     return {
       RoleArn: Topic.RoleArn,
@@ -51,7 +53,7 @@ class BacklogJob {
     const response = await BacklogTable.createItem(params)
       .then(() => params.Item)
       .catch((e) => {
-        console.error(`ERR: BacklogTable.createJobItem: ${e.code}: ${e.message} (${id}) (${status}) (${jobId})`);
+        console.error(`ERR: BacklogTable.createJobItem: ${e.name}: ${e.message} (${id}) (${status}) (${jobId})`);
         throw e;
       });
     return EBHelper.send(response);
@@ -89,7 +91,7 @@ class BacklogJob {
     const response = await BacklogTable.updateItem(params)
       .then(data => data.Attributes)
       .catch((e) => {
-        console.error(`ERR: BacklogTable.updateJobId: ${e.code}: ${e.message} (${item.id}) (${jobId})`);
+        console.error(`ERR: BacklogTable.updateJobId: ${e.name}: ${e.message} (${item.id}) (${jobId})`);
         throw e;
       });
     return EBHelper.send(response);
@@ -116,7 +118,7 @@ class BacklogJob {
       .then((data) =>
         data.Attributes)
       .catch((e) => {
-        console.error(`ERR: BacklogTable.deleteJob: ${e.code}: ${e.message} (${item.id}) (${jobStatus}) (${jobId})`);
+        console.error(`ERR: BacklogTable.deleteJob: ${e.name}: ${e.message} (${item.id}) (${jobStatus}) (${jobId})`);
         throw e;
       });
     return EBHelper.send({
@@ -185,15 +187,17 @@ class BacklogJob {
     let status;
     let jobId;
     if (response instanceof Error) {
-      if (this.noMoreQuotasException(response.code)) {
+      if (this.noMoreQuotasException(response.name)) {
         status = STATUS_PENDING;
+        // console.log(`${status} ${response.name}: ${response.message} (${id})`);
       } else {
-        console.error(`ERR: BacklogTable.startAndRegisterJob: ${response.code}: ${response.message} (${id})`);
+        console.error(`ERR: BacklogTable.startAndRegisterJob: ${response.name}: ${response.message} (${id})`);
         throw response;
       }
     } else {
       status = STATUS_PROCESSING;
       jobId = this.parseJobId(response);
+      // console.log(`${status} ${response.JobId} (${id})`);
     }
 
     return this.createJobItem(
@@ -220,7 +224,7 @@ class BacklogJob {
         .catch(e => e);
 
       if (response instanceof Error) {
-        if (this.noMoreQuotasException(response.code)) {
+        if (this.noMoreQuotasException(response.name)) {
           return metrics;
         }
         // try next item
@@ -231,7 +235,7 @@ class BacklogJob {
       response = await this.updateJobId(item, jobId)
         .catch(e => e);
       if (response instanceof Error) {
-        if (response.code === 'ConditionalCheckFailedException') {
+        if (response.name === 'ConditionalCheckFailedException') {
           metrics.started.push(item.id);
         } else {
           metrics.notStarted.push(item.id);
@@ -243,20 +247,13 @@ class BacklogJob {
     return metrics;
   }
 
-  bindToFunc(serviceApi) {
-    throw new Error('subclass to implement bindToFunc');
-  }
-
   async startJob(serviceApi, serviceParams) {
-    const fn = this.bindToFunc(serviceApi);
-    if (!fn) {
-      throw new Error(`${serviceApi} not supported`);
-    }
-    return Retry.run(fn, serviceParams);
+    throw new M2CException('subclass to implement startJob');
   }
 
-  noMoreQuotasException(code) {
-    return (code === 'LimitExceededException');
+  noMoreQuotasException(name) {
+    return (name === 'LimitExceededException'
+    || name === 'ProvisionedThroughputExceededException');
   }
 
   parseJobId(data) {

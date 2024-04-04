@@ -7,6 +7,7 @@ const {
       States,
     },
   },
+  M2CException,
 } = require('service-backlog-lib');
 const StateCheckProjectVersionStatus = require('./states/check-project-version-status');
 const StateStartProjectVersion = require('./states/start-project-version');
@@ -26,7 +27,7 @@ exports.handler = async (event, context) => {
   try {
     const missing = REQUIRED_ENVS.filter(x => process.env[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing enviroment variables, ${missing.join(', ')}`);
+      throw new M2CException(`missing enviroment variables, ${missing.join(', ')}`);
     }
     if (event.operation === States.CheckProjectVersionStatus) {
       handler = new StateCheckProjectVersionStatus(event, context);
@@ -35,7 +36,7 @@ exports.handler = async (event, context) => {
     } else if (event.operation === States.DetectCustomLabels) {
       handler = new StateDetectCustomLabels(event, context);
     } else {
-      throw new Error(`${event.operation} not impl`);
+      throw new M2CException(`${event.operation} not impl`);
     }
     return handler.process();
   } catch (e) {

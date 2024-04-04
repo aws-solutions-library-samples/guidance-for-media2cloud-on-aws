@@ -1,0 +1,36 @@
+{
+  "name": "aws-sdk-js-v3-bundle",
+  "version": "3.0.0",
+  "description": "build aws-sdk-js-v3 and aws-iot-device-sdk-v2 for browser",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist temp && mkdir -p dist/js temp",
+    "build:copy": "cp -v .eslintrc.json index.js package.json webpack.config.js ./temp",
+    "build:webpack": "cd ./temp && webpack --mode=production",
+    "build:postbuild": "cp -v ./temp/*.min.js ./dist/js && rm -rf temp",
+    "build": "npm-run-all -s build:clean build:copy build:webpack build:postbuild"
+  },
+  "author": "aws-mediaent-solutions",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@aws-crypto/sha256-browser": "^4.0.0",
+    "@aws-sdk/client-cognito-identity": "^3.282.0",
+    "@aws-sdk/client-s3": "^3.540.0",
+    "@aws-sdk/credential-provider-cognito-identity": "^3.540.0",
+    "@aws-sdk/lib-storage": "^3.540.0",
+    "@aws-sdk/s3-request-presigner": "^3.540.0",
+    "@aws-sdk/util-utf8-browser": "^3.259.0",
+    "@smithy/fetch-http-handler": "^2.5.0",
+    "@smithy/protocol-http": "^3.3.0",
+    "@smithy/signature-v4": "^2.2.0",
+    "@smithy/util-retry": "^2.2.0",
+    "aws-iot-device-sdk-v2": "^1.19.1",
+    "buffer": "^6.0.3",
+    "events": "^3.3.0",
+    "process": "^0.11.10",
+    "url": "^0.11.3",
+    "util": "^0.12.5"
+  }
+}

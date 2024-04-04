@@ -12,7 +12,7 @@ module.exports = {
     Version: Solution.Version,
     Metrics: {
       Uuid: process.env.ENV_SOLUTION_UUID,
-      AnonymizedUsage: (process.env.ENV_ANONYMIZED_USAGE || '').toUpperCase() === 'YES',
+      AnonymousUsage: (process.env.ENV_ANONYMOUS_USAGE || '').toUpperCase() === 'YES',
       CustomUserAgent: process.env.ENV_CUSTOM_USER_AGENT
         || `AWSSOLUTION/${Solution.Id}/${Solution.Version}`,
     },
@@ -30,6 +30,16 @@ module.exports = {
     VideoAnalysis: `${ResourcePrefix}-analysis-video`,
     ImageAnalysis: `${ResourcePrefix}-analysis-image`,
     DocumentAnalysis: `${ResourcePrefix}-analysis-document`,
+    DynamicFrameSegmentation: `${ResourcePrefix}-dynamic-frame-segmentation`,
+    VideoBasedDetection: `${ResourcePrefix}-videobased-detection`,
+    FrameBasedDetection: `${ResourcePrefix}-framebased-detection`,
+    CustomModelDetection: `${ResourcePrefix}-custom-model-detection`,
+    BacklogCustomLabel: `${ResourcePrefix}-backlog-custom-labels`,
+    UpdateFaceIndexer: `${ResourcePrefix}-update-face-indexer`,
+    AnalysisPostProcess: `${ResourcePrefix}-analysis-post-process`,
+    GraphIndexer: `${ResourcePrefix}-graph-indexer`,
+    AssetRemoval: `${ResourcePrefix}-asset-removal`,
+    Shoppable: `${ResourcePrefix}-shoppable`,
   },
   DynamoDB: {
     Ingest: {
@@ -66,6 +76,24 @@ module.exports = {
       PartitionKey: 'uuid',
       SortKey: 'keyword',
     },
+    FaceIndexer: {
+      Table: `${ResourcePrefix}-faceindexer`,
+      PartitionKey: 'faceId',
+      GSI: {
+        FaceId: {
+          Name: 'gsi-faceid-timestamp',
+          Key: 'faceId',
+        },
+        Celeb: {
+          Name: 'gsi-celeb-timestamp',
+          Key: 'celeb',
+        },
+      },
+    },
+    Shoppable: {
+      Table: `${ResourcePrefix}-shoppable`,
+      PartitionKey: 'uuid',
+    },
   },
   Iot: {
     Host: process.env.ENV_IOT_HOST,
@@ -100,6 +128,7 @@ module.exports = {
   },
   Elasticsearch: {
     DomainEndpoint: process.env.ENV_ES_DOMAIN_ENDPOINT,
+    UseOpenSearchServerless: (Number(process.env.ENV_USE_OPENSEARCH_SERVERLESS || 0) > 0),
   },
   ElasticTranscoder: {
     Pipeline: {

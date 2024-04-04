@@ -10,15 +10,23 @@ const EVENT_LEGEND_CHANGED = 'scatter:legend:changed';
 export default class ScatterGraph extends mxReadable(class {}) {
   constructor(datasets) {
     super();
-    this.$datasets = datasets.filter(x => x.data.length > 0);
+
+    this.$datasets = datasets.filter((x) =>
+      x.data.length > 0);
+
     this.$labels = this.$datasets.map((x) =>
       x.label);
-    this.$graphContainer = $('<div/>').addClass('scatter-graph')
+
+    this.$graphContainer = $('<div/>')
+      .addClass('scatter-graph')
       .attr('id', `scatter-${AppUtils.randomHexstring()}`);
+
     const options = this.makeGraphOptions(this.$datasets);
     const graph = echarts.init(this.$graphContainer[0]);
+
     this.registerGraphEvents(this.$datasets, graph);
     graph.setOption(options);
+
     this.$graph = graph;
   }
 
@@ -54,7 +62,11 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   set datasets(val) {
-    this.$datasets = val;
+    this.$datasets = val || [];
+
+    this.$labels = this.$datasets
+      .map((x) =>
+        x.label);
   }
 
   get labels() {
@@ -135,7 +147,10 @@ export default class ScatterGraph extends mxReadable(class {}) {
       interval: 1,
     };
 
-    let pencentage = Math.round((Math.min(datasets[0].duration, 60 * 1000) / datasets[0].duration) * 100);
+    let pencentage = 10;
+    if (datasets[0].duration) {
+      pencentage = Math.round((Math.min(datasets[0].duration, 60 * 1000) / datasets[0].duration) * 100);
+    }
     pencentage = Math.max(pencentage, 10);
     const dataZoom = [
       {
@@ -200,7 +215,8 @@ export default class ScatterGraph extends mxReadable(class {}) {
   }
 
   onLegendSelectChangedEvent(datasets, event) {
-    const found = datasets.find(x => x.label === event.name);
+    const found = datasets.find((x) =>
+      x.label === event.name);
     const selected = [{
       name: event.name,
       enabled: event.selected[event.name],
@@ -273,7 +289,8 @@ export default class ScatterGraph extends mxReadable(class {}) {
 
     /* get a list of labels that are currently selected */
     const selected = [];
-    for (let legend of graphOption.legend) {
+    for (let i = 0; i < graphOption.legend.length; i += 1) {
+      const legend = graphOption.legend[i];
       const labels = Object.keys(legend.selected);
       while (labels.length) {
         const label = labels.shift();
@@ -303,5 +320,31 @@ export default class ScatterGraph extends mxReadable(class {}) {
     if (selected.length > 0) {
       this.graphContainer.trigger(ScatterGraph.Events.Legend.Changed, [selected]);
     }
+  }
+
+  getLegendsState() {
+    if (this.graph) {
+      const legend = this.graph.getOption().legend[0];
+      if (legend) {
+        return Object.keys(legend.selected || {})
+          .map((x) => ({
+            name: x,
+            enabled: legend.selected[x],
+            basename: x.toLowerCase()
+              .replace(/\s/g, '_')
+              .replace(/\//g, '-'),
+          }));
+      }
+    }
+    return [];
+  }
+
+  updateGraphData(dataset) {
+    this.datasets = dataset;
+    const options = this.makeGraphOptions(this.datasets);
+
+    this.registerGraphEvents(this.$datasets, this.graph);
+    // this.graph.clear();
+    this.graph.setOption(options, true);
   }
 }

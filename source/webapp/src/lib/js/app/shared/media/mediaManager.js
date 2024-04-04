@@ -3,15 +3,24 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import ApiHelper from '../apiHelper.js';
-import AppUtils from '../appUtils.js';
 import MediaFactory from './mediaFactory.js';
 import MediaTypes from './mediaTypes.js';
-import IotSubscriber from '../iotSubscriber.js';
+import {
+  RegisterIotMessageEvent,
+} from '../iotSubscriber.js';
 
-const ID_DEMOAPP = '#demo-app';
-const ON_MEDIAADDED = 'mediamanager:media:added';
-const ON_MEDIAUPDATED = 'mediamanager:media:updated';
-const ON_MEDIAERROR = 'mediamanager:media:error';
+const {
+  Statuses: {
+    Processing: STATUS_PROCESSING,
+    Completed: STATUS_COMPLETED,
+    Error: STATUS_ERROR,
+    IngestStarted: STATUS_INGEST_STARTED,
+    IngestCompleted: STATUS_INGEST_COMPLETED,
+    AnalysisStarted: STATUS_ANALYSIS_STARTED,
+    AnalysisCompleted: STATUS_ANALYSIS_COMPLETED,
+  },
+} = SolutionManifest;
+
 const DEFAULT_PAGESIZE = 10;
 const PROCESSINGJOBS_PAGESIZE = 20;
 const PAGING_NOTSTARTED = Symbol('Paging not started');
@@ -23,47 +32,78 @@ const MEDIATYPES = [
   MediaTypes.Document,
 ];
 
-export default class MediaManager {
-  constructor() {
-    this.$eventSource = $('<div/>')
-      .attr('id', `media-manager-${AppUtils.randomHexstring()}`);
-    $(ID_DEMOAPP).append(this.$eventSource);
+const ON_MEDIA_ADDED = 'mediamanager:media:added';
+const ON_MEDIA_UPDATED = 'mediamanager:media:updated';
+const ON_MEDIA_ERROR = 'mediamanager:media:error';
 
-    this.$collection = MEDIATYPES.reduce((a0, c0) => ({
-      ...a0,
-      [c0]: {
-        nextToken: PAGING_NOTSTARTED,
-        items: [],
-      },
-    }), undefined);
-    this.$overallStatusNextTokens = {
-      [SolutionManifest.Statuses.Processing]: PAGING_NOTSTARTED,
-      [SolutionManifest.Statuses.Completed]: PAGING_NOTSTARTED,
-      [SolutionManifest.Statuses.Error]: PAGING_NOTSTARTED,
-    };
-    this.$pageSize = DEFAULT_PAGESIZE;
-    this.subscribeIot();
-  }
+/* singleton implementation */
+let _singleton;
 
-  static getSingleton() {
-    if (!window.AWSomeNamespace.MediaManager) {
-      window.AWSomeNamespace.MediaManager = new MediaManager();
+/* receive update event on media */
+const _receivers = {};
+
+const _onMediaEvent = (event, media) => {
+  setTimeout(async () => {
+    const names = Object.keys(_receivers);
+    try {
+      await Promise.all(
+        names.map((name) =>
+          _receivers[name](event, media)
+            .catch((e) => {
+              console.error(
+                'ERR:',
+                `_onMediaEvent.${event}.${name}:`,
+                e.message
+              );
+              return undefined;
+            }))
+      );
+
+      console.log(
+        'INFO:',
+        `_onMediaEvent.${event}:`,
+        `${names.length} receivers:`,
+        names.join(', ')
+      );
+    } catch (e) {
+      console.error(
+        'ERR:',
+        `_onMediaEvent.${event}:`,
+        e
+      );
     }
-    return window.AWSomeNamespace.MediaManager;
-  }
+  }, 10);
+};
 
-  static get Event() {
-    return {
-      Media: {
-        Added: ON_MEDIAADDED,
-        Updated: ON_MEDIAUPDATED,
-        Error: ON_MEDIAERROR,
-      },
-    };
-  }
+class MediaManager {
+  constructor() {
+    this.$collection = MEDIATYPES
+      .reduce((a0, c0) => ({
+        ...a0,
+        [c0]: {
+          nextToken: PAGING_NOTSTARTED,
+          items: [],
+        },
+      }), {});
 
-  get eventSource() {
-    return this.$eventSource;
+    this.$overallStatusNextTokens = [
+      STATUS_PROCESSING,
+      STATUS_COMPLETED,
+      STATUS_ERROR,
+    ].reduce((a0, c0) => ({
+      ...a0,
+      [c0]: PAGING_NOTSTARTED,
+    }));
+
+    this.$pageSize = DEFAULT_PAGESIZE;
+
+    RegisterIotMessageEvent(
+      'mediamanager',
+      this.onIotMessage.bind(this)
+    );
+    console.log('RegisterIotMessageEvent', 'mediamanager');
+
+    _singleton = this;
   }
 
   get collection() {
@@ -75,7 +115,7 @@ export default class MediaManager {
   }
 
   set pageSize(val) {
-    this.$pageSize = Number.parseInt(val || DEFAULT_PAGESIZE, 10);
+    this.$pageSize = Number(val || DEFAULT_PAGESIZE);
   }
 
   get overallStatusNextTokens() {
@@ -86,14 +126,27 @@ export default class MediaManager {
     if (!media) {
       return undefined;
     }
-    const medias = Array.isArray(media) ? media : [media];
-    for (let media of medias) {
-      const type = media.type;
-      if (this.collection[type] && this.collection[type].items !== undefined) {
-        this.collection[type].items.push(media);
-      }
+
+    let mediaArray = media;
+    if (!Array.isArray(media)) {
+      mediaArray = [
+        media,
+      ];
     }
-    return medias;
+
+    mediaArray.forEach((item) => {
+      const typedCollection = this.collection[item.type];
+      if ((typedCollection || {}).items !== undefined) {
+        const found = typedCollection.items
+          .find((x) =>
+            x.uuid === item.uuid);
+        if (!found) {
+          typedCollection.items.push(item);
+        }
+      }
+    });
+
+    return mediaArray;
   }
 
   getNextTokenByType(type) {
@@ -109,80 +162,137 @@ export default class MediaManager {
   }
 
   async scanRecordsByCategory(type) {
-    if (this.noMoreData(type)) {
-      return undefined;
+    try {
+      if (this.noMoreData(type)) {
+        return undefined;
+      }
+
+      const query = {
+        pageSize: this.pageSize,
+        type,
+      };
+
+      const nextToken = this.getNextTokenByType(type);
+      if (nextToken && typeof nextToken !== 'symbol') {
+        query.token = nextToken;
+      }
+
+      const response = await ApiHelper.scanRecords(query);
+      this.setNextTokenByType(type, response.NextToken);
+
+      const medias = await this.batchInsertMedia(response.Items);
+      this.addMediaToCollection(medias);
+
+      return medias;
+    } catch (e) {
+      console.error(e);
+      return [];
     }
-
-    const query = {
-      pageSize: this.pageSize,
-      type,
-    };
-
-    const nextToken = this.getNextTokenByType(type);
-    if (nextToken && typeof nextToken !== 'symbol') {
-      query.token = nextToken;
-    }
-
-    const response = await ApiHelper.scanRecords(query);
-    this.setNextTokenByType(type, response.NextToken);
-    const medias = await this.batchInsertMedia(response.Items);
-    this.addMediaToCollection(medias);
-    return medias;
   }
 
   async scanRecords() {
-    const records = await Promise.all(MEDIATYPES.map(type => this.scanRecordsByCategory(type)));
-    return records.reduce((a0, c0) => a0.concat(c0), []);
+    let records = await Promise.all(MEDIATYPES
+      .map((type) =>
+        this.scanRecordsByCategory(type)));
+    records = records.flat(1);
+    return records;
   }
 
   async scanProcessingRecords() {
-    const overallStatus = SolutionManifest.Statuses.Processing;
-    const response = await this.scanRecordsByStatus(overallStatus, 1);
-    const medias = await this.batchInsertMedia(response.Items);
-    this.addMediaToCollection(medias);
-    return medias;
+    try {
+      let mediaArray = await this.scanRecordsByStatus(STATUS_PROCESSING, 1)
+        .then((res) =>
+          res.Items);
+
+      if (mediaArray) {
+        mediaArray = await this.batchInsertMedia(mediaArray);
+      }
+
+      this.addMediaToCollection(mediaArray);
+
+      return mediaArray;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
   }
 
   async scanErrorRecords() {
-    const overallStatus = SolutionManifest.Statuses.Error;
-    const response = await this.scanRecordsByStatus(overallStatus);
-    const medias = await this.batchInsertMedia(response.Items);
-    this.addMediaToCollection(medias);
-    return medias;
+    try {
+      let mediaArray = await this.scanRecordsByStatus(STATUS_ERROR)
+        .then((res) =>
+          res.Items);
+
+      if (mediaArray) {
+        mediaArray = await this.batchInsertMedia(mediaArray);
+      }
+
+      this.addMediaToCollection(mediaArray);
+
+      return mediaArray;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
   }
 
   async scanCompletedRecords() {
-    const overallStatus = SolutionManifest.Statuses.Completed;
-    const response = await this.scanRecordsByStatus(overallStatus);
-    const medias = await this.batchInsertMedia(response.Items);
-    this.addMediaToCollection(medias);
-    return medias;
+    try {
+      let mediaArray = await this.scanRecordsByStatus(STATUS_COMPLETED)
+        .then((res) =>
+          res.Items);
+
+      if (mediaArray) {
+        mediaArray = await this.batchInsertMedia(mediaArray);
+      }
+
+      this.addMediaToCollection(mediaArray);
+
+      return mediaArray;
+    } catch (e) {
+      console.error(e);
+      return undefined;
+    }
   }
 
-  async scanRecordsByStatus(overallStatus, pageSize = PROCESSINGJOBS_PAGESIZE) {
-    const token = this.overallStatusNextTokens[overallStatus];
-    const query = {
-      overallStatus,
-      pageSize,
-    };
-    if (token && typeof token !== 'symbol') {
-      query.token = token;
+  async scanRecordsByStatus(
+    overallStatus,
+    pageSize = PROCESSINGJOBS_PAGESIZE
+  ) {
+    try {
+      const query = {
+        overallStatus,
+        pageSize,
+      };
+
+      const token = this.overallStatusNextTokens[overallStatus];
+      if (token && typeof token !== 'symbol') {
+        query.token = token;
+      }
+
+      return ApiHelper.scanRecords(query)
+        .then((res) => {
+          if ((res || {}).NextToken) {
+            this.overallStatusNextTokens[overallStatus] = res.NextToken;
+          }
+          return res;
+        });
+    } catch (e) {
+      console.error(e);
+      return undefined;
     }
-    const response = await ApiHelper.scanRecords(query);
-    this.overallStatusNextTokens[overallStatus] = response.NextToken || PAGING_NOMOREDATA;
-    return response;
   }
 
   noMoreProccessingJob() {
-    return this.noMoreDataByStatus(SolutionManifest.Statuses.Processing);
+    return this.noMoreDataByStatus(STATUS_PROCESSING);
   }
 
   noMoreCompletedJob() {
-    return this.noMoreDataByStatus(SolutionManifest.Statuses.Completed);
+    return this.noMoreDataByStatus(STATUS_COMPLETED);
   }
 
   noMoreErrorJob() {
-    return this.noMoreDataByStatus(SolutionManifest.Statuses.Error);
+    return this.noMoreDataByStatus(STATUS_ERROR);
   }
 
   noMoreDataByStatus(status) {
@@ -190,45 +300,59 @@ export default class MediaManager {
   }
 
   async batchInsertMedia(items) {
-    return (await Promise.all(items.map(x => this.insertMedia(x)))).filter(x => x);
+    const mediaArray = await Promise.all(items
+      .map((item) =>
+        this.insertMedia(item)));
+
+    return mediaArray
+      .filter((x) =>
+        x !== undefined);
   }
 
   async insertMedia(item) {
-    if (!(item || {}).uuid) {
-      console.error('item contains no uuid');
+    try {
+      let media = this.findMediaByUuid(item.uuid);
+      if (media !== undefined) {
+        return undefined;
+      }
+
+      media = await MediaFactory.lazyCreateMedia(item.uuid);
+
+      return media;
+    } catch (e) {
+      console.error(e);
       return undefined;
     }
-    if (this.findMediaByUuid(item.uuid) !== undefined) {
-      return undefined;
-    }
-    const media = await MediaFactory.createMedia(item.uuid).catch(e => e);
-    if (media instanceof Error) {
-      console.error(encodeURIComponent(media.message));
-      return undefined;
-    }
-    return media;
   }
 
   async removeMedia(item) {
-    const uuid = (item || {}).uuid;
-    if (!uuid) {
-      return console.error('item contains no uuid');
-    }
-    /* remove media in backend */
-    await ApiHelper.purgeRecord(uuid)
-      .catch((e) =>
-        console.error(`fail to remove media ${item.uuid}`));
-    /* remove item from media manager */
-    const types = Object.keys(this.collection);
-    while (types.length) {
-      const type = types.shift();
-      const items = this.collection[type].items || [];
-      const idx = items.findIndex((x) => x.uuid === uuid);
-      if (idx >= 0) {
-        return items.splice(idx, 1)[0];
+    try {
+      /* remove media in backend */
+      await ApiHelper.purgeRecord(item.uuid);
+
+      /* remove item from media manager */
+      const types = Object.keys(this.collection);
+
+      while (types.length) {
+        const type = types.shift();
+
+        let found = (this.collection[type].items || [])
+          .findIndex((media) =>
+            media.uuid === item.uuid);
+
+        if (found > -1) {
+          found = this.collection[type].items
+            .splice(found, 1);
+
+          return found[0];
+        }
       }
+
+      return undefined;
+    } catch (e) {
+      console.error(e);
+      return undefined;
     }
-    return undefined;
   }
 
   findMediaByType(type) {
@@ -237,92 +361,152 @@ export default class MediaManager {
 
   findMediaByUuid(uuid) {
     const types = Object.keys(this.collection);
+
     while (types.length) {
-      const typedItems = this.findMediaByType(types.shift());
-      const item = typedItems.find(x => x.uuid === uuid);
+      const items = this.findMediaByType(types.shift());
+
+      const item = items.find((media) =>
+        media.uuid === uuid);
+
       if (item !== undefined) {
         return item;
       }
     }
+
     return undefined;
   }
 
   findMediaByStatus(status) {
-    const medias = [];
-    const types = Object.keys(this.collection);
-    while (types.length) {
-      const typedItems = this.findMediaByType(types.shift());
-      medias.splice(medias.length, 0, ...typedItems.filter(x => x.status === status));
-    }
-    return medias.filter(x => x);
+    const mediaArray = Object.keys(this.collection)
+      .map((type) =>
+        this.findMediaByType(type)
+          .filter((media) =>
+            media.status === status))
+      .flat(1)
+      .filter((media) =>
+        media !== undefined);
+
+    return mediaArray;
   }
 
   findMediaByOverallStatus(overallStatus) {
-    const medias = [];
-    const types = Object.keys(this.collection);
-    while (types.length) {
-      const typedItems = this.findMediaByType(types.shift());
-      medias.splice(medias.length, 0, ...typedItems.filter(x => x.overallStatus === overallStatus));
-    }
-    return medias.filter(x => x);
+    const mediaArray = Object.keys(this.collection)
+      .map((type) =>
+        this.findMediaByType(type)
+          .filter((media) =>
+            media.overallStatus === overallStatus))
+      .flat(1)
+      .filter((media) =>
+        media !== undefined);
+
+    return mediaArray;
   }
 
   findProcessingMedias() {
-    return this.findMediaByOverallStatus(SolutionManifest.Statuses.Processing);
+    return this.findMediaByOverallStatus(STATUS_PROCESSING);
   }
 
   findCompletedMedias() {
-    return this.findMediaByOverallStatus(SolutionManifest.Statuses.Completed);
+    return this.findMediaByOverallStatus(STATUS_COMPLETED);
   }
 
   findErrorMedias() {
-    return this.findMediaByOverallStatus(SolutionManifest.Statuses.Error);
-  }
-
-  subscribeIot() {
-    const iot = IotSubscriber.getSingleton();
-    iot.eventSource.on(IotSubscriber.Event.Message.Received, async (event, payload) =>
-      this.onIotMessage(payload));
+    return this.findMediaByOverallStatus(STATUS_ERROR);
   }
 
   async onIotMessage(payload) {
     let media = this.findMediaByUuid(payload.uuid);
+
     if (!media) {
+      console.log(
+        'onIotMessage',
+        'insertMedia',
+        payload
+      );
+
       media = await this.insertMedia(payload);
       this.addMediaToCollection(media);
-      return (media)
-        ? this.eventSource.trigger(MediaManager.Event.Media.Added, [media])
-        : undefined;
+
+      if (media) {
+        return _onMediaEvent(
+          ON_MEDIA_ADDED,
+          media
+        );
+      }
+
+      return undefined;
     }
-    if (payload.status === SolutionManifest.Statuses.AnalysisStarted
-      || payload.status === SolutionManifest.Statuses.AnalysisCompleted) {
+
+    if (payload.status === STATUS_ANALYSIS_STARTED
+    || payload.status === STATUS_ANALYSIS_COMPLETED) {
       await media.refresh();
     }
-    if (payload.status === SolutionManifest.Statuses.IngestStarted
-      || payload.status === SolutionManifest.Statuses.IngestCompleted
-      || payload.status === SolutionManifest.Statuses.AnalysisStarted
-      || payload.status === SolutionManifest.Statuses.AnalysisCompleted) {
-      return this.eventSource.trigger(MediaManager.Event.Media.Updated, [media]);
+
+    if (payload.status === STATUS_INGEST_STARTED
+    || payload.status === STATUS_INGEST_COMPLETED
+    || payload.status === STATUS_ANALYSIS_STARTED
+    || payload.status === STATUS_ANALYSIS_COMPLETED) {
+      return _onMediaEvent(
+        ON_MEDIA_UPDATED,
+        media
+      );
     }
-    if (payload.overallStatus === SolutionManifest.Statuses.Error) {
+
+    if (payload.overallStatus === STATUS_ERROR) {
       await media.setError();
-      return this.eventSource.trigger(MediaManager.Event.Media.Error, [media]);
+      return _onMediaEvent(
+        ON_MEDIA_ERROR,
+        media
+      );
     }
+
     return media;
   }
 
   async lazyGetByUuid(uuid) {
-    let media = this.findMediaByUuid(uuid);
-    if (media) {
+    try {
+      let media = this.findMediaByUuid(uuid);
+      if (media) {
+        return media;
+      }
+
+      media = await MediaFactory.lazyCreateMedia(uuid);
+
       return media;
-    }
-    media = await MediaFactory.lazyCreateMedia(uuid)
-      .catch((e) =>
-        e);
-    if (media instanceof Error) {
-      console.error(encodeURIComponent(media.message));
+    } catch (e) {
+      console.error(e);
       return undefined;
     }
-    return media;
   }
 }
+
+const GetMediaManager = () => {
+  if (_singleton === undefined) {
+    const notused_ = new MediaManager();
+  }
+
+  return _singleton;
+};
+
+const RegisterMediaEvent = (name, target) => {
+  if (!name || typeof target !== 'function') {
+    return false;
+  }
+
+  _receivers[name] = target;
+  return true;
+};
+
+const UnregisterMediaEvent = (name) => {
+  delete _receivers[name];
+};
+
+export {
+  MediaManager,
+  GetMediaManager,
+  RegisterMediaEvent,
+  UnregisterMediaEvent,
+  ON_MEDIA_ADDED,
+  ON_MEDIA_UPDATED,
+  ON_MEDIA_ERROR,
+};

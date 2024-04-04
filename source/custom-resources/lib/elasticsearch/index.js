@@ -3,6 +3,7 @@
 
 const {
   Indexer,
+  M2CException,
 } = require('core-lib');
 
 const mxBaseResponse = require('../shared/mxBaseResponse');
@@ -26,12 +27,27 @@ exports.CreateIndex = async (event, context) => {
 
     const data = event.ResourceProperties.Data;
     if (!data.DomainEndpoint) {
-      throw new Error('missing DomainEndpoint');
+      throw new M2CException('missing DomainEndpoint');
     }
+    const bUseOpenSearchSeverless = (Number(data.UseOpenSearchServerless || 0) > 0);
 
-    const indexer = new Indexer(data.DomainEndpoint);
-    const response = await indexer.batchCreateIndices();
-    console.log(`Indexer.batchCreateIndices = ${JSON.stringify(response, null, 2)}`);
+    const indexer = new Indexer(
+      data.DomainEndpoint,
+      bUseOpenSearchSeverless
+    );
+
+    let response;
+    // if index name and mappings exist, create an index with given data
+    if (data.IndexName && data.Mappings) {
+      response = await indexer.createIndex(
+        data.IndexName,
+        data.Mappings
+      );
+      console.log(`Indexer.createIndex = ${JSON.stringify(response, null, 2)}`);
+    } else {
+      response = await indexer.batchCreateIndices();
+      console.log(`Indexer.batchCreateIndices = ${JSON.stringify(response, null, 2)}`);
+    }
 
     x0.storeResponseData('Status', 'SUCCESS');
     return x0.responseData;

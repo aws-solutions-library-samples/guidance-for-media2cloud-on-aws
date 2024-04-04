@@ -5,7 +5,13 @@ const {
   Environment,
   StateData,
   AnalysisError,
+  AnalysisTypes: {
+    Rekognition: {
+      CustomLabel,
+    },
+  },
 } = require('core-lib');
+
 /* frame-based analysis */
 const StatePrepareFrameDetectionIterators = require('./states/prepare-frame-detection-iterators');
 const StateDetectFrameIterator = require('./states/detect-frame-iterator');
@@ -19,14 +25,19 @@ const StateStartDetectionIterator = require('./states/start-detection-iterator')
 const StateCollectResultsIterator = require('./states/collect-results-iterator');
 const StateCreateTrackIterator = require('./states/create-track-iterator');
 const StateIndexAnalysisIterator = require('./states/index-analysis-iterator');
+/* Prerun states */
+const StatePrepareSegmentDetection = require('./states/prepare-segment-detection');
+const StateSelectSegmentFrames = require('./states/select-segment-frames');
 /* job completed */
 const StateJobCompleted = require('./states/job-completed');
+// advanced feature
+const StateCreateSceneEvents = require('./states/create-scene-events');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_PROXY_BUCKET',
@@ -41,47 +52,67 @@ const CATEGORY = 'rekognition';
 
 function parseEvent(event, context) {
   const stateMachine = Environment.StateMachines.VideoAnalysis;
+
   let parsed = event;
   if (!parsed.parallelStateOutputs) {
     return new StateData(stateMachine, parsed, context);
   }
+
   if (!parsed.stateExecution) {
-    throw new Error('fail to parse event.stateExecution');
+    throw new AnalysisError('fail to parse event.stateExecution');
   }
-  /* parse execution input object */
+
+  // parse execution input object
   const uuid = parsed.stateExecution.Input.uuid;
   const input = parsed.stateExecution.Input.input;
   const startTime = parsed.stateExecution.StartTime;
   const executionArn = parsed.stateExecution.Id;
   delete parsed.stateExecution;
   if (!uuid || !input) {
-    throw new Error('fail to find uuid or input from event.stateExecution');
+    throw new AnalysisError('fail to find uuid or input from event.stateExecution');
   }
-  /* parse parallel state outputs */
+
+  // parse parallel state outputs
   const parallelStateOutputs = parsed.parallelStateOutputs;
   delete parsed.parallelStateOutputs;
-  /* merge all subcategories */
-  /* note: could have multiple items in a single subcategory */
-  /* i.e., customlabel */
-  const merged = {};
-  const iterators = parallelStateOutputs.filter(x =>
-    ((x.data || {}).iterators || []).length > 0)
-    .reduce((a0, c0) =>
-      a0.concat(c0.data.iterators.reduce((a1, c1) =>
-        a1.concat({
-          name: Object.keys(c1.data).shift(),
-          ...c1.data,
-        }), [])), []);
-  const subcategories = iterators.map(x => x.name);
-  while (subcategories.length) {
-    const subcategory = subcategories.shift();
-    const filtered = iterators.filter(x => x.name === subcategory);
-    if (filtered.length === 1) {
-      merged[subcategory] = filtered[0][subcategory];
-    } else if (filtered.length > 1) {
-      merged[subcategory] = filtered.map(x => x[subcategory]);
+
+  const categories = {};
+  const iterators = [];
+
+  parallelStateOutputs.forEach((output) => {
+    // video based analysis
+    if (!Array.isArray(output)) {
+      output.data.iterators.forEach((iterator) => {
+        iterators.push(iterator.data);
+      });
+      return;
     }
-  }
+
+    // frame based & custom model analysis (nested outputs)
+    output.forEach((out) => {
+      out.data.iterators.forEach((iterator) => {
+        iterators.push(iterator.data);
+      });
+    });
+  });
+
+  iterators.forEach((iterator) => {
+    const names = Object.keys(iterator);
+
+    names.forEach((name) => {
+      // could have multiple custom label results
+      if (name === CustomLabel) {
+        categories[name] = (categories[name] || [])
+          .concat(iterator[name]);
+      } else {
+        categories[name] = {
+          ...categories[name],
+          ...iterator[name],
+        };
+      }
+    });
+  });
+
   parsed = {
     ...parsed,
     uuid,
@@ -92,10 +123,11 @@ function parseEvent(event, context) {
     progress: 0,
     data: {
       [CATEGORY]: {
-        ...merged,
+        ...categories,
       },
     },
   };
+
   return new StateData(stateMachine, parsed, context);
 }
 
@@ -141,6 +173,15 @@ exports.handler = async (event, context) => {
         break;
       case StateData.States.IndexAnalysisResults:
         instance = new StateIndexAnalysisIterator(stateData);
+        break;
+      case StateData.States.PrepareSegmentDetection:
+        instance = new StatePrepareSegmentDetection(stateData);
+        break;
+      case StateData.States.SelectSegmentFrames:
+        instance = new StateSelectSegmentFrames(stateData);
+        break;
+      case StateData.States.CreateSceneEvents:
+        instance = new StateCreateSceneEvents(stateData);
         break;
       case StateData.States.JobCompleted:
         instance = new StateJobCompleted(stateData);

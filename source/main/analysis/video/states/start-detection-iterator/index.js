@@ -3,8 +3,20 @@
 
 const {
   StateData,
-  AnalysisError,
-  AnalysisTypes,
+  M2CException,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Person,
+      Segment,
+      Text,
+      CustomLabel,
+    },
+  },
 } = require('core-lib');
 const StartCelebIterator = require('./iterators/start-celeb');
 const StartFaceIterator = require('./iterators/start-face');
@@ -16,20 +28,10 @@ const StartSegmentIterator = require('./iterators/start-segment');
 const StartTextIterator = require('./iterators/start-text');
 const StartCustomLabelIterator = require('./iterators/start-custom-label');
 
-const SUBCATEGORY_CELEB = AnalysisTypes.Rekognition.Celeb;
-const SUBCATEGORY_FACE = AnalysisTypes.Rekognition.Face;
-const SUBCATEGORY_FACEMATCH = AnalysisTypes.Rekognition.FaceMatch;
-const SUBCATEGORY_LABEL = AnalysisTypes.Rekognition.Label;
-const SUBCATEGORY_MODERATION = AnalysisTypes.Rekognition.Moderation;
-const SUBCATEGORY_PERSON = AnalysisTypes.Rekognition.Person;
-const SUBCATEGORY_SEGMENT = AnalysisTypes.Rekognition.Segment;
-const SUBCATEGORY_TEXT = AnalysisTypes.Rekognition.Text;
-const SUBCATEGORY_CUSTOMLABEL = AnalysisTypes.Rekognition.CustomLabel;
-
 class StateStartDetectionIterator {
   constructor(stateData) {
     if (!(stateData instanceof StateData)) {
-      throw new AnalysisError('stateData not StateData object');
+      throw new M2CException('stateData not StateData object');
     }
     this.$stateData = stateData;
   }
@@ -43,43 +45,39 @@ class StateStartDetectionIterator {
   }
 
   async process() {
-    const data = this.stateData.data;
+    const {
+      data,
+    } = this.stateData;
+
     let iterator;
-    if (data[SUBCATEGORY_CELEB]) {
+    if (data[Celeb]) {
       iterator = new StartCelebIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_FACE]) {
+    } else if (data[Face]) {
       iterator = new StartFaceIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_FACEMATCH]) {
+    } else if (data[FaceMatch]) {
       iterator = new StartFaceMatchIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_LABEL]) {
+    } else if (data[Label]) {
       iterator = new StartLabelIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_MODERATION]) {
+    } else if (data[Moderation]) {
       iterator = new StartModerationIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_PERSON]) {
+    } else if (data[Person]) {
       iterator = new StartPersonIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_SEGMENT]) {
+    } else if (data[Segment]) {
       iterator = new StartSegmentIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_TEXT]) {
+    } else if (data[Text]) {
       iterator = new StartTextIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_CUSTOMLABEL]) {
+    } else if (data[CustomLabel]) {
       iterator = new StartCustomLabelIterator(this.stateData);
+    } else {
+      const message = `iterator for ${Object.keys(data).join(', ')} not supported`;
+      console.error(
+        'ERR:',
+        'StateStartDetectionIterator.process:',
+        message
+      );
+      throw M2CException(message);
     }
-    else {
-      iterator = undefined;
-    }
-    if (!iterator) {
-      const e = `iterator '${Object.keys(data).join(',')}' not impl`;
-      console.error(e);
-      throw new AnalysisError(e);
-    }
+
     return iterator.process();
   }
 }

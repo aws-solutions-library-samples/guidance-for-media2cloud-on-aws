@@ -48,7 +48,7 @@ exports.handler = async (event, context) => {
             ...data.data,
           };
         } else if (data.Output) {
-          const output = JSON.parse(data.Output);
+          const output = data.Output;
           merged.uuid = output.uuid;
           merged.input = {
             ...merged.input,

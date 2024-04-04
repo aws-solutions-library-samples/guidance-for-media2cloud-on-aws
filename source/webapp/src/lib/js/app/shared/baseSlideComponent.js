@@ -3,18 +3,30 @@
 
 import Localization from './localization.js';
 import AppUtils from './appUtils.js';
-import mxSpinner from '../mixins/mxSpinner.js';
+import Spinner from './spinner.js';
 import mxAlert from '../mixins/mxAlert.js';
 
-export default class BaseSlideComponent extends mxAlert(mxSpinner(class {})) {
+const {
+  Alerts: {
+    Oops: OOPS,
+  },
+} = Localization;
+
+export default class BaseSlideComponent extends mxAlert(class {}) {
   constructor() {
     super();
+    this.$id = AppUtils.randomHexstring();
     this.$ids = {
-      slide: `slide-${AppUtils.randomHexstring()}`,
+      slide: `slide-${this.id}`,
     };
-    this.$slide = $('<div/>').addClass('container p-0 m-0 col-12')
-      .append(this.createLoading());
+    this.$slide = $('<div/>')
+      .addClass('container p-0 m-0 col-12');
     this.$initialized = false;
+    Spinner.useSpinner();
+  }
+
+  get id() {
+    return this.$id;
   }
 
   get ids() {
@@ -22,7 +34,7 @@ export default class BaseSlideComponent extends mxAlert(mxSpinner(class {})) {
   }
 
   get slideId() {
-    return this.ids.slide;
+    return `slide-${this.id}`;
   }
 
   get slide() {
@@ -41,6 +53,10 @@ export default class BaseSlideComponent extends mxAlert(mxSpinner(class {})) {
     this.$initialized = val;
   }
 
+  loading(enabled) {
+    return Spinner.loading(enabled);
+  }
+
   getSlide() {
     return this.slide;
   }
@@ -51,8 +67,7 @@ export default class BaseSlideComponent extends mxAlert(mxSpinner(class {})) {
   }
 
   async hide() {
-    this.slide.children().remove()
-      .append(this.createLoading());
+    this.slide.children().remove();
     this.initialized = false;
   }
 
@@ -69,7 +84,13 @@ export default class BaseSlideComponent extends mxAlert(mxSpinner(class {})) {
   }
 
   async showAlert(message, duration) {
-    return super.showMessage(this.slide, 'danger', Localization.Alerts.Oops, message, duration);
+    return super.showMessage(
+      this.slide,
+      'danger',
+      OOPS,
+      message,
+      duration
+    );
   }
 
   async createSlide() {

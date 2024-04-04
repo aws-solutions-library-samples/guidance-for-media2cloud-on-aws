@@ -2,15 +2,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const PATH = require('path');
+const Jimp = require('jimp');
 const {
   CommonUtils,
 } = require('core-lib');
 const {
-  Exiftool,
-  Jimp,
-} = require('image-process-lib');
+  RunExifTool,
+} = require('./exiftool');
 
-const MAX_IMAGE_SIZE = 14 * 1000 * 1000;
+/**
+ * WORKAROUND: Jimp 0.16.1 (0.9.6 doesn't have the issue.)
+ * jpeg-js decoder throws an error when maxMemoryUsageInMB > 512
+ * Reference: https://github.com/oliver-moran/jimp/issues/915
+ */
+const JpegDecoder = Jimp.decoders['image/jpeg'];
+Jimp.decoders['image/jpeg'] = (data) =>
+  JpegDecoder(data, {
+    maxResolutionInMP: 200,
+    maxMemoryUsageInMB: 2048,
+  });
+
+const MAX_IMAGE_SIZE = 5 * 1000 * 1000;
 const MAX_THUMBNAIL_WIDTH = 480;
 const MAX_THUMBNAIL_HEIGHT = 270;
 
@@ -65,7 +77,7 @@ class ImageProcess {
     }
 
     if (x0.indexOf('rotate' >= 0)) {
-      const matched = x0.match(/rotate\s(\d+)/);
+      const matched = x0.match(/rotate\s([0-9]+)/);
       if (matched) {
         response.rotate = Number.parseInt(matched[1], 10);
       }
@@ -95,11 +107,22 @@ class ImageProcess {
       image = image.scale(factor);
     }
 
+    /*
+    if (orient.flipH || orient.flipV) {
+      image = image.mirror(orient.flipH, orient.flipV);
+    }
+    if (orient.rotate) {
+      image = image.rotate(orient.rotate);
+    }
+    */
+
     /* Max image size allowed for Rekognition is 15MB */
     let buf = await image.getBufferAsync(Jimp.MIME_JPEG);
     if (buf.byteLength > MAX_IMAGE_SIZE) {
       factor = MAX_IMAGE_SIZE / buf.byteLength;
-      image = image.scale(factor);
+      image = image
+        .scale(factor)
+        .quality(80);
       buf = await image.getBufferAsync(Jimp.MIME_JPEG);
     }
     return buf;
@@ -131,9 +154,15 @@ class ImageProcess {
       return undefined;
     }
 
-    const response = await CommonUtils.download(src.bucket, src.key, false);
+    let response = await CommonUtils.download(
+      src.bucket,
+      src.key,
+      false
+    );
+    response = Buffer.from(await response.Body.transformToByteArray());
+
     return this.createImage(
-      response.Body,
+      response,
       orient
     );
   }
@@ -144,9 +173,15 @@ class ImageProcess {
       return undefined;
     }
 
-    const response = await CommonUtils.download(src.bucket, src.key, false);
+    let response = await CommonUtils.download(
+      src.bucket,
+      src.key,
+      false
+    );
+    response = Buffer.from(await response.Body.transformToByteArray());
+
     return this.createImage(
-      response.Body,
+      response,
       orient,
       MAX_THUMBNAIL_WIDTH,
       MAX_THUMBNAIL_HEIGHT
@@ -176,8 +211,13 @@ class ImageProcess {
   async getImageInfo() {
     const src = this.stateData.input || {};
 
-    const imageinfo = await this.runExiftool(src.bucket, src.key);
-    imageinfo.exif = this.sanitizeExif(imageinfo.exif);
+    const imageinfo = await RunExifTool(
+      src.bucket,
+      src.key
+    ).then((res) => {
+      res.exif = this.sanitizeExif(res.exif);
+      return res;
+    });
 
     const orientation = this.parseOrientation((imageinfo.exif || {}).Orientation);
 
@@ -197,11 +237,6 @@ class ImageProcess {
         });
 
     return imageinfo;
-  }
-
-  async runExiftool(bucket, key) {
-    const exif = new Exiftool();
-    return exif.extract(bucket, key);
   }
 
   async createProxy() {

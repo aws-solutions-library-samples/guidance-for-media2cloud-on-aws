@@ -8,12 +8,12 @@ export default class BasePreview {
     this.$ids = {
       container: `preview-${AppUtils.randomHexstring()}`,
     };
-    this.$container = $('<div/>').addClass('p-0 m-0 w-100')
+    this.$container = $('<div/>')
+      .addClass('p-0 m-0 w-100')
       .attr('id', this.$ids.container)
       .attr('data-media-type', media.type);
     this.$media = media;
     this.$searchResults = optionalSearchResults;
-    this.$preloaded = false;
   }
 
   get ids() {
@@ -32,20 +32,8 @@ export default class BasePreview {
     return this.$searchResults;
   }
 
-  get preloaded() {
-    return this.$preloaded;
-  }
-
-  set preloaded(val) {
-    this.$preloaded = val;
-  }
-
   getView() {
     return undefined;
-  }
-
-  async preload() {
-    return this;
   }
 
   async load() {
@@ -53,7 +41,6 @@ export default class BasePreview {
   }
 
   async unload() {
-    this.preloaded = false;
     this.container.children().remove();
     return this;
   }
@@ -63,6 +50,10 @@ export default class BasePreview {
   }
 
   async unpause() {
+    return undefined;
+  }
+
+  getCurrentTime() {
     return undefined;
   }
 

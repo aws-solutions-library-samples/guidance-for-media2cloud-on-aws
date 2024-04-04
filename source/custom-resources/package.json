@@ -1,6 +1,6 @@
 {
   "name": "m2c-custom-resources",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "media2cloud cloudformation custom resource",
   "main": "index.js",
   "private": true,
@@ -9,23 +9,33 @@
     "test": "mocha *.spec.js",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index*.js package.json lib dist/",
-    "build:install": "cd dist && npm install --omit=dev --omit=optional",
+    "build:install": "cd dist && npm install --omit=dev",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "aws-mediaent-solutions",
   "dependencies": {
-    "@elastic/elasticsearch": "7.12.0",
-    "adm-zip": "^0.4.11",
-    "aws-elasticsearch-connector": "^9.2.0",
-    "aws-sdk": "^2.1173.0",
-    "aws-xray-sdk": "^3.3.4"
+    "@aws-sdk/client-bedrock": "^3.540.0",
+    "@aws-sdk/client-cloudfront": "^3.540.0",
+    "@aws-sdk/client-codebuild": "^3.545.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.540.0",
+    "@aws-sdk/client-ecr": "^3.540.0",
+    "@aws-sdk/client-iot": "^3.540.0",
+    "@aws-sdk/client-mediaconvert": "^3.540.0",
+    "@aws-sdk/client-neptune": "^3.540.0",
+    "@aws-sdk/client-s3": "^3.540.0",
+    "@aws-sdk/client-sns": "^3.540.0",
+    "@aws-sdk/credential-providers": "^3.540.0",
+    "@aws-sdk/s3-request-presigner": "^3.540.0",
+    "@opensearch-project/opensearch": "^2.6.0",
+    "@smithy/service-error-classification": "^2.1.5",
+    "@smithy/smithy-client": "^2.5.0",
+    "@smithy/util-retry": "^2.2.0",
+    "adm-zip": "^0.4.16",
+    "aws-xray-sdk-core": "^3.6.0",
+    "mime": "^3.0.0"
   },
   "devDependencies": {
     "core-lib": "file:../layers/core-lib"
-  },
-  "license": "Apache-2.0"
+  }
 }

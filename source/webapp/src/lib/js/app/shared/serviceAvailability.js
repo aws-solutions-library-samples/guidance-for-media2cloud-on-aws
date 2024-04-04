@@ -3,30 +3,38 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import ServiceNames from './serviceNames.js';
-import SettingStore from './localCache/settingStore.js';
+import {
+  GetSettingStore,
+} from './localCache/index.js';
+
+const REGION = SolutionManifest.Region;
 
 const SERVICE_AVAILABILITY = 'service-availability';
 const EXPIRATION_IN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const ALL_SERVICES = Object.values(ServiceNames);
+const WHILTELIST_REGIONS = [
+  'us-east-1',
+  'us-east-2',
+  'us-west-1',
+  'us-west-2',
+  'ap-south-1',
+  'ap-northeast-1', /* Textract not in Tokyo region */
+  'ap-northeast-2',
+  'ap-southeast-1',
+  'ap-southeast-2',
+  'ca-central-1',
+  'eu-central-1',
+  'eu-west-1',
+  'eu-west-2',
+];
+const HTTP_TIMEOUT = 1000; // 1500;
 
-export default class ServiceAvailability {
-  /**
-   * @static
-   * @function createInstance
-   * @description ServiceAvailability singleton
-   */
-  static createInstance() {
-    return ServiceAvailability.getSingleton();
-  }
+/* singleton implementation */
+let _singleton;
 
-  static getSingleton() {
-    if (!(window.AWSomeNamespace || {}).ServiceAvailabilitySingleton) {
-      window.AWSomeNamespace = {
-        ...window.AWSomeNamespace,
-        ServiceAvailabilitySingleton: new ServiceAvailability(),
-      };
-    }
-    return window.AWSomeNamespace.ServiceAvailabilitySingleton;
+class ServiceAvailability {
+  constructor() {
+    _singleton = this;
   }
 
   /**
@@ -34,24 +42,37 @@ export default class ServiceAvailability {
    * @function detectServices
    * @description detect AIML service availability of the region
    */
-  async detectServices(region = SolutionManifest.Region) {
+  async detectServices(
+    region = REGION
+  ) {
     const id = `${SERVICE_AVAILABILITY}-${region}`;
-    const store = SettingStore.getSingleton();
+
+    const store = GetSettingStore();
     let services = await store.getItem(id);
+
     if (!services) {
-      const responses = await Promise.all(ALL_SERVICES.map(x =>
-        this.probe(x, region).then((val) => ({
-          [x]: val,
-        })).catch(() => ({
-          [x]: false,
-        }))));
+      const responses = await Promise.all(ALL_SERVICES
+        .map((service) =>
+          this.probe(service, region)
+            .then((val) => ({
+              [service]: val,
+            })).catch(() => ({
+              [service]: false,
+            }))));
+
       services = responses.reduce((a0, c0) => ({
         ...a0,
         ...c0,
       }), {});
-      await store.putItem(id, services, EXPIRATION_IN_DAYS)
-        .catch(e => console.error(e));
+
+      await store.putItem(
+        id,
+        services,
+        EXPIRATION_IN_DAYS
+      ).catch(() =>
+        undefined);
     }
+
     return services;
   }
 
@@ -60,20 +81,42 @@ export default class ServiceAvailability {
    * @function probe
    * @description simple http request to check if service is available in this region.
    */
-  async probe(service, region) {
-    return new Promise((resolve, reject) => {
-      const request = new XMLHttpRequest();
-      request.open('HEAD', `https://${service}.${region}.amazonaws.com`, true);
-      /* if is onerror, it means the service is unavailable in this region. */
-      request.onerror = () => resolve(false);
-      request.onabort = e => reject(e);
-      /* if the request goes through, the service is available regardless of the status */
-      request.onreadystatechange = () => {
-        if (request.readyState === XMLHttpRequest.DONE && request.status !== 0) {
-          resolve(true);
-        }
-      };
-      request.send();
-    });
+  async probe(
+    service,
+    region
+  ) {
+    if (WHILTELIST_REGIONS.includes(region)) {
+      return true;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() =>
+      controller.abort(), HTTP_TIMEOUT);
+
+    const url = `https://${service}.${region}.amazonaws.com`;
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+    }).then(() =>
+      true)
+      .catch(() =>
+        false);
+
+    clearTimeout(timeoutId);
+
+    return response;
   }
 }
+
+const GetServiceAvailability = () => {
+  if (_singleton === undefined) {
+    const notused_ = new ServiceAvailability();
+  }
+
+  return _singleton;
+};
+
+export {
+  ServiceAvailability,
+  GetServiceAvailability,
+};

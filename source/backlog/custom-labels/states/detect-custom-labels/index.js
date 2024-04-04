@@ -1,17 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+} = require('@aws-sdk/client-s3');
 const PATH = require('path');
 const {
-  Retry,
   BacklogClient: {
     CustomBacklogJob,
   },
@@ -25,6 +21,8 @@ const {
       ExpectedBucketOwner,
     },
   },
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('service-backlog-lib');
 const RekogHelper = require('../shared/rekogHelper');
 const BaseState = require('../shared/baseState');
@@ -32,7 +30,7 @@ const BaseState = require('../shared/baseState');
 const FRAMECAPTURE_PREFIX = 'frame';
 const STATUS_COMPLETED = 'completed';
 const STATUS_PROCESSING = 'processing';
-const MAX_RECORDS_PER_JSON = 1000;
+const DATA_FILENAME = '00000000.json';
 
 class StateDetectCustomLabels extends BaseState {
   get [Symbol.toStringTag]() {
@@ -50,39 +48,42 @@ class StateDetectCustomLabels extends BaseState {
     const numFrames = src.frameCapture.numFrames;
     const curState = this.output[BaseState.States.DetectCustomLabels] || {};
     let cursor = curState.cursor || 0;
-    let numOutputs = curState.numOutputs || 0;
-    const batchRecords = [];
+    let batchRecords = [];
     while (cursor < numFrames && !this.quitNow()) {
       let responses = await this.batchDetectCustomLabels(cursor);
       cursor += responses.length;
       responses = responses.reduce((a0, c0) =>
-        a0.concat(...c0), []);
-      batchRecords.splice(batchRecords.length, 0, ...responses);
-      if (batchRecords.length > MAX_RECORDS_PER_JSON) {
-        await this.uploadBatchRecords(numOutputs, batchRecords);
-        batchRecords.length = 0;
-        numOutputs++;
-      }
+        a0.concat(c0), []);
+      batchRecords = batchRecords.concat(responses);
     }
-    const status = (cursor >= numFrames)
-      ? STATUS_COMPLETED
-      : STATUS_PROCESSING;
-    if (batchRecords.length) {
-      await this.uploadBatchRecords(numOutputs, batchRecords);
-      numOutputs++;
-    }
-    if (status === STATUS_PROCESSING) {
-      await this.updateProjectVersionTTL();
-    } else {
+
+    const dataset = {
+      Bucket: src.bucket,
+      Prefix: src.frameCapture.prefix,
+      CustomLabels: batchRecords,
+    };
+    await this.updateDataFile(
+      this.output.bucket,
+      this.output.prefix,
+      DATA_FILENAME,
+      dataset
+    );
+
+    let status = STATUS_PROCESSING;
+    if (cursor >= numFrames) {
+      status = STATUS_COMPLETED;
       cursor = 0;
+    } else {
+      await this.updateProjectVersionTTL();
     }
+
     return {
-      output: this.output.prefix,
+      output: PATH.join(this.output.prefix, DATA_FILENAME),
       projectVersionArn: this.projectVersionArn,
       status,
       numFrames,
       cursor,
-      numOutputs,
+      numOutputs: 1,
     };
   }
 
@@ -104,6 +105,8 @@ class StateDetectCustomLabels extends BaseState {
           Image: {
             S3Object: {
               Bucket: input.bucket,
+              // eslint-disable-next-line
+              // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
               Name: PATH.join(input.frameCapture.prefix, name),
             },
           },
@@ -135,33 +138,59 @@ class StateDetectCustomLabels extends BaseState {
     return Promise.all(promises);
   }
 
-  async uploadBatchRecords(idx, batches) {
-    const bucket = this.output.bucket;
-    const prefix = this.output.prefix;
-    const name = `${idx.toString().padStart(8, '0')}.json`;
-    const body = {
-      Bucket: this.input.bucket,
-      Prefix: this.input.frameCapture.prefix,
-      CustomLabels: batches,
-    };
-    const s3 = new AWS.S3({
-      apiVersion: '2006-03-01',
+  async updateDataFile(
+    bucket,
+    prefix,
+    name,
+    dataset
+  ) {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const key = PATH.join(prefix, name);
+
+    const s3Client = xraysdkHelper(new S3Client({
       computeChecksums: true,
-      signatureVersion: 'v4',
-      s3DisableBodySigning: false,
+      applyChecksum: true,
       customUserAgent: CustomUserAgent,
-    });
-    const params = {
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    let command;
+    command = new GetObjectCommand({
       Bucket: bucket,
-      Key: PATH.join(prefix, name),
-      Body: JSON.stringify(body, null, 2),
+      Key: key,
+      ExpectedBucketOwner,
+    });
+
+    let merged = await s3Client.send(command)
+      .catch(() =>
+        undefined);
+
+    if (merged && merged.Body) {
+      merged = JSON.parse(await merged.Body.transformToString());
+      merged.CustomLabels = merged.CustomLabels
+        .concat(dataset.CustomLabels);
+    } else {
+      merged = dataset;
+    }
+
+    merged = JSON.stringify(merged);
+
+    command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: merged,
       ContentType: 'application/json',
       ContentDisposition: `attachment; filename="${name}"`,
       ServerSideEncryption: 'AES256',
       ExpectedBucketOwner,
-    };
-    const fn = s3.putObject.bind(s3);
-    return Retry.run(fn, params);
+    });
+
+    return s3Client.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
   }
 
   async updateProjectVersionTTL() {
@@ -169,11 +198,13 @@ class StateDetectCustomLabels extends BaseState {
       .catch(() => undefined);
   }
 
-  computeFrameNumAndTimestamp(idx, framerate, frameCapture) {
-    const num = Math.round((idx * framerate * frameCapture.denominator) / frameCapture.numerator);
+  computeFrameNumAndTimestamp(second, framerate, frameCapture) {
+    const num = Math.round(
+      (second * framerate * frameCapture.denominator) / frameCapture.numerator
+    );
     return [
       num,
-      Math.round((num / framerate) * 1000),
+      Math.round((num * 1000) / framerate),
     ];
   }
 }

@@ -4,19 +4,26 @@
 import AppUtils from '../../appUtils.js';
 import BasePreview from './basePreview.js';
 
+const TRACK_SUBTITLES = 'subtitles';
+const TRACK_METADATA = 'metadata';
+const TRACK_CHAPTERS = 'chapters';
+
 export default class VideoPreview extends BasePreview {
   constructor(media, optionalSearchResults) {
     super(media, optionalSearchResults);
+    const randomId = AppUtils.randomHexstring();
     this.$ids = {
       ...this.$ids,
-      player: `vjs-${AppUtils.randomHexstring()}`,
+      player: `vjs-${randomId}`,
     };
     this.$player = undefined;
-    this.$subtitleView = $('<div/>').addClass('lead');
+    this.$subtitleView = $('<div/>')
+      .addClass('lead');
     this.$trackCached = {};
     this.$proxyBucket = undefined;
     this.$mediaType = 'video/mp4';
-    this.$canvasView = $('<div/>').attr('id', `canvas-${AppUtils.randomHexstring()}`);
+    this.$canvasView = $('<div/>')
+      .attr('id', `canvas-${randomId}`);
   }
 
   static get Events() {
@@ -30,9 +37,6 @@ export default class VideoPreview extends BasePreview {
   static get Constants() {
     return {
       Subtitle: 'subtitle',
-      Track: {
-        Kind: 'subtitles', // captions
-      },
     };
   }
 
@@ -112,49 +116,84 @@ export default class VideoPreview extends BasePreview {
 
   async load() {
     await this.unload();
-    const [
-      src,
-      poster,
-    ] = await Promise.all([
-      this.getProxyMedia(),
-      this.media.getThumbnail(),
-    ]);
-    this.container.append($('<video/>').addClass('video-js vjs-fluid w-100')
-      .attr('id', this.ids.player)
+
+    const container = this.container;
+
+    /* video element */
+    const videoId = this.ids.player;
+    const video = $('<video/>')
+      .addClass('video-js vjs-fluid w-100')
+      .attr('id', videoId)
       .attr('controls', 'controls')
       .attr('preload', 'metadata')
-      .attr('poster', poster)
-      .attr('crossorigin', 'anonymous'))
-      .append(this.canvasView);
+      .attr('crossorigin', 'anonymous');
+    container.append(video);
 
-    const dimension = this.media.getVideoDimension();
-    /* workaround: set aspect raio to 16:9 for portrait mode video */
-    const aspectRatio = (dimension.height > dimension.width)
-      ? '16:9'
-      : undefined;
-    const player = videojs(this.ids.player, {
-      textTrackDisplay: {
-        allowMultipleShowingTracks: true,
-      },
-      aspectRatio,
-    });
-    player.markers({
-      markers: [],
-    });
-    player.src({
-      type: this.mediaType,
-      src,
-    });
-    player.load();
-    player.on('play', () =>
-      this.canvasView.children().remove());
-    this.player = player;
+    video.ready(async () => {
+      const [
+        src,
+        poster,
+        mediainfo,
+      ] = await Promise.all([
+        this.getProxyMedia(),
+        this.media.getThumbnail(),
+        this.media.loadMediaInfo(),
+      ]);
+      video.attr('poster', poster);
 
-    const subtitleKey = (this.media.getTranscribeResults() || {}).vtt;
-    if (subtitleKey) {
-      this.trackRegister(VideoPreview.Constants.Subtitle, subtitleKey);
-      await this.trackToggle(VideoPreview.Constants.Subtitle, true);
-    }
+      const dimension = this.media.getVideoDimension();
+
+      /* workaround: set aspect raio to 16:9 for portrait mode video */
+      const videoParams = {
+        textTrackDisplay: {
+          allowMultipleShowingTracks: true,
+        },
+        aspectRatio: (dimension.height > dimension.width)
+          ? '16:9'
+          : undefined,
+        autoplay: true,
+        playbackRates: [0.5, 1, 1.5, 2.0],
+      };
+
+      const player = videojs(videoId, videoParams);
+      player.markers({
+        markers: [],
+      });
+
+      player.src({
+        type: this.mediaType,
+        src,
+      });
+
+      player.ready(async () => {
+        player.volume(0.5);
+
+        const trancribe = this.media.getTranscribeResults() || {};
+        if (trancribe.vtt) {
+          this.trackRegister(
+            VideoPreview.Constants.Subtitle,
+            trancribe.vtt,
+            TRACK_SUBTITLES,
+            trancribe.languageCode || 'en'
+          );
+          await this.trackToggle(VideoPreview.Constants.Subtitle, true);
+        }
+
+        player.on('play', () =>
+          this.canvasView.children()
+            .remove());
+      });
+
+      player.load();
+      this.player = player;
+
+      /* auto pause when dom is no longer visible */
+      this.createObserver(video, player);
+    });
+
+    /* overlay canvas view */
+    container.append(this.canvasView);
+
     return super.load();
   }
 
@@ -167,13 +206,6 @@ export default class VideoPreview extends BasePreview {
     this.subtitleView.children().remove();
     this.canvasView.children().remove();
     return super.unload();
-  }
-
-  async beforeViewHide() {
-    if (this.player) {
-      this.player.pause();
-    }
-    return super.beforeViewHide();
   }
 
   async play() {
@@ -222,25 +254,42 @@ export default class VideoPreview extends BasePreview {
     return false;
   }
 
-  trackRegister(label, key, language = 'en') {
+  trackRegister(
+    label,
+    key,
+    kind = TRACK_METADATA,
+    language = 'en'
+  ) {
     this.trackCached[label] = {
       key,
       language,
+      kind,
       loaded: false,
     };
     return this;
   }
 
   trackUnregister(label) {
-    delete this.trackCached[label];
+    if (this.trackCached[label]) {
+      this.removeTrackByLabel(label);
+      if (this.trackCached[label].key.indexOf('blob') === 0) {
+        URL.revokeObjectURL(this.trackCached[label].key);
+      }
+      delete this.trackCached[label];
+    }
     return this;
   }
 
   async trackLoad(label) {
     if (this.player) {
-      const src = await this.media.getUrl(this.proxyBucket, this.trackCached[label].key);
+      let src;
+      if (this.trackCached[label].key.indexOf('blob') === 0) {
+        src = this.trackCached[label].key;
+      } else {
+        src = await this.media.getUrl(this.proxyBucket, this.trackCached[label].key);
+      }
       const track = this.player.addRemoteTextTrack({
-        kind: VideoPreview.Constants.Track.Kind,
+        kind: this.trackCached[label].kind,
         language: this.trackCached[label].language,
         label,
         src,
@@ -275,6 +324,19 @@ export default class VideoPreview extends BasePreview {
       : this;
   }
 
+  removeTrackByLabel(label) {
+    if (this.player) {
+      const tracks = this.player.remoteTextTracks();
+      for (let i = 0; i < tracks.length; i += 1) {
+        const track = tracks[i];
+        if (track.label === label) {
+          return this.player.removeRemoteTextTrack(track);
+        }
+      }
+    }
+    return undefined;
+  }
+
   trackLoadedEvent(track) {
     this.trackCached[track.label].loaded = true;
     if (this.trackIsSub(track)) {
@@ -306,10 +368,10 @@ export default class VideoPreview extends BasePreview {
 
   markerAdd(track) {
     const markers = [];
-    for (let cue of track.cues) {
+    for (let i = 0; i < track.cues.length; i++) {
       markers.push({
-        time: cue.startTime,
-        duration: cue.endTime - cue.startTime,
+        time: track.cues[i].startTime,
+        duration: track.cues[i].endTime - track.cues[i].startTime,
         text: track.label,
         overlayText: track.label,
       });
@@ -331,20 +393,25 @@ export default class VideoPreview extends BasePreview {
   }
 
   markerToggle(track, on) {
-    if (track.label === VideoPreview.Constants.Subtitle) {
-      return undefined;
-    }
-    if (on) {
-      return this.markerAdd(track);
-    }
-
-    return this.markerRemove(track);
+    return (track.label === VideoPreview.Constants.Subtitle)
+      ? undefined
+      : on
+        ? this.markerAdd(track)
+        : this.markerRemove(track);
   }
 
   createTrackFromCues(label, cues) {
     if (this.player) {
+      const tracks = this.player.remoteTextTracks();
+      for (let i = 0; i < tracks.length; i += 1) {
+        const track = tracks[i];
+        if (track.kind === TRACK_CHAPTERS && track.label === label) {
+          return track;
+        }
+      }
+
       const texttrack = this.player.addRemoteTextTrack({
-        kind: 'chapters',
+        kind: TRACK_CHAPTERS,
         language: 'en',
         label,
       }, false);
@@ -354,5 +421,33 @@ export default class VideoPreview extends BasePreview {
       return texttrack.track;
     }
     return undefined;
+  }
+
+  createObserver(video, player) {
+    const options = {
+      root: null,
+      rootMargin: '0px',
+      threshold: [0.1],
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.intersectionRatio <= options.threshold[0]) {
+          console.log(
+            'videoPreview.createObserver',
+            'entry.intersectionRatio',
+            entry.intersectionRatio
+          );
+
+          if (player) {
+            player.pause();
+          }
+        }
+      });
+    }, options);
+
+    observer.observe(video[0]);
+
+    return observer;
   }
 }

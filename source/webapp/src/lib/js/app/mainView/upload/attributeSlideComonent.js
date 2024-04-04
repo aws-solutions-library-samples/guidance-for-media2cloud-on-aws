@@ -5,6 +5,12 @@ import Localization from '../../shared/localization.js';
 import AppUtils from '../../shared/appUtils.js';
 import BaseUploadSlideComponent from './baseUploadSlideComponent.js';
 
+const {
+  RegularExpressions: {
+    CharacterSet128,
+  },
+} = Localization;
+
 export default class AttributeSlideComponent extends BaseUploadSlideComponent {
   constructor() {
     super();
@@ -155,7 +161,7 @@ export default class AttributeSlideComponent extends BaseUploadSlideComponent {
       .html(Localization.Messages.GroupDesc);
     const name = $('<input/>').addClass('form-control mr-2')
       .attr('id', this.ids.groupName)
-      .attr('pattern', '^[a-zA-Z0-9_-]{0,128}$')
+      .attr('pattern', CharacterSet128)
       .attr('placeholder', '(Blank)');
     const form = $('<form/>').addClass('col-4 px-0 needs-validation')
       .attr('novalidate', 'novalidate')

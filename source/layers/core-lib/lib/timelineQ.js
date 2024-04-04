@@ -1,11 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
+const {
+  M2CException,
+} = require('./error');
+const FaceIndexer = require('./faceIndexer');
 
 const THRESHOLD_TIMEDRIFT = 1200; // 1200ms
 const THRESHOLD_POSITIONDRIFT = 0.10; // 10%
 
 class BaseItem {
-  constructor(item = {}, options = undefined) {
+  constructor(item = {}, options = {}) {
     this.$name = item.name;
     this.$confidence = item.confidence;
     this.$begin = item.begin;
@@ -17,9 +21,9 @@ class BaseItem {
     this.$cx = this.computeCenterX();
     this.$cy = this.computeCenterY();
     this.$count = 1;
-    this.$timeDriftThreshold = (options || {}).timeDriftExceedThreshold
+    this.$timeDriftThreshold = options.timeDriftExceedThreshold
       || THRESHOLD_TIMEDRIFT;
-    this.$positionDriftThreshold = (options || {}).positionDriftThreshold
+    this.$positionDriftThreshold = options.positionDriftThreshold
       || THRESHOLD_POSITIONDRIFT;
   }
 
@@ -28,7 +32,7 @@ class BaseItem {
   }
 
   canUse() {
-    throw new Error('sub class to implement');
+    throw new M2CException('sub class to implement');
   }
 
   get timeDriftThreshold() {
@@ -163,7 +167,7 @@ class BaseItem {
     return [
       this.name,
       this.parentName ? `<c.small>${this.parentName}</c>` : undefined,
-      `<c.confidence>(${Number.parseFloat(this.confidence).toFixed(2)})</c>`,
+      `<c.confidence>(${Math.round(this.confidence)}%)</c>`,
     ].filter(x => x).join('\n');
   }
 
@@ -195,7 +199,7 @@ class BaseItem {
   toJSON() {
     return {
       name: this.name,
-      confidence: Number.parseFloat(this.confidence),
+      confidence: Number(this.confidence.toFixed(2)),
       begin: this.begin,
       end: this.end,
       cx: this.cx,
@@ -248,14 +252,26 @@ class LabelItem extends BaseItem {
 
 class FaceMatchItem extends BaseItem {
   constructor(item, options) {
+    const face = item.FaceMatches[0].Face;
+
+    const faceId = face.FaceId;
+    let name = face.Name;
+    if (!name) {
+      name = FaceIndexer.resolveExternalImageId(
+        face.ExternalImageId,
+        faceId
+      );
+    }
+
     super({
-      name: item.FaceMatches[0].Face.ExternalImageId,
+      name,
       parentName: `Index ${item.Person.Index}`,
       confidence: item.FaceMatches[0].Similarity,
       begin: item.Timestamp,
       end: item.Timestamp,
       boundingBox: item.Person.BoundingBox || item.Person.Face.BoundingBox,
     }, options);
+    this.$faceId = faceId;
   }
 
   canUse() {
@@ -266,19 +282,30 @@ class FaceMatchItem extends BaseItem {
     return 'FaceMatchItem';
   }
 
+  get faceId() {
+    return this.$faceId;
+  }
+
   get cueText() {
     return [
       this.name.replace(/_/g, ' '),
-      `<c.confidence>(${Number.parseFloat(this.confidence).toFixed(2)})</c>`,
+      `<c.confidence>(${Math.round(this.confidence)}%)</c>`,
     ].filter(x => x).join('\n');
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      faceId: this.faceId,
+    };
   }
 }
 
 class ModerationItem extends BaseItem {
   constructor(item, options) {
     super({
-      name: item.ModerationLabel.ParentName,
-      parentName: item.ModerationLabel.Name,
+      name: (options || {}).name || item.ModerationLabel.Name,
+      parentName: item.ModerationLabel.ParentName,
       confidence: item.ModerationLabel.Confidence,
       begin: item.Timestamp,
       end: item.Timestamp,
@@ -292,6 +319,14 @@ class ModerationItem extends BaseItem {
 
   get [Symbol.toStringTag]() {
     return 'ModerationItem';
+  }
+
+  get cueText() {
+    return [
+      this.name,
+      this.parentName ? `<c.small>${this.parentName}</c>` : undefined,
+      `<c.confidence>(${Math.round(this.confidence)}%)</c>`,
+    ].filter(x => x).join('\n');
   }
 }
 
@@ -322,7 +357,7 @@ class PersonItem extends BaseItem {
     return [
       `Person ${this.name}`,
       this.parentName ? `<c.small>${this.parentName}</c>` : undefined,
-      `<c.confidence>(${Number.parseFloat(this.confidence).toFixed(2)})</c>`,
+      `<c.confidence>(${Math.round(this.confidence)}%)</c>`,
     ].filter(x => x).join('\n');
   }
 }
@@ -434,7 +469,7 @@ class TimelineQ extends Array {
     if (item.TextDetection) {
       return new TextItem(item, options);
     }
-    throw new Error('fail to create typed item');
+    throw new M2CException('fail to create typed item');
   }
 
   /**

@@ -1,15 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  IoTClient,
+  DescribeEndpointCommand,
+  ListTargetsForPolicyCommand,
+  DetachPolicyCommand,
+  InternalErrorException,
+} = require('@aws-sdk/client-iot');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+class X0 extends mxBaseResponse(class {}) {}
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 /**
  * @function IotEndpoint
@@ -17,31 +24,42 @@ const mxBaseResponse = require('../shared/mxBaseResponse');
  * @param {object} context
  */
 exports.IotEndpoint = async (event, context) => {
-  try {
-    class X0 extends mxBaseResponse(class {}) {}
-    const x0 = new X0(event, context);
+  let x0;
 
+  try {
+    x0 = new X0(event, context);
     if (x0.isRequestType('Delete')) {
       x0.storeResponseData('Status', 'SKIPPED');
       return x0.responseData;
     }
 
-    const iot = new AWS.Iot({
-      apiVersion: '2015-05-28',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    const response = await iot.describeEndpoint({
-      endpointType: 'iot:Data-ATS',
-    }).promise();
+    const iotClient = xraysdkHelper(new IoTClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
 
-    if (!(response || {}).endpointAddress) {
-      throw new Error('fail to get Iot endpoint');
-    }
-    x0.storeResponseData('Endpoint', response.endpointAddress);
-    x0.storeResponseData('Status', 'SUCCESS');
-    return x0.responseData;
+    const command = new DescribeEndpointCommand({
+      endpointType: 'iot:Data-ATS',
+    });
+
+    return iotClient.send(command)
+      .then((res) => {
+        if (!(res || {}).endpointAddress) {
+          throw new InternalErrorException('fail to get Iot endpoint');
+        }
+        x0.storeResponseData('Endpoint', res.endpointAddress);
+        x0.storeResponseData('Status', 'SUCCESS');
+        return x0.responseData;
+      });
   } catch (e) {
-    e.message = `IotEndpoint: ${e.message}`;
+    console.error(
+      'ERR:',
+      'IotEndpoint:',
+      'DescribeEndpointCommand:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
     throw e;
   }
 };
@@ -52,10 +70,11 @@ exports.IotEndpoint = async (event, context) => {
  * @param {object} context
  */
 exports.IotDetachPolices = async (event, context) => {
-  try {
-    class X0 extends mxBaseResponse(class {}) {}
-    const x0 = new X0(event, context);
+  let command;
+  let x0;
 
+  try {
+    x0 = new X0(event, context);
     if (x0.isRequestType('Create')) {
       x0.storeResponseData('Status', 'SKIPPED');
       return x0.responseData;
@@ -66,29 +85,57 @@ exports.IotDetachPolices = async (event, context) => {
       return x0.responseData;
     }
 
-    const iot = new AWS.Iot({
-      apiVersion: '2015-05-28',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    const {
-      targets = [],
-    } = await iot.listTargetsForPolicy({
+    const iotClient = xraysdkHelper(new IoTClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    command = new ListTargetsForPolicyCommand({
       policyName: event.ResourceProperties.Data.IotThingPolicy,
       pageSize: 200,
-    }).promise();
-    console.log(JSON.stringify(targets, null, 2));
+    });
 
-    const response = await Promise.all(targets.map(target =>
-      iot.detachPolicy({
-        policyName: event.ResourceProperties.Data.IotThingPolicy,
-        target,
-      }).promise()));
-    console.log(JSON.stringify(response, null, 2));
+    const targets = await iotClient.send(command)
+      .then((res) =>
+        res.targets || []);
+
+    console.log(
+      'targets',
+      JSON.stringify(targets, null, 2)
+    );
+
+    if (targets && targets.length > 0) {
+      await Promise.all(targets
+        .map((target) => {
+          command = new DetachPolicyCommand({
+            policyName: event.ResourceProperties.Data.IotThingPolicy,
+            target,
+          });
+          return iotClient.send(command)
+            .catch((e) => {
+              console.error(
+                'ERR:',
+                'IotDetachPolices:',
+                'DetachPolicyCommand:',
+                e.$metadata.httpStatusCode,
+                e.name,
+                target
+              );
+              return undefined;
+            });
+        }));
+    }
 
     x0.storeResponseData('Status', 'SUCCESS');
     return x0.responseData;
   } catch (e) {
-    e.message = `IotDetachPolices: ${e.message}`;
+    console.error(
+      'ERR:',
+      'IotDetachPolices:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
     throw e;
   }
 };

@@ -1,17 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  CloudFrontClient,
+  CreateInvalidationCommand,
+} = require('@aws-sdk/client-cloudfront');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
 class X0 extends mxBaseResponse(class {}) {}
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 /**
  * @function InvalidateCache
@@ -19,26 +22,34 @@ class X0 extends mxBaseResponse(class {}) {}
  * @param {object} context
  */
 exports.InvalidateCache = async (event, context) => {
-  const x0 = new X0(event, context);
+  let x0;
+
   try {
+    x0 = new X0(event, context);
+
     if (!x0.isRequestType('Update')) {
       x0.storeResponseData('Status', 'SKIPPED');
       return x0.responseData;
     }
+
     const data = event.ResourceProperties.Data;
     const missing = [
       'DistributionId',
       'Paths',
     ].filter(x => data[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing ${missing.join(', ')}`);
+      throw new M2CException(`missing ${missing.join(', ')}`);
     }
-    const reference = (data.LastUpdated || new Date().toISOString()).replace(/\D/g, '');
-    const cf = new AWS.CloudFront({
-      apiVersion: '2020-05-31',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    const id = await cf.createInvalidation({
+
+    const reference = (data.LastUpdated || new Date().toISOString())
+      .replace(/[^0-9]/g, '');
+
+    const cloudfrontClient = xraysdkHelper(new CloudFrontClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new CreateInvalidationCommand({
       DistributionId: data.DistributionId,
       InvalidationBatch: {
         CallerReference: reference,
@@ -47,18 +58,24 @@ exports.InvalidateCache = async (event, context) => {
           Quantity: data.Paths.length,
         },
       },
-    }).promise()
-      .then(res => {
-        console.log(`[INFO]: InvalidateCache: success: id=${res.Invalidation.Id} status=${res.Invalidation.Status}`);
-        return res.Invalidation.Id;
-      })
-      .catch((e) => {
-        console.error(`[ERR]: InvalidateCache: ${e.code} ${e.message}`);
+    });
+
+    return cloudfrontClient.send(command)
+      .then((res) => {
+        x0.storeResponseData('Id', res.Invalidation.Id);
+        return x0.responseData;
       });
-    x0.storeResponseData('Id', id || 'None');
-    return x0.responseData;
   } catch (e) {
-    e.message = `[ERR]: InvalidateCache: ${e.code} ${e.message}`;
-    throw e;
+    console.error(
+      'ERR:',
+      'InvalidateCache:',
+      'CreateInvalidationCommand:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
+
+    x0.storeResponseData('Id', 'None');
+    return x0.responseData;
   }
 };

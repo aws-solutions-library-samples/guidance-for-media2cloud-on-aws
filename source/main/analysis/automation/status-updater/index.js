@@ -3,6 +3,7 @@
 
 const {
   SNS,
+  M2CException,
 } = require('core-lib');
 const CloudWatchStatus = require('./lib/cloudwatch');
 
@@ -10,7 +11,7 @@ const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_INGEST_BUCKET',
   'ENV_PROXY_BUCKET',
   'ENV_SNS_TOPIC_ARN',
@@ -21,7 +22,7 @@ exports.handler = async (event, context) => {
   try {
     const missing = REQUIRED_ENVS.filter(x => process.env[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing env, ${missing.join(', ')}`);
+      throw new M2CException(`missing env, ${missing.join(', ')}`);
     }
 
     let instance;
@@ -29,7 +30,7 @@ exports.handler = async (event, context) => {
       instance = new CloudWatchStatus(event, context);
     }
     if (!instance) {
-      throw new Error('event not supported. exiting....');
+      throw new M2CException('event not supported. exiting....');
     }
     return instance.process();
   } catch (e) {

@@ -1,6 +1,6 @@
 {
   "name": "m2c-api",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "media2cloud api gateway lambda",
   "main": "index.js",
   "private": true,
@@ -8,25 +8,21 @@
     "pretest": "npm install",
     "test": "jest --coverage --coverageDirectory=../../coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
-    "build:copy": "cp -rv index*.js package.json lib dist/",
-    "build:install": "cd dist && npm install --omit=dev --omit=optional",
+    "build:copy": "cp -rv index.js package.json lib dist/",
+    "build:install": "cd dist && npm install --omit=dev",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
-    "@elastic/elasticsearch": "7.12.0",
-    "aws-elasticsearch-connector": "^9.2.0",
-    "aws-sdk": "2.831.0",
-    "aws-sdk-mock": "5.8.0",
-    "chai": "4.3.7",
-    "core-lib": "file:../layers/core-lib",
-    "jest": "^29.4.3"
-  },
-  "dependencies": {},
-  "license": "Apache-2.0"
+    "@aws-sdk/client-cognito-identity-provider": "^3.468.0",
+    "@aws-sdk/client-comprehend": "^3.468.0",
+    "@aws-sdk/client-dynamodb": "^3.468.0",
+    "@aws-sdk/client-s3": "^3.468.0",
+    "@aws-sdk/client-sfn": "^3.468.0",
+    "@aws-sdk/client-transcribe": "^3.468.0",
+    "@aws-sdk/util-dynamodb": "^3.468.0",
+    "aws-sdk-client-mock": "^2.2.0",
+    "core-lib": "file:../layers/core-lib"
+  }
 }

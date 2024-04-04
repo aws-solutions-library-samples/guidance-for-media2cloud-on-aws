@@ -1,6 +1,6 @@
 {
   "name": "spark-md5-bundle",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "simply copy spark-md5 js to dist folder",
   "main": "index.js",
   "scripts": {
@@ -9,14 +9,9 @@
     "build:copy": "cp -v ./node_modules/spark-md5/spark-md5.min.js ./dist/js",
     "build": "npm-run-all -s build:clean build:copy"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "spark-md5": "^3.0.0"
-  },
-  "devDependencies": {},
-  "private": true
+    "spark-md5": "^3.0.2"
+  }
 }

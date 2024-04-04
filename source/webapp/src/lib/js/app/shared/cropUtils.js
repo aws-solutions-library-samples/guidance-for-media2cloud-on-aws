@@ -71,7 +71,7 @@ export default class CropUtils {
     if (!this.cropper) {
       throw new Error('cropper not loaded');
     }
-    const cropped = this.cropper.getCroppedCanvas().toDataURL('image/png');
+    const cropped = this.cropper.getCroppedCanvas().toDataURL('image/jpeg', 1.0);
     return cropped;
   }
 }

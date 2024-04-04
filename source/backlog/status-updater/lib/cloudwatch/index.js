@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
+const {
+  M2CException,
+} = require('service-backlog-lib');
 const MediaConvertStatus = require('./mediaconvertStatus');
 const TranscribeStatus = require('./transcribeStatus');
 const CustomLabelsStateMachineStatus = require('./customlabelsStateMachineStatus');
@@ -28,23 +30,15 @@ class CloudWatchStatus {
   }
 
   async process() {
-    let instance;
-    switch (this.source) {
-      case MediaConvertStatus.SourceType:
-        instance = new MediaConvertStatus(this);
-        break;
-      case TranscribeStatus.SourceType:
-        instance = new TranscribeStatus(this);
-        break;
-      case CustomLabelsStateMachineStatus.SourceType:
-        instance = new CustomLabelsStateMachineStatus(this);
-        break;
-      default:
-        instance = undefined;
-    }
-    
+    const instance = (this.source === MediaConvertStatus.SourceType)
+      ? new MediaConvertStatus(this)
+      : (this.source === TranscribeStatus.SourceType)
+        ? new TranscribeStatus(this)
+        : (this.source === CustomLabelsStateMachineStatus.SourceType)
+          ? new CustomLabelsStateMachineStatus(this)
+          : undefined;
     if (!instance) {
-      throw new Error(`${this.source} not supported`);
+      throw new M2CException(`${this.source} not supported`);
     }
     return instance.process();
   }

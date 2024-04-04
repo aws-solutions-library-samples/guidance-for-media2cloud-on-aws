@@ -116,4 +116,25 @@ module.exports = {
    * method: GET, POST, DELETE
    */
   AIOptionsSettings: 'settings/aioptions',
+
+  /**
+   * @description GenAI use cases
+   * /genai/*
+   * method: POST
+   */
+  Tokenize: 'genai/tokenize',
+  Genre: 'genai/genre',
+  Sentiment: 'genai/sentiment',
+  Summarize: 'genai/summarize',
+  Taxonomy: 'genai/taxonomy',
+  Theme: 'genai/theme',
+  TVRatings: 'genai/tvratings',
+  Custom: 'genai/custom',
+
+  /**
+   * @description FaceIndexer use cases
+   * /faceindexer
+   * method: GET, POST
+   */
+  FaceIndexer: 'faceindexer',
 };

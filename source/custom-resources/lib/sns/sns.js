@@ -1,15 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  SNSClient,
+  SubscribeCommand,
+} = require('@aws-sdk/client-sns');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 class SNS extends mxBaseResponse(class {}) {
   constructor(event, context) {
@@ -18,21 +21,29 @@ class SNS extends mxBaseResponse(class {}) {
     const data = event.ResourceProperties.Data;
     this.sanityCheck(data);
     this.$data = data;
+
     /* create unique email list */
-    const list = (Array.isArray(data.EmailList)
-      ? data.EmailList.slice(0)
-      : data.EmailList.split(','))
-      .filter(x => x).map(x => x.trim());
-    this.$emailList = Array.from(new Set(list));
+    let unique = data.EmailList;
+    if (!Array.isArray(unique)) {
+      unique = unique.split(',');
+    }
+    this.$emailList = [
+      ...new Set(unique
+        .filter((x) =>
+          x)
+        .map((x) =>
+          x.trim())),
+    ];
   }
 
   sanityCheck(data) {
     const missing = [
       'EmailList',
       'TopicArn',
-    ].filter(x => data[x] === undefined);
+    ].filter((x) =>
+      data[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing ${missing.join(', ')}`);
+      throw new M2CException(`missing ${missing.join(', ')}`);
     }
   }
 
@@ -55,18 +66,22 @@ class SNS extends mxBaseResponse(class {}) {
   async subscribe() {
     console.log(`EmailList = ${JSON.stringify(this.emailList, null, 2)}`);
 
-    const sns = new AWS.SNS({
-      apiVersion: '2010-03-31',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    const response = await Promise.all(this.emailList.map(email =>
-      sns.subscribe({
-        Protocol: 'email',
-        TopicArn: this.topicArn,
-        Endpoint: email,
-      }).promise()));
+    const responses = await Promise.all(this.emailList
+      .map((email) => {
+        const snsClient = xraysdkHelper(new SNSClient({
+          customUserAgent: CUSTOM_USER_AGENT,
+          retryStrategy: retryStrategyHelper(),
+        }));
 
-    this.storeResponseData('Subscribed', response.length);
+        const command = new SubscribeCommand({
+          Protocol: 'email',
+          TopicArn: this.topicArn,
+          Endpoint: email,
+        });
+        return snsClient.send(command);
+      }));
+
+    this.storeResponseData('Subscribed', responses.length);
     this.storeResponseData('Status', 'SUCCESS');
     return this.responseData;
   }

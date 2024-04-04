@@ -1,17 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  ComprehendClient,
+  DescribeEntitiesDetectionJobCommand,
+} = require('@aws-sdk/client-comprehend');
 const {
   AnalysisTypes,
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 const {
   BacklogJob,
@@ -36,6 +34,7 @@ const STATUS_FAILED = [
   STOP_REQUESTED,
   STOPPED,
 ];
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
   constructor(stateData) {
@@ -51,28 +50,32 @@ class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
 
   async process() {
     const jobId = this.stateData.data[CATEGORY][SUB_CATEGORY].jobId;
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const response = await comprehend.describeEntitiesDetectionJob({
-      JobId: jobId,
-    }).promise();
 
-    const jobStatus = response.EntitiesDetectionJobProperties.JobStatus;
-    if (STATUS_PROCESSING.indexOf(jobStatus) >= 0) {
+    const comprehendClient = xraysdkHelper(new ComprehendClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeEntitiesDetectionJobCommand({
+      JobId: jobId,
+    });
+
+    const response = await comprehendClient.send(command);
+
+    const status = response.EntitiesDetectionJobProperties.JobStatus;
+    if (STATUS_PROCESSING.includes(status)) {
       return this.onProgress(response);
     }
-    if (STATUS_FAILED.indexOf(jobStatus) >= 0) {
+    if (STATUS_FAILED.includes(status)) {
       return this.onError(response);
     }
-
     return this.onCompleted(response);
   }
 
   async onCompleted(data) {
     await this.removeBacklogItem(data.EntitiesDetectionJobProperties.JobStatus)
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
 
     const uri = new URL(data.EntitiesDetectionJobProperties.OutputDataConfig.S3Uri);
     const key = uri.pathname.slice(1);
@@ -88,7 +91,8 @@ class StateCheckCustomEntityStatus extends BaseStateStartComprehend {
 
   async onError(data) {
     await this.removeBacklogItem(data.EntitiesDetectionJobProperties.JobStatus)
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
     this.stateData.setFailed(data.EntitiesDetectionJobProperties.Message);
     return this.stateData.toJSON();
   }

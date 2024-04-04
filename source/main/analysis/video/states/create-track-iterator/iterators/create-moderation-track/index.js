@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
-  SQL,
   AnalysisTypes,
-  CommonUtils,
 } = require('core-lib');
 const BaseCreateTrackIterator = require('../shared/baseCreateTrackIterator');
 
@@ -19,42 +17,44 @@ class CreateModerationTrackIterator extends BaseCreateTrackIterator {
     return 'CreateModerationTrackIterator';
   }
 
-  async downloadSelected(bucket, key, name) {
-    const query = `SELECT * FROM S3Object[*].ModerationLabels[*] s WHERE s.ModerationLabel.Name = '${SQL.escape(name)}';`;
-    return CommonUtils.selectS3Content(bucket, key, query).catch(() =>
-      this.downloadJson(bucket, key, name));
-  }
+  filterBy(name, data) {
+    if (!data || !data.ModerationLabels || !data.ModerationLabels.length) {
+      return [];
+    }
 
-  async downloadJson(bucket, key, name) {
-    const data = await CommonUtils.download(bucket, key)
-      .then(x => JSON.parse(x));
-    return ((data || {}).ModerationLabels || []).filter(x =>
-      ((x.ModerationLabel || {}).Name === name));
+    return data.ModerationLabels
+      .filter((x) =>
+        x.ModerationLabel !== undefined
+        && (x.ModerationLabel.Name === name
+          || x.ModerationLabel.ParentName === name));
   }
 
   createTimeseriesData(name, datasets) {
     let desc;
     const timestamps = {};
-    for (let dataset of datasets) {
-      if (!desc && dataset.ModerationLabel.Name) {
-        desc = dataset.ModerationLabel.Name;
+    for (let i = 0; i < datasets.length; i++) {
+      const dataset = datasets[i];
+      if (!desc && dataset.ModerationLabel.ParentName) {
+        desc = dataset.ModerationLabel.ParentName;
       }
       timestamps[dataset.Timestamp] = timestamps[dataset.Timestamp] || [];
       timestamps[dataset.Timestamp].push({
-        c: Number.parseFloat(dataset.ModerationLabel.Confidence.toFixed(2)),
+        c: Number(dataset.ModerationLabel.Confidence.toFixed(2)),
       });
     }
     if (!Object.keys(timestamps)) {
       return undefined;
     }
+
     return {
       label: name,
       desc,
-      data: Object.keys(timestamps).map(x => ({
-        x: Number.parseInt(x, 10),
-        y: timestamps[x].length,
-        details: timestamps[x],
-      })),
+      data: Object.keys(timestamps)
+        .map(x => ({
+          x: Number(x),
+          y: timestamps[x].length,
+          details: timestamps[x],
+        })),
     };
   }
 }

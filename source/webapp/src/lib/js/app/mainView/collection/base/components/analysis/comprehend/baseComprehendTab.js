@@ -4,20 +4,31 @@
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
 
 export default class BaseComprehendTab extends BaseAnalysisTab {
-  constructor(tabName, previewComponent, defaultTab = false) {
-    super(tabName, previewComponent, defaultTab);
-  }
-
   async createTimelineButtons(type) {
     const result = this.media.getComprehendResults();
     if (!(result[type] || {}).metadata) {
       return [];
     }
-    const response = await this.download(result[type].metadata);
+
+    const response = await this.download(result[type].metadata)
+      .catch((e) => {
+        console.log(
+          'ERR:',
+          'fail to download comprehend metadata',
+          result[type].metadata,
+          e.message
+        );
+        return undefined;
+      });
+
     if (!response) {
       return [];
     }
-    const items = JSON.parse(response.Body);
+
+    const items = await response.Body.transformToString()
+      .then((res) =>
+        JSON.parse(res));
+
     /* entity could return 'type' */
     const typedCategory = items[0].type ? {} : undefined;
     const typedlessCategory = [];

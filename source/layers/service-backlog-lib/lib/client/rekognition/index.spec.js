@@ -1,129 +1,322 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
-const RekognitionBacklogJob = require('./index.js');
-const AWS = require('aws-sdk-mock');
-const SDK = require('aws-sdk');
-AWS.setSDKInstance(SDK);
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-jest.mock('../../shared/retry', () => {
-  return {
-    run: jest.fn((fn, params) => {
-      return Promise.resolve({ jobId: params.jobId });
-    })
-  };
-});
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  DynamoDBClient,
+  PutItemCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  marshall,
+} = require('@aws-sdk/util-dynamodb');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
+const {
+  RekognitionClient,
+  StartCelebrityRecognitionCommand,
+  StartContentModerationCommand,
+  StartFaceDetectionCommand,
+  StartFaceSearchCommand,
+  StartLabelDetectionCommand,
+  StartPersonTrackingCommand,
+  StartSegmentDetectionCommand,
+  StartTextDetectionCommand,
+} = require('@aws-sdk/client-rekognition');
 
+const RekognitionBacklogJob = require('./index');
+
+const ddbMock = mockClient(DynamoDBClient);
+const rekognitionMock = mockClient(RekognitionClient);
+const eventbridgeMock = mockClient(EventBridgeClient);
 
 describe('Test RekognitionBacklogJob', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
-    AWS.mock('DynamoDB.Converter', 'unmarshall', Promise.resolve({ serviceApi: 'test' }));
+    jest.resetModules(); // Most important - it clears the cache
+    ddbMock.reset();
+    rekognitionMock.reset();
   });
 
   afterEach(() => {
-    AWS.restore('DynamoDB.Converter');
   });
 
   test('Test startCelebrityRecognition', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testCelebRekog'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartCelebrityRecognition;
+    const serviceParams = {
+      jobId: 'testCelebRekog',
     };
 
-    const response = await rekognitionJob.startCelebrityRecognition('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartCelebrityRecognition);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartCelebrityRecognitionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startCelebrityRecognition(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startContentModeration', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testContentMod'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartContentModeration;
+    const serviceParams = {
+      jobId: 'testContentModeration',
     };
 
-    const response = await rekognitionJob.startContentModeration('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartContentModeration);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartContentModerationCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startContentModeration(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startFaceDetection', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testFaceDetect'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartFaceDetection;
+    const serviceParams = {
+      jobId: 'testFaceDetection',
     };
 
-    const response = await rekognitionJob.startFaceDetection('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartFaceDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartFaceDetectionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startFaceDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startFaceSearch', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testFaceSearch'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartFaceSearch;
+    const serviceParams = {
+      jobId: 'testFaceSearch',
     };
 
-    const response = await rekognitionJob.startFaceSearch('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartFaceSearch);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartFaceSearchCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startFaceSearch(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startLabelDetection', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testLabelDetect'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartLabelDetection;
+    const serviceParams = {
+      jobId: 'testLabelDetection',
     };
 
-    const response = await rekognitionJob.startLabelDetection('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartLabelDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartLabelDetectionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startLabelDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startPersonTracking', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testPersonTrack'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartPersonTracking;
+    const serviceParams = {
+      jobId: 'testPersonTracking',
     };
 
-    const response = await rekognitionJob.startPersonTracking('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartPersonTracking);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartPersonTrackingCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startPersonTracking(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startSegmentDetection', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testSegmentDetect'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartSegmentDetection;
+    const serviceParams = {
+      jobId: 'testSegmentDetection',
     };
 
-    const response = await rekognitionJob.startSegmentDetection('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartSegmentDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartSegmentDetectionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startSegmentDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startTextDetection', async () => {
-    const rekognitionJob = new RekognitionBacklogJob();
-    const params = {
-      jobId: 'testTextDetect'
+    const serviceApi = RekognitionBacklogJob.ServiceApis.StartTextDetection;
+    const serviceParams = {
+      jobId: 'textTextDetection',
     };
 
-    const response = await rekognitionJob.startTextDetection('id', params);
-    expect(response.serviceApi).toBe(RekognitionBacklogJob.ServiceApis.StartTextDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    rekognitionMock.on(StartTextDetectionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const rekognitionJob = new RekognitionBacklogJob();
+
+    const response = await rekognitionJob.startTextDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 });

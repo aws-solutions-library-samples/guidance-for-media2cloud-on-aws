@@ -8,7 +8,7 @@ const {
   Indexer,
 } = require('core-lib');
 
-const TYPE_AUDIO = 'audio';
+const INDEX_CONTENT = Indexer.getContentIndex();
 
 class BaseStateIndexer {
   constructor(stateData, subCategory) {
@@ -42,15 +42,19 @@ class BaseStateIndexer {
     const datasets = await this.downloadMetadata()
       .then((res) =>
         this.parseDataset(res));
+
+    // update field in opensearch
     if (datasets && datasets.length > 0) {
-      const uuid = this.stateData.uuid;
       const indexer = new Indexer();
-      await indexer.indexDocument(this.subCategory, uuid, {
-        type: TYPE_AUDIO,
-        data: datasets,
-      }).catch((e) =>
-        console.error(`[ERR]: indexer.indexDocument: ${uuid}: ${this.subCategory}`, e));
+      await indexer.update(
+        INDEX_CONTENT,
+        this.stateData.uuid,
+        {
+          [this.subCategory]: datasets,
+        }
+      );
     }
+
     return this.setCompleted();
   }
 
@@ -60,9 +64,19 @@ class BaseStateIndexer {
     if (!bucket || !key) {
       return undefined;
     }
+
     return CommonUtils.download(bucket, key)
-      .catch((e) =>
-        console.error(`[ERR]: downloadMetadata: ${key} ${e.code} ${e.message}`));
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'BaseStateIndexer.downloadMetadata:',
+          'CommonUtils.download:',
+          e.name,
+          e.message,
+          key
+        );
+        return undefined;
+      });
   }
 
   parseDataset(datasets) {

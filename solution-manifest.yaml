@@ -1,9 +1,0 @@
-id: SO0050
-name: media2cloud-on-aws
-version: 3.1.5
-cloudformation_templates:
-  - template: media2cloud.template
-    main_template: true
-  - template: media2cloud-backend-stack.template
-  - template: media2cloud-core-stack.template
-  - template: media2cloud-webapp-stack.template

@@ -1,20 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  ComprehendClient,
+  DescribeEntityRecognizerCommand,
+} = require('@aws-sdk/client-comprehend');
 const PATH = require('path');
 const {
   Environment,
   AnalysisTypes,
   CommonUtils,
-  Indexer,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
@@ -25,6 +22,7 @@ const DOC_BASENAME = 'document';
 const FILLER = '   ';
 const MIN_CHARACTERS = 3;
 const DOCUMENTS_PER_BATCH = 25;
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
   constructor(stateData) {
@@ -45,20 +43,19 @@ class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
     if (!(await this.getCustomEntityRecognizer())) {
       return this.dataLessThenThreshold();
     }
+
     /* download indexed transcription */
-    const indexer = new Indexer();
-    const doc = await indexer.getDocument(INDEX_TRANSCRIBE, this.stateData.uuid)
-      .catch((e) =>
-        console.error(`[ERR]: indexer.getDocument: ${this.stateData.uuid} ${JSON.stringify(e.body, null, 2)}`));
-    if (!doc || doc.data.length === 0) {
+    const doc = await this.getTranscribeResults();
+    if (!doc || doc.length === 0) {
       return this.dataLessThenThreshold();
     }
+
     /* preparing the document for analysis. */
     /* At most 25 lines per document. Each line is less than 5KB */
     const bucket = this.stateData.input.destination.bucket;
     const documents = [];
-    while (doc.data.length) {
-      documents.push(this.prepareDocument(doc.data));
+    while (doc.length) {
+      documents.push(this.prepareDocument(doc));
     }
     /* upload input documents */
     const numOutputs = documents.length;
@@ -100,20 +97,25 @@ class StateCheckCustomEntityCriteria extends BaseStateStartComprehend {
     }
     const languageCode = this.getComprehendLanguageCode();
     const arn = `arn:aws:comprehend:${process.env.AWS_REGION}:${this.stateData.accountId}:entity-recognizer/${name}`;
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const recognizer = await comprehend.describeEntityRecognizer({
+
+    const comprehendClient = xraysdkHelper(new ComprehendClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeEntityRecognizerCommand({
       EntityRecognizerArn: arn,
-    }).promise()
-      .then(data => ({
-        arn: data.EntityRecognizerProperties.EntityRecognizerArn,
-        languageCode: data.EntityRecognizerProperties.LanguageCode,
-        canUse: data.EntityRecognizerProperties.Status === 'TRAINED'
-          || data.EntityRecognizerProperties.Status === 'STOPPED',
+    });
+
+    const recognizer = await comprehendClient.send(command)
+      .then((res) => ({
+        arn: res.EntityRecognizerProperties.EntityRecognizerArn,
+        languageCode: res.EntityRecognizerProperties.LanguageCode,
+        canUse: res.EntityRecognizerProperties.Status === 'TRAINED'
+          || res.EntityRecognizerProperties.Status === 'STOPPED',
       }))
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
 
     return (recognizer
       && recognizer.canUse

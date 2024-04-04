@@ -3,13 +3,13 @@
 const PATH = require('path');
 const {
   AnalysisTypes,
-  AnalysisError,
-  NodeWebVtt,
+  WebVttHelper,
   CommonUtils,
 } = require('core-lib');
 const BaseStateIndexer = require('../shared/baseStateIndexer');
 
 const SUB_CATEGORY = AnalysisTypes.Transcribe;
+
 class StateIndexTranscribeResults extends BaseStateIndexer {
   constructor(stateData) {
     super(stateData, SUB_CATEGORY);
@@ -34,7 +34,9 @@ class StateIndexTranscribeResults extends BaseStateIndexer {
 
   async process() {
     const response = await super.process();
+
     await this.workaroundInvalidVttTimestamps();
+
     return response;
   }
 
@@ -44,9 +46,14 @@ class StateIndexTranscribeResults extends BaseStateIndexer {
       const bucket = this.stateData.input.destination.bucket;
       const key = this.dataKey;
       const parsed = PATH.parse(key);
-      await CommonUtils.uploadFile(bucket, parsed.dir, parsed.base, this.sanitizedVtt)
-        .catch(() =>
-          undefined);
+
+      await CommonUtils.uploadFile(
+        bucket,
+        parsed.dir,
+        parsed.base,
+        this.sanitizedVtt
+      ).catch(() =>
+        undefined);
     }
   }
 
@@ -54,74 +61,20 @@ class StateIndexTranscribeResults extends BaseStateIndexer {
     if (!datasets) {
       return undefined;
     }
-    const vtt = this.parseWebVtt(datasets);
-    if (vtt.cues.length === 0) {
+
+    const vtt = WebVttHelper.parse(datasets, {
+      autoCorrect: true,
+      stripLeadingDashes: true,
+    });
+
+    if (((vtt || {}).cues || []).length === 0) {
       return undefined;
     }
-    const phrases = [];
-    while (vtt.cues.length) {
-      const cue = vtt.cues.shift();
-      while (cue.text.length) {
-        const name = cue.text.shift();
-        phrases.push({
-          name,
-          timecodes: [
-            {
-              begin: cue.begin,
-              end: cue.end,
-            },
-          ],
-        });
-      }
-    }
-    return phrases;
-  }
 
-  parseWebVtt(vtt) {
-    const parsed = NodeWebVtt.parse(vtt, {
-      meta: true,
-      strict: false,
-    });
-    if (!parsed.valid) {
-      throw new AnalysisError('failed to parse vtt');
-    }
+    /* store the modified vtt to upload it later */
+    this.sanitizedVtt = WebVttHelper.compile(vtt);
 
-    /* fixing the webvtt */
-    const cues = [];
-    cues.push(parsed.cues.shift());
-    while (parsed.cues.length) {
-      const cue = parsed.cues.shift();
-      if (cue.start > 0 && cue.end > 0 && (cue.end - cue.start) > 0) {
-        cues.push(cue);
-      }
-    }
-    if (cues.length !== parsed.cues.length) {
-      parsed.cues = cues.map((cue, idx) => ({
-        ...cue,
-        identifier: String(idx),
-      }));
-      this.sanitizedVtt = NodeWebVtt.compile(parsed);
-    }
-
-    parsed.cues = parsed.cues.map((cue) => {
-      const lines = cue.text.split('\n').map((x) => {
-        const matched = x.match(/^--\s(.*)/);
-        return (matched)
-          ? matched[1].trim()
-          : x.trim();
-      }).filter((x) =>
-        x && x.length > 0);
-      return (lines.length > 0)
-        ? {
-          id: Number(cue.identifier),
-          begin: Math.round(cue.start * 1000),
-          end: Math.round(cue.end * 1000),
-          text: lines,
-        }
-        : undefined;
-    }).filter((x) =>
-      x !== undefined);
-    return parsed;
+    return WebVttHelper.cuesToMetadata(vtt.cues);
   }
 }
 

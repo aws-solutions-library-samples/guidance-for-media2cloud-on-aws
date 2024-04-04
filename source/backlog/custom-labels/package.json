@@ -1,6 +1,6 @@
 {
   "name": "backlog-custom-labels",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "Backlog Rekognition Custom Labels state machine lambda to serialize requests for a specific project version",
   "main": "index.js",
   "private": true,
@@ -9,18 +9,12 @@
     "test": "jest --coverage --coverageDirectory=../../coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
     "build:copy": "cp -rv index.js package.json states dist/",
-    "build:install": "cd dist && npm install --omit=dev --omit=optional",
+    "build:install": "cd dist && npm install --omit=dev",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "service-backlog-lib": "file:../../layers/service-backlog-lib",
-    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
-    "jest": "^29.3.1"
-  },
-  "license": "Apache-2.0"
+    "service-backlog-lib": "file:../../layers/service-backlog-lib"
+  }
 }

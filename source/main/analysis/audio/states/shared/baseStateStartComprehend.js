@@ -3,14 +3,27 @@
 
 const PATH = require('path');
 const {
+  ComprehendClient,
+} = require('@aws-sdk/client-comprehend');
+const {
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
+  },
+  xraysdkHelper,
+  retryStrategyHelper,
+} = require('core-lib');
+const {
   StateData,
-  AnalysisError,
   CommonUtils,
-  Retry,
-  Indexer,
+  WebVttHelper,
+  M2CException,
 } = require('core-lib');
 
-const INDEX_TRANSCRIBE = 'transcribe';
+const SUBCATEGORY_TRANSCRIBE = 'transcribe';
 const PREV_STATE = 'transcribe';
 const CATEGORY = 'comprehend';
 const OUTPUT_JSON = 'output.json';
@@ -35,16 +48,15 @@ const SUPPORTED_LANGUAGE_CODES = [
 class BaseStateStartComprehend {
   constructor(stateData, detection = {}) {
     if (!(stateData instanceof StateData)) {
-      throw new AnalysisError('stateData not StateData object');
+      throw new M2CException('stateData not StateData object');
     }
+
+    if (!detection.subCategory) {
+      throw new M2CException('missing configuration');
+    }
+
     this.$t0 = new Date();
     this.$stateData = stateData;
-    if (!detection.subCategory) {
-      throw new AnalysisError('missing configuration');
-    }
-    if (typeof detection.func !== 'function') {
-      throw new AnalysisError('missing configuration');
-    }
     this.$detection = detection;
   }
 
@@ -64,10 +76,6 @@ class BaseStateStartComprehend {
     return this.$detection.subCategory;
   }
 
-  get func() {
-    return this.$detection.func;
-  }
-
   get paramOptions() {
     return this.$detection.paramOptions;
   }
@@ -76,20 +84,20 @@ class BaseStateStartComprehend {
     if (!this.checkCriteria()) {
       return this.dataLessThenThreshold();
     }
-    /* download indexed transcription */
-    const indexer = new Indexer();
-    const doc = await indexer.getDocument(INDEX_TRANSCRIBE, this.stateData.uuid)
-      .catch((e) =>
-        console.error(`[ERR]: indexer.getDocument: ${this.stateData.uuid} ${JSON.stringify(e.body, null, 2)}`));
-    if (!doc || doc.data.length === 0) {
+
+    /* download and parse transcription */
+    const doc = await this.getTranscribeResults();
+
+    if (!doc || doc.length === 0) {
       return this.dataLessThenThreshold();
     }
+
     const bucket = this.stateData.input.destination.bucket;
     const languageCode = this.getComprehendLanguageCode();
     const responses = [];
     const metadata = [];
-    while (doc.data.length) {
-      const documents = await this.prepareDocuments(doc.data);
+    while (doc.length) {
+      const documents = await this.prepareDocuments(doc);
       if (documents.length > 0) {
         const response = await this.batchProcess(documents, languageCode);
         if (!response) {
@@ -119,6 +127,29 @@ class BaseStateStartComprehend {
       output: PATH.join(prefix, OUTPUT_MANIFEST),
       metadata: PATH.join(metadataPrefix, OUTPUT_JSON),
     });
+  }
+
+  async getTranscribeResults() {
+    const bucket = this.stateData.input.destination.bucket;
+    const key = this.stateData.data[SUBCATEGORY_TRANSCRIBE].vtt;
+
+    if (!key) {
+      return undefined;
+    }
+
+    return WebVttHelper.download(bucket, key)
+      .then((res) =>
+        WebVttHelper.cuesToMetadata((res || {}).cues))
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'BaseStateStartComprehend.getTranscribeResults:',
+          'WebVttHelper.download:',
+          e.name,
+          e.message
+        );
+        return undefined;
+      });
   }
 
   async prepareDocuments(datasets) {
@@ -170,11 +201,11 @@ class BaseStateStartComprehend {
   }
 
   async startDetection(params) {
-    return Retry.run(this.func, params);
+    throw new M2CException('subclass to implement startDetection');
   }
 
   parseJobResults(responses, reference) {
-    throw new AnalysisError('subclass to implement');
+    throw new M2CException('subclass to implement');
   }
 
   makeOutputPrefix() {
@@ -210,6 +241,19 @@ class BaseStateStartComprehend {
     });
     this.stateData.setCompleted();
     return this.stateData.toJSON();
+  }
+
+  static RunCommand(command) {
+    const comprehendClient = xraysdkHelper(new ComprehendClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(10),
+    }));
+
+    return comprehendClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
   }
 }
 

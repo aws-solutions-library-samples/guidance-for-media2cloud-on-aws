@@ -1,84 +1,130 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const PATH = require('path');
+const {
+  SFNClient,
+  StartExecutionCommand,
+} = require('@aws-sdk/client-sfn');
 const {
   CommonUtils,
   DB,
-  Environment,
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
+    DynamoDB: {
+      Ingest: {
+        Table: IngestTable,
+        PartitionKey: IngestPartitionKey,
+      },
+      AIML: {
+        Table: AnalysisTable,
+        PartitionKey: AnalysisPartitionKey,
+        SortKey: AnalysisSortKey,
+      },
+      Shoppable: {
+        Table: ShoppableTable,
+        PartitionKey: ShoppablePartitionKey,
+      },
+    },
+    StateMachines: {
+      Main: MainStateMachine,
+      Analysis: AnalysisStateMachine,
+    },
+    Proxy: {
+      Bucket: ProxyBucket,
+    },
+  },
+  AnalysisTypes: {
+    Shoppable,
+  },
   StateData,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const BaseOp = require('./baseOp');
 
 const MEDIATYPE_VIDEO = 'video';
-const MEDIATYPE_AUDIO = 'audio';
-const MEDIATYPE_IMAGE = 'image';
-const MEDIATYPE_DOCUMENT = 'document';
 const TRACK_METADATA = 'metadata';
 const TRACK_TIMESERIES = 'timeseries';
 const TRACK_VTT = 'vtt';
 const CATEGORY_REKOGNITION = 'rekognition';
 const CATEGORY_COMPREHEND = 'comprehend';
 
+const REGION = process.env.AWS_REGION;
+
 class AnalysisOp extends BaseOp {
   async onGET() {
     const uuid = (this.request.pathParameters || {}).uuid;
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
-    /* #1: check types of analysis */
+
+    // #1: check types of analysis
     let db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+      Table: IngestTable,
+      PartitionKey: IngestPartitionKey,
     });
-    const types = await db.fetch(uuid, undefined, 'analysis')
+
+    const types = await db.fetch(uuid, undefined, ['analysis', 'aiOptions'])
       .catch(() => ({
         analysis: [],
       }));
-    /* #2: query all types of analysis */
+
+    // #2: query all types of analysis
     db = new DB({
-      Table: Environment.DynamoDB.AIML.Table,
-      PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
-      SortKey: Environment.DynamoDB.AIML.SortKey,
+      Table: AnalysisTable,
+      PartitionKey: AnalysisPartitionKey,
+      SortKey: AnalysisSortKey,
     });
-    let responses = await Promise.all(types.analysis.map(x =>
-      db.fetch(uuid, x)));
-    /* #3: load vtt and metadata tracks */
-    responses = await Promise.all((responses || []).map(x => {
-      switch (x.type) {
-        case MEDIATYPE_VIDEO:
-          return this.loadVideoTracks(x);
-        case MEDIATYPE_AUDIO:
-          return this.loadAudioTracks(x);
-        case MEDIATYPE_IMAGE:
-          return this.loadImageTracks(x);
-        case MEDIATYPE_DOCUMENT:
-          return this.loadDocumentTracks(x);
-        default:
-          return undefined;
-      }
-  }));
-    return super.onGET(responses.filter(x => x));
+
+    let responses = await Promise.all(types.analysis
+      .map((type) =>
+        db.fetch(uuid, type)));
+
+    responses = responses
+      .filter((response) =>
+        response !== undefined);
+
+    // #3: check shoppable
+    if (types.analysis.includes(MEDIATYPE_VIDEO)
+    && types.aiOptions[Shoppable] === true) {
+      db = new DB({
+        Table: ShoppableTable,
+        PartitionKey: ShoppablePartitionKey,
+      });
+
+      await db.fetch(uuid, undefined)
+        .then((res) => {
+          if (res && res[Shoppable]) {
+            responses.forEach((response) => {
+              if (response[CATEGORY_REKOGNITION]) {
+                response[CATEGORY_REKOGNITION][Shoppable] = res[Shoppable];
+              }
+            });
+          }
+        })
+        .catch(() =>
+          undefined);
+    }
+
+    return super.onGET(responses);
   }
 
   async onPOST() {
     const input = (this.request.body || {}).input || {};
     const uuid = input.uuid || (this.request.pathParameters || {}).uuid;
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
     /* get original settings from db table */
     const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+      Table: IngestTable,
+      PartitionKey: IngestPartitionKey,
     });
     const fieldsToGet = [
       'bucket',
@@ -100,11 +146,11 @@ class AnalysisOp extends BaseOp {
     }
     const ingestRequired = this.enableIngest(original.aiOptions, input.aiOptions);
     const stateMachine = (ingestRequired)
-      ? Environment.StateMachines.Main
-      : Environment.StateMachines.Analysis;
+      ? MainStateMachine
+      : AnalysisStateMachine;
     const arn = [
       'arn:aws:states',
-      process.env.AWS_REGION,
+      REGION,
       this.request.accountId,
       'stateMachine',
       stateMachine,
@@ -117,14 +163,22 @@ class AnalysisOp extends BaseOp {
       },
       uuid,
     };
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const response = await step.startExecution({
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StartExecutionCommand({
       input: JSON.stringify(params),
       stateMachineArn: arn,
-    }).promise();
+    });
+
+    const response = await stepfunctionClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
 
     /* update aiOptions field */
     await db.update(uuid, undefined, {
@@ -141,12 +195,12 @@ class AnalysisOp extends BaseOp {
   async onDELETE() {
     const uuid = (this.request.pathParameters || {}).uuid;
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
     /* drop analysis column */
     const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+      Table: IngestTable,
+      PartitionKey: IngestPartitionKey,
     });
     await db.dropColumns(uuid, undefined, 'analysis')
       .catch(() =>
@@ -181,8 +235,18 @@ class AnalysisOp extends BaseOp {
       response = await CommonUtils.listObjects(bucket, prefix, {
         ContinuationToken: (response || {}).NextContinuationToken,
         MaxKeys: 300,
-      }).catch((e) =>
-        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+      }).catch((e) => {
+        console.error(
+          'ERR:',
+          'AnalysisOp.loadTrackBasenames:',
+          'CommonUtils.listObjects:',
+          e.name,
+          e.message,
+          prefix
+        );
+        return undefined;
+      });
+
       if (response && response.Contents) {
         names.splice(names.length, 0, ...response.Contents.map((x) =>
           PATH.parse(x.Key).name));
@@ -194,12 +258,13 @@ class AnalysisOp extends BaseOp {
   }
 
   async loadTracks(data, category) {
-    const bucket = Environment.Proxy.Bucket;
+    const bucket = ProxyBucket;
     const keys = Object.keys(data[category] || {});
     while (keys.length) {
       const key = keys.shift();
       const datasets = [].concat(data[category][key]);
-      for (let dataset of datasets) {
+      for (let i = 0; i < datasets.length; i++) {
+        const dataset = datasets[i];
         const tracks = await Promise.all([
           TRACK_METADATA,
           TRACK_TIMESERIES,

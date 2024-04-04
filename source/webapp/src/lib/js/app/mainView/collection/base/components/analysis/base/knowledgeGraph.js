@@ -2,60 +2,80 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
-import mxReadable from '../../../../../../mixins/mxReadable.js';
 import AppUtils from '../../../../../../shared/appUtils.js';
-import ImageStore from '../../../../../../shared/localCache/imageStore.js';
-import MediaManager from '../../../../../../shared/media/mediaManager.js';
+import ApiHelper from '../../../../../../shared/apiHelper.js';
+import Spinner from '../../../../../../shared/spinner.js';
+import {
+  GetMediaManager,
+} from '../../../../../../shared/media/mediaManager.js';
+import {
+  GetFaceManager,
+} from '../../../../../../shared/faceManager/index.js';
 
-const NODE_VIDEO = 'Video';
-const NODE_CELEBRITY = 'celebrity';
-const NODE_INDUSTRY = 'industry';
-const NODE_PRODUCTS = 'products';
-const NODE_SERVICES = 'services';
-const NODE_EVENT_TYPE = 'event_type';
+const {
+  GraphDefs: {
+    Vertices,
+  },
+} = SolutionManifest;
+
 const NODESIZE_BY_TYPE = {
-  [NODE_VIDEO]: 45,
-  [NODE_EVENT_TYPE]: 20,
-  [NODE_INDUSTRY]: 20,
-  [NODE_CELEBRITY]: 20,
-  [NODE_PRODUCTS]: 20,
-  [NODE_SERVICES]: 20,
+  [Vertices.Group]: 50,
+  [Vertices.Asset]: 45,
+  [Vertices.Celeb]: 30,
+  [Vertices.Label]: 30,
+  [Vertices.Keyword]: 30,
+  [Vertices.Attribute]: 20,
+  [Vertices.Checksum]: 20,
 };
-const GRAPH_MAPPING = Object.keys(NODESIZE_BY_TYPE)
+
+const GRAPH_MAPPING = Object.values(Vertices)
   .map((x) => ({
     name: x,
   }));
-const PAGESIZE = 10;
 
-export default class KnowledgeGraph extends mxReadable(class {}) {
-  constructor(container, media, parent) {
-    super();
-    this.$parent = parent;
-    this.$mediaManager = MediaManager.getSingleton();
-    this.$imageStore = ImageStore.getSingleton();
+const GRAPH_W = 1200;
+const GRAPH_H = 800;
+const PAGESIZE = 50;
+
+export default class KnowledgeGraph {
+  constructor(container, media, options) {
+    this.$id = AppUtils.randomHexstring();
+    this.$mediaManager = GetMediaManager();
+    this.$faceManager = GetFaceManager();
     this.$media = media;
-    this.$graphContainer = $('<div/>')
-      .addClass('knowledge-graph')
-      .attr('id', `knowledge-${AppUtils.randomHexstring()}`);
-    container.append(this.$graphContainer);
 
     this.$graph = undefined;
+    this.$graphContainer = $('<div/>')
+      .addClass('knowledge-graph')
+      .attr('id', `knowledge-${this.$id}`);
+
     this.$graphContainer.ready(async () => {
       console.log('graphContainer ready');
-      this.$graph = await this.buildGraph(this.$graphContainer);
+      await this.renderGraph(this.$graphContainer, options);
     });
+    container.append(this.$graphContainer);
+
+    Spinner.useSpinner();
   }
 
-  get parent() {
-    return this.$parent;
+  static canSupport() {
+    return (
+      SolutionManifest.KnowledgeGraph &&
+      SolutionManifest.KnowledgeGraph.Endpoint &&
+      SolutionManifest.KnowledgeGraph.ApiKey
+    );
+  }
+
+  get id() {
+    return this.$id;
   }
 
   get mediaManager() {
     return this.$mediaManager;
   }
 
-  get imageStore() {
-    return this.$imageStore;
+  get faceManager() {
+    return this.$faceManager;
   }
 
   get graphContainer() {
@@ -82,234 +102,162 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
     return this.$media;
   }
 
-  loading(enabled) {
-    return this.parent.loading(enabled);
-  }
-
   getGraphContainer() {
     return this.graphContainer;
   }
 
-  async buildGraph(container) {
-    const height = Math.max(Math.round(container.height()), 800);
-    const width = Math.max(Math.round(container.width()), 800);
+  getGraphOption() {
+    if (!this.graph) {
+      return undefined;
+    }
+    return this.graph.getOption();
+  }
 
-    const graph = echarts.init(container[0], null, {
-      renderer: 'canvas',
-      useDirtyRect: false,
-      height,
-      width,
-    });
-
-    graph.on('dblclick', async (event) => {
-      if (event.event.event.detail === 2) {
-        try {
-          this.loading(true);
-          const type = event.name;
-          const data = event.data;
-          const parsed = data.value[0];
-          console.log('dblclick', event, parsed);
-          if (parsed.traversed !== true) {
-            const connectedNodes = await this.getConnectedNodes(type, parsed.id, parsed.token);
-            if (connectedNodes === undefined) {
-              return;
-            }
-            if (connectedNodes.length === 0) {
-              parsed.traversed = true;
-            } else {
-              parsed.traversed = false;
-              parsed.token = (parsed.token || 0) + connectedNodes.length;
-            }
-
-            const graphSeries = this.graph.getOption().series[event.seriesIndex];
-            while (connectedNodes.length) {
-              const connected = connectedNodes.shift();
-              let from;
-              let to;
-              if (connected.IN.id === parsed.id) {
-                from = data;
-                to = await this.createAdjacentNode(connected.OUT, graphSeries);
-              } else if (connected.OUT.id === parsed.id) {
-                to = data;
-                from = await this.createAdjacentNode(connected.IN, graphSeries);
-              }
-              if (from !== undefined && to !== undefined) {
-                this.createRelationship(from, to, connected, graphSeries);
-              }
-            }
-            /* update graph */
-            this.graph.setOption({
-              series: [graphSeries],
-            });
-          }
-        } catch (e) {
-          console.error(e);
-        } finally {
-          this.loading(false);
-        }
-      }
-    });
-
+  async renderGraph(container, options = {}) {
     try {
-      this.loading(true);
+      Spinner.loading();
 
-      const dataset = await this.getConnectedNodes(NODE_VIDEO, this.media.uuid);
-      const graphOptions = {
-        nodes: [],
-        links: [],
-        categories: GRAPH_MAPPING,
-      };
-
-      let srcNode = dataset.find((x) =>
-        x.OUT.id === this.media.uuid);
-      srcNode = await this.createNode({
-        ...srcNode.OUT,
-        token: dataset.length,
-        traversed: false,
-      }, 0);
-      graphOptions.nodes.push(srcNode);
-
-      while (dataset.length) {
-        const connected = dataset.shift();
-        let from;
-        let to;
-        if (connected.IN.id === srcNode.value[0].id) {
-          from = srcNode;
-          to = await this.createAdjacentNode(connected.OUT, graphOptions);
-        } else if (connected.OUT.id === srcNode.value[0].id) {
-          to = srcNode;
-          from = await this.createAdjacentNode(connected.IN, graphOptions);
-        }
-        if (from !== undefined && to !== undefined) {
-          this.createRelationship(from, to, connected, graphOptions);
-        }
+      if (this.graph !== undefined) {
+        this.graph.dispose();
       }
-      const options = this.makeGraphOptions(graphOptions);
-      graph.setOption(options);
-      return graph;
+      this.graph = this.buildGraph(container, 'dark', options);
+
+      let dataset = options.dataset;
+      if (!dataset && this.media) {
+        const uuid = this.media.uuid;
+        const withOptions = {
+          labels: [
+            Vertices.Celeb,
+            Vertices.Checksum,
+          ],
+        };
+
+        dataset = await KnowledgeGraph.queryGraph(
+          uuid,
+          withOptions
+        );
+      }
+
+      if (dataset) {
+        await this.updateGraph(dataset);
+      }
     } catch (e) {
       console.error(e);
-      return graph;
     } finally {
-      this.loading(false);
+      Spinner.loading(false);
     }
   }
 
-  async getConnectedNodes(label, id, token = 0) {
-    return this.graphApi({
-      op: 'query',
-      type: 'vertice',
-      label,
-      id,
-      token,
-      pagesize: PAGESIZE,
-    }).then((res) => {
-      if (!res) {
-        return undefined;
-      }
-      const edges = [];
-      while (res.length) {
-        const items = res.shift();
-        const idx = items.findIndex((x) =>
-          x.IN !== undefined);
-        if (idx < 0) {
-          continue;
-        }
-        const found = items.splice(idx, 1).shift();
-        let name = (items.find((x) =>
-          x.id === found.IN.id) || {}).name;
-        found.IN.name = name;
+  buildGraph(container, color, options = {}) {
+    let [w, h] = KnowledgeGraph.computeGraphDimension(container);
 
-        name = (items.find((x) =>
-          x.id === found.OUT.id) || {}).name;
-        found.OUT.name = name;
-        edges.push(found);
-      }
-      return edges;
+    if (Array.isArray(options.dimension)
+    && options.dimension.length === 2) {
+      [w, h] = options.dimension;
+    }
+
+    console.log(
+      '== buildGraph:',
+      w,
+      'x',
+      h
+    );
+    const graph = echarts.init(container[0], color, {
+      renderer: 'canvas',
+      useDirtyRect: false,
+      width: w,
+      height: h,
     });
-  }
 
-  async graphApi(query) {
-    const url = new URL(SolutionManifest.KnowledgeGraph.Endpoint);
-    Object.keys(query)
-      .forEach((x) => {
-        url.searchParams.append(x, query[x]);
+    let graphOptions = {
+      nodes: [],
+      links: [],
+      categories: GRAPH_MAPPING,
+    };
+    graphOptions = this.makeGraphOptions(graphOptions);
+    graph.setOption(graphOptions);
+
+    /* default deselect label, keyword, and checksum */
+    let deselectLegends = [
+      Vertices.Keyword,
+      Vertices.Label,
+      Vertices.Checksum,
+    ];
+    if (options.deselectLegends) {
+      deselectLegends = options.deselectLegends;
+    }
+
+    deselectLegends.forEach((name) => {
+      graph.dispatchAction({
+        type: 'legendUnSelect',
+        name,
       });
-    const options = {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-cache',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': SolutionManifest.KnowledgeGraph.ApiKey,
-      },
-    };
-    let tries = 4;
-    while (tries--) {
-      const response = fetch(url, options)
-        .then((res) => {
-          if (!res.ok) {
-            return new Error();
-          }
-          return res.json();
-        });
-      if (!(response instanceof Error)) {
-        return response;
+    });
+
+    let dblclickFn = this.onGraphDoubleClickEvent.bind(this);
+    if (typeof options.dblclickFn === 'function') {
+      dblclickFn = options.dblclickFn;
+    }
+
+    graph.on('dblclick', async (event) => {
+      await dblclickFn(event);
+    });
+
+    return graph;
+  }
+
+  async updateGraph(dataset = []) {
+    if (!this.graph) {
+      return undefined;
+    }
+
+    const series = this.graph.getOption().series[0];
+    while (dataset.length) {
+      const data = dataset.pop();
+
+      if (!Array.isArray(data)) {
+        await this.createNodeIfNotExist(data, series);
+        continue;
+      }
+
+      while (data.length > 2) {
+        const src = data.shift();
+        const link = data.shift();
+        const dest = data[0];
+
+        const srcNode = await this.createNodeIfNotExist(src, series);
+        const destNode = await this.createNodeIfNotExist(dest, series);
+
+        if (srcNode !== undefined && destNode !== undefined) {
+          this.createRelationship(srcNode, destNode, link, series);
+        }
       }
     }
-    return undefined;
+
+    /* update graph */
+    this.graph.setOption({
+      series: [series],
+    });
+
+    return series;
   }
 
-  async createNode(data, idx) {
-    let image;
-    let name = data.name;
-    if (data.label === NODE_VIDEO) {
-      const media = await this.mediaManager.lazyGetByUuid(data.id);
-      if (media !== undefined) {
-        image = await media.getThumbnail();
-        name = media.basename;
-      }
-    } else {
-      const prefix = data.label
-        .trim()
-        .replace(/[^a-zA-Z0-9-]/g, '-')
-        .replace(/-{2,}/g, '-')
-        .toLowerCase();
-      const basename = data.name
-        .split('-')[0]
-        .trim()
-        .replace(/[^a-zA-Z0-9-]/g, '-')
-        .replace(/-{2,}/g, '-')
-        .toLowerCase();
-      const extension = (data.label === NODE_CELEBRITY)
-        ? '.png'
-        : '.svg';
-      image = await this.imageStore
-        .getBlob(`./images/kg/${prefix}/${basename}${extension}`);
+  resetGraph() {
+    if (!this.graph) {
+      return;
     }
-    return this.parseNode({
-      ...data,
-      name,
-      image,
-    }, idx);
+
+    const graphOption = this.graph.getOption();
+    graphOption.series[0].links = [];
+    graphOption.series[0].data = [];
+    this.graph.setOption(graphOption, true);
   }
 
-  parseNode(nodeData, idx) {
-    const label = nodeData.label;
-    return {
-      id: idx,
-      name: label,
-      symbolSize: NODESIZE_BY_TYPE[label] || 10,
-      ...this.computeXYCoord(),
-      value: [
-        nodeData,
-      ],
-      category: GRAPH_MAPPING.findIndex((x) =>
-        x.name === label),
-    };
-  }
+  async createNodeIfNotExist(data, series) {
+    if (data === undefined) {
+      return undefined;
+    }
 
-  async createAdjacentNode(data, series) {
     const nodes = series.nodes || series.data;
     let idx = nodes.findIndex((x) =>
       x.value[0].id === data.id);
@@ -320,12 +268,60 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
     idx = nodes.length;
     const node = await this.createNode(data, idx);
     nodes.push(node);
+
     return node;
   }
 
+  async createNode(data, idx) {
+    const params = {
+      id: data.id,
+      label: data.label,
+      name: data.name,
+      traversed: false,
+      token: 0,
+    };
+
+    if (params.label === Vertices.Asset) {
+      const media = await this.mediaManager.lazyGetByUuid(params.id);
+      if (media !== undefined) {
+        params.image = await media.getThumbnail();
+      }
+    } else if (params.label === Vertices.Celeb) {
+      /* face match specific */
+      if (data.faceId && data.collectionId) {
+        params.image = await this.faceManager.getFaceImageById(
+          data.collectionId,
+          data.faceId
+        );
+      }
+    }
+
+    return this.parseNode(params, idx);
+  }
+
+  parseNode(nodeData, idx) {
+    const label = nodeData.label;
+    const stats = {};
+    return {
+      id: idx,
+      name: label,
+      symbolSize: NODESIZE_BY_TYPE[label] || 10,
+      ...this.computeXYCoord(),
+      value: [
+        nodeData,
+        stats,
+      ],
+      category: GRAPH_MAPPING
+        .findIndex((x) =>
+          x.name === label),
+    };
+  }
+
   createRelationship(from, to, connection, series) {
-    const idx = series.links.findIndex((x) =>
-      x.value[0].id === connection.id);
+    const idx = series.links
+      .findIndex((x) =>
+        (x.value[0].id === connection.id)
+        || (x.source === from.id && x.target === to.id));
     if (idx >= 0) {
       return series.links[idx];
     }
@@ -336,21 +332,49 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
       value: [
         {
           id: connection.id,
-          desc: `${AppUtils.shorten(from.value[0].name, 32)} > ${AppUtils.shorten(to.value[0].name, 32)}`,
+          label: connection.label,
+          desc: `  (${connection.label})  `,
         },
       ],
     };
     series.links.push(link);
+
+    /* store relationship to 'from' and 'to' nodes  */
+    let stats = from.value[1];
+    if (stats[connection.label] === undefined) {
+      stats[connection.label] = [];
+    }
+    stats[connection.label].push(to.id);
+
+    stats = to.value[1];
+    if (stats[connection.label] === undefined) {
+      stats[connection.label] = [];
+    }
+    stats[connection.label].push(from.id);
+
     return link;
   }
 
   computeXYCoord() {
-    const start = 0 - 1200;
-    const end = 1200;
-    const random = end - start + 10;
+    let w;
+    let h;
 
+    const graph = this.graph;
+    if (graph) {
+      w = Math.floor((graph.getWidth() || GRAPH_W) / 2);
+      h = Math.floor((graph.getHeight() || GRAPH_W) / 2);
+    }
+
+    let start = 0 - w;
+    let end = w;
+    let random = end - start + 10;
     const x = Math.floor(Math.random() * random + start);
+
+    start = 0 - h;
+    end = h;
+    random = end - start + 10;
     const y = Math.floor(Math.random() * random + start);
+
     return {
       x,
       y,
@@ -376,10 +400,13 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
           container.append(desc);
           return container.prop('outerHTML');
         }
+
         if (x.dataType === 'node') {
           const parsed = x.value[0];
-          const container = $('<div/>');
-          if (x.name === NODE_VIDEO) {
+          const container = $('<div/>')
+            .addClass('mx-2 my-2');
+
+          if (parsed.image !== undefined) {
             container.addClass('graph-tooltip');
             const img = $('<img/>')
               .attr('src', parsed.image);
@@ -389,31 +416,31 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
               .addClass('mx-2 my-2 text-truncate')
               .append(parsed.name);
             container.append(desc);
+          } else {
+            const table = $('<table/>');
+            container.append(table);
 
-            return container.prop('outerHTML');
-          }
-          container.addClass('row no-gutters');
-          let avatar = $('<i/>')
-            .addClass('ml-2 my-2')
-            .addClass('far fa-question-circle')
-            .addClass('graph-avatar');
-          if (parsed.image) {
-            avatar = $('<img/>')
-              .addClass('mx-2 my-auto')
-              .addClass('graph-avatar')
-              .attr('src', parsed.image);
-          }
-          container.append(avatar);
+            const tbody = $('<tbody/>');
+            table.append(tbody);
 
-          const desc = $('<p/>')
-            .addClass('my-auto mr-2 text-truncate')
-            .append(parsed.name);
-          container.append(desc);
+            const rows = Object.keys(parsed)
+              .map((key) =>
+                $('<tr/>')
+                  .append($('<td/>')
+                    .addClass('font-weight-bold')
+                    .append(key))
+                  .append($('<td/>')
+                    .addClass('px-2')
+                    .append(AppUtils.shorten(parsed[key], 32))));
+            tbody.append(rows);
+          }
+
           return container.prop('outerHTML');
         }
         return x.value;
       }),
     };
+
     const legend = [
       {
         data: dataset.categories
@@ -421,6 +448,7 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
             x.name),
       },
     ];
+
     const animationDuration = 1500;
     const animationEasingUpdate = 'quinticInOut';
     const series = [
@@ -461,20 +489,6 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
     };
   }
 
-  destroy() {
-    if (this.graph) {
-      this.graph.dispose();
-    }
-    this.graph = undefined;
-    if (this.graphContainer) {
-      this.graphContainer.remove();
-    }
-    this.graphContainer = undefined;
-    if (this.datasets) {
-      this.datasets.length = 0;
-    }
-  }
-
   resize() {
     return this.graph.resize();
   }
@@ -485,5 +499,87 @@ export default class KnowledgeGraph extends mxReadable(class {}) {
 
   off(event) {
     return this.graphContainer.off(event);
+  }
+
+  async onGraphDoubleClickEvent(event) {
+    try {
+      Spinner.loading(true);
+
+      const parsed = event.data.value[0];
+      if (parsed.traversed !== true) {
+        const withOptions = {
+          token: parsed.token,
+        };
+        const dataset = await KnowledgeGraph.queryGraph(
+          parsed.id,
+          withOptions
+        );
+
+        if (!dataset || !dataset.length) {
+          /* stop querying */
+          parsed.traversed = true;
+        } else {
+          parsed.token += dataset.length;
+        }
+        await this.updateGraph(dataset);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      Spinner.loading(false);
+    }
+  }
+
+  static computeGraphDimension(container) {
+    const w = Math.floor(container.width() / 2) * 2;
+    const h = Math.floor(w / 3) * 2;
+
+    return [w, h];
+  }
+
+  static async queryGraph(id, options = {}) {
+    const token = options.token || 0;
+    const pagesize = options.pagesize || PAGESIZE;
+    const params = {
+      op: 'query',
+      type: 'vertice',
+      id,
+      token,
+      pagesize,
+    };
+
+    if (Array.isArray(options.labels)) {
+      params.labels = options.labels.join(',');
+    } else if (typeof options.labels === 'string'
+    && options.labels.length > 0) {
+      params.labels = options.labels;
+    }
+
+    return ApiHelper.graph(params);
+  }
+
+  static async queryVertices(ids) {
+    return ApiHelper.graph({
+      op: 'query',
+      type: 'vertice',
+      ids,
+    });
+  }
+
+  static async queryPaths(from, to) {
+    return ApiHelper.graph({
+      op: 'path',
+      type: 'vertice',
+      from,
+      to: to.join(','),
+    });
+  }
+
+  static async pathVertices(ids) {
+    return ApiHelper.graph({
+      op: 'path',
+      type: 'vertice',
+      ids: ids.join(','),
+    });
   }
 }

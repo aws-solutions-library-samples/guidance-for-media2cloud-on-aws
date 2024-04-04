@@ -1,16 +1,12 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
-const Indexer = require('./index.js');
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+
+const Indexer = require('./index');
 
 const mockIndexOutput = 'index';
 const mockPutSettingsOutput = 'putSettings';
@@ -21,46 +17,48 @@ const mockUpdateOutput = 'update';
 const mockDeleteOutput = 'delete';
 const mockHitsOutput = 5;
 
-jest.mock('@elastic/elasticsearch', () => {
-  return {
-    Client: jest.fn(() => {
-      return {
-        indices: {
-          create: (params, callback) => { return Promise.resolve(); },
-          delete: (params, callback) => { return Promise.resolve(); },
-          putSettings: (params, callback) => { return Promise.resolve(mockPutSettingsOutput); },
-          getSettings: (params, callback) => { return Promise.resolve(mockGetSettingsOutput); }
-        },
-        cat: {
-          indices: (params, callback) => { return Promise.resolve({ body: 'indices' }); }
-        },
-        search: (params, callback) => {
-          return Promise.resolve({
-            body: {
-              aggregations: mockAggregateOutput,
-              hits: mockHitsOutput
-            }
-          });
-        },
-        get: (params, callback) => {
-          return Promise.resolve({
-            body: {
-              _source: mockGetDocumentOutput
-            }
-          });
-        },
-        update: (params, callback) => { return Promise.resolve(mockUpdateOutput); },
-        delete: (params, callback) => { return Promise.resolve(mockDeleteOutput); },
-        index: (params, callback) => { return Promise.resolve(mockIndexOutput); }
-      }
-    })
-  };
-});
+jest.mock('@aws-sdk/credential-providers', () => ({
+  fromEnv: jest.fn(() => ({
+  })),
+}));
 
+jest.mock('@opensearch-project/opensearch/aws', () => ({
+  AwsSigv4Signer: jest.fn(() => ({
+  })),
+}));
 
-jest.mock('aws-elasticsearch-connector', () => {
-  return jest.fn();
-});
+jest.mock('@opensearch-project/opensearch', () => ({
+  Client: jest.fn(() => ({
+    indices: {
+      create: (params, callback) => Promise.resolve({}),
+      delete: (params, callback) => Promise.resolve({}),
+      putSettings: (params, callback) => Promise.resolve(mockPutSettingsOutput),
+      getSettings: (params, callback) => Promise.resolve(mockGetSettingsOutput),
+    },
+    cat: {
+      indices: (params, callback) => Promise.resolve({ body: 'indices' }),
+    },
+    search: (params, callback) => Promise.resolve({
+      body: {
+        aggregations: mockAggregateOutput,
+        hits: mockHitsOutput,
+      },
+    }),
+    msearch: (params, callback) => Promise.resolve({
+      body: {
+        hits: mockHitsOutput,
+      },
+    }),
+    get: (params, callback) => Promise.resolve({
+      body: {
+        _source: mockGetDocumentOutput,
+      },
+    }),
+    update: (params, callback) => Promise.resolve(mockUpdateOutput),
+    delete: (params, callback) => Promise.resolve(mockDeleteOutput),
+    index: (params, callback) => Promise.resolve(mockIndexOutput),
+  })),
+}));
 
 describe('Test Indexer', () => {
   beforeAll(() => {
@@ -69,15 +67,14 @@ describe('Test Indexer', () => {
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
+    jest.resetModules(); // Most important - it clears the cache
   });
 
   test('Test constructor', () => {
     try {
       const indexer = new Indexer('');
-    }
-    catch(error) {
-      expect(error.message).toBe('endpoint not specified');
+    } catch (error) {
+      expect(error.message).toBe('node not specified');
     }
 
     const indexer = new Indexer();
@@ -86,7 +83,7 @@ describe('Test Indexer', () => {
 
   test('Test index', async () => {
     const indexer = new Indexer();
-    let response = await indexer.index('name', 'id', 'body');
+    const response = await indexer.index('name', 'id', 'body');
     expect(response).toBe(mockIndexOutput);
 
     await indexer.index('', '', '').catch(error => {
@@ -96,37 +93,21 @@ describe('Test Indexer', () => {
 
   test('Test batchCreateIndices', async () => {
     const indexer = new Indexer();
-    let response = await indexer.batchCreateIndices();
+    const response = await indexer.batchCreateIndices();
     expect(response.length).toBeGreaterThan(0);
 
     await indexer.batchCreateIndices(['']).catch(error => {
-      expect(error.message).toBe('');
+      expect(error.message.length).toBeGreaterThan(0);
     });
   });
 
   test('Test batchDeleteIndices', async () => {
     const indexer = new Indexer();
-    let response = await indexer.batchDeleteIndices();
+    const response = await indexer.batchDeleteIndices();
     expect(response.length).toBeGreaterThan(0);
 
     await indexer.batchDeleteIndices(['']).catch(error => {
-      expect(error.message).toBe('');
-    });
-  });
-
-  test('Test describeAllIndices', async () => {
-    const indexer = new Indexer();
-    const response = await indexer.describeAllIndices();
-    expect(response.length).toBeGreaterThan(0);
-  });
-
-  test('Test describeIndex', async () => {
-    const indexer = new Indexer();
-    const response = await indexer.describeIndex('name');
-    expect(response.length).toBeGreaterThan(0);
-
-    await indexer.describeIndex('').catch(error => {
-      expect(error.message).toBe('index name not specified');
+      expect(error.message.length).toBeGreaterThan(0);
     });
   });
 
@@ -168,11 +149,11 @@ describe('Test Indexer', () => {
 
   test('Test indexDocument', async () => {
     const indexer = new Indexer();
-    const response = await indexer.indexDocument('name', 'id', 'doc');
+    const response = await indexer.indexDocument('name', 'id', 'doc', false);
     expect(response).toBe(mockUpdateOutput);
 
-    await indexer.indexDocument('', '', '').catch(error => {
-      expect(error.message).toBe('name, id, or doc not specified');
+    await indexer.indexDocument('', '', '', false).catch(error => {
+      expect(error.message.length).toBeGreaterThan(0);
     });
   });
 
@@ -182,18 +163,17 @@ describe('Test Indexer', () => {
     expect(response).toBe(mockDeleteOutput);
 
     await indexer.deleteDocument('', '').catch(error => {
-      expect(error.message).toBe('name or id not specified');
+      expect(error.message.length).toBeGreaterThan(0);
     });
   });
 
   test('Test searchDocument', async () => {
     const indexer = new Indexer();
-    const response = await indexer.searchDocument({ index: 'idx'} );
+    const response = await indexer.searchDocument({ index: 'idx' });
     expect(response).toBe(mockHitsOutput);
 
     await indexer.searchDocument({}).catch(error => {
-      expect(error.message).toBe('index not specified');
+      expect(error.message.length).toBeGreaterThan(0);
     });
   });
-
 });

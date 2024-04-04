@@ -4,60 +4,81 @@
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../shared/localization.js';
 import ApiHelper from '../shared/apiHelper.js';
-import AppUtils from '../shared/appUtils.js';
+import Spinner from '../shared/spinner.js';
 import {
   AWSConsoleCongito,
 } from '../shared/awsConsole.js';
-import mxSpinner from '../mixins/mxSpinner.js';
 import mxAlert from '../mixins/mxAlert.js';
 import BaseTab from '../shared/baseTab.js';
 
-const TITLE = Localization.Messages.UserManagementTab;
-const DESCRIPTION = Localization.Messages.UserManagementDesc;
-const USERNAME = Localization.Messages.Username;
+const {
+  Messages: {
+    UserManagementTab: TITLE,
+    UserManagementDesc: DESCRIPTION,
+    Username: MSG_USERNAME,
+    Email: MSG_EMAIL,
+    Group: MSG_GROUP,
+    Status: MSG_STATUS,
+    LastModified: MSG_LASTMODIFIED,
+    RemoveUser: MSG_REMOVE_USER,
+    PermissionViewer: VIEWER_PERMISSION,
+    PermissionCreator: CREATOR_PERMISSION,
+    PermissionAdmin: ADMIN_PERMISSION,
+    CurrentUsers: MSG_CURRENT_USER_LIST,
+    CreateNewUsers: MSG_CREATE_NEW_USERS,
+    CreateNewUsersDesc: MSG_CREATE_NEW_USERS_DESC,
+  },
+  Tooltips: {
+    RemoveUserFromCognito: TOOLTIP_REMOVE_USER,
+    RefreshUserTable: TOOLTIP_REFRESH_USER_TABLE,
+  },
+  Buttons: {
+    AddEmail: BTN_ADD_EMAIL,
+    ConfirmAndAddUsers: BTN_CONFIRM_AND_ADD,
+    Refresh: BTN_REFRESH,
+  },
+  Alerts: {
+    Oops: OOPS,
+    InvalidEmailAddress: ERR_INVALID_EMAIL_ADDRESS,
+    UsernameConformance: ERR_INVALID_USERNAME,
+    NoNewUsers: ERR_NO_USER_TO_ADD,
+    FailAddingUsers: ERR_FAIL_ADDING_USERS,
+  },
+  RegularExpressions: {
+    Username: REGEX_USERNAME,
+  },
+} = Localization;
+
+const HASHTAG = TITLE.replaceAll(' ', '');
+
 const TABLE_HEADER = [
-  USERNAME,
-  Localization.Messages.Email,
-  Localization.Messages.Group,
-  Localization.Messages.Status,
-  Localization.Messages.LastModified,
-  Localization.Messages.RemoveUser,
+  MSG_USERNAME,
+  MSG_EMAIL,
+  MSG_GROUP,
+  MSG_STATUS,
+  MSG_LASTMODIFIED,
+  MSG_REMOVE_USER,
 ];
-const PERMISSION_VIEWER = Localization.Messages.PermissionViewer;
-const PERMISSION_CREATOR = Localization.Messages.PermissionCreator;
-const PERMISSION_ADMIN = Localization.Messages.PermissionAdmin;
-const TOOLTIP_REMOVE_USER = Localization.Tooltips.RemoveUserFromCognito;
-const TOOLTIP_REFRESH_USER_TABLE = Localization.Tooltips.RefreshUserTable;
-const LIST_OF_CURRENT_USERS = Localization.Messages.CurrentUsers;
-const CREATE_NEW_USERS = Localization.Messages.CreateNewUsers;
-const CREATE_NEW_USERS_DESC = Localization.Messages.CreateNewUsersDesc;
-const BTN_ADD_EMAIL = Localization.Buttons.AddEmail;
-const BTN_CONFIRM_AND_ADD = Localization.Buttons.ConfirmAndAddUsers;
-const BTN_REFRESH = Localization.Buttons.Refresh;
-const OOPS = Localization.Alerts.Oops;
-const ERR_INVALID_EMAIL_ADDRESS = Localization.Alerts.InvalidEmailAddress;
-const ERR_INVALID_USERNAME = Localization.Alerts.UsernameConformance;
-const ERR_NO_USER_TO_ADD = Localization.Alerts.NoNewUsers;
-const ERR_FAIL_ADDIND_USERS = Localization.Alerts.FailAddingUsers;
 
-export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
-  constructor(defaultTab = false) {
+export default class UserManagementTab extends mxAlert(BaseTab) {
+  constructor() {
     super(TITLE, {
-      selected: defaultTab,
+      hashtag: HASHTAG,
     });
-    this.$uid = AppUtils.randomHexstring();
+
+    Spinner.useSpinner();
   }
 
-  get uid() {
-    return this.$uid;
+  loading(enabled) {
+    return Spinner.loading(enabled);
   }
 
-  async show() {
+  async show(hashtag) {
     if (!this.initialized) {
       const content = await this.createContent();
       this.tabContent.append(content);
     }
-    return super.show();
+    return super.show(hashtag);
   }
 
   async createContent() {
@@ -72,9 +93,6 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
 
     const sectionAddUsers = this.createAddUsersSection();
     container.append(sectionAddUsers);
-
-    const loading = this.createLoading();
-    container.append(loading);
 
     return container;
   }
@@ -103,7 +121,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
     container.append(sectionTitle);
 
     const heading = $('<span/>').addClass('lead')
-      .append(LIST_OF_CURRENT_USERS);
+      .append(MSG_CURRENT_USER_LIST);
     sectionTitle.append(heading);
 
     const refresh = $('<button/>').addClass('btn btn-sm btn-outline-dark')
@@ -123,7 +141,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
     sectionTitle.append(refresh);
 
     const table = $('<table/>')
-      .attr('id', `table-${this.uid}`)
+      .attr('id', `table-${this.id}`)
       .addClass('table table-sm lead-xs no-border');
     container.append(table);
 
@@ -157,17 +175,11 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
     const tr = $('<tr/>')
       .attr('data-username', user.username);
 
-    let permission;
-    switch (user.group) {
-      case SolutionManifest.Cognito.Group.Admin:
-        permission = PERMISSION_ADMIN;
-        break;
-      case SolutionManifest.Cognito.Group.Creator:
-        permission = PERMISSION_CREATOR;
-        break;
-      default:
-        permission = PERMISSION_VIEWER;
-    }
+    let permission = (user.group === SolutionManifest.Cognito.Group.Admin)
+      ? ADMIN_PERMISSION
+      : (user.group === SolutionManifest.Cognito.Group.Creator)
+        ? CREATOR_PERMISSION
+        : VIEWER_PERMISSION;
     permission = `${user.group}<br/>(${permission})`;
 
     const removeBtn = $('<button/>').addClass('btn btn-sm btn-outline-danger')
@@ -215,10 +227,10 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
 
     const heading = $('<span/>')
       .addClass('d-block p-0 lead mb-4')
-      .append(CREATE_NEW_USERS);
+      .append(MSG_CREATE_NEW_USERS);
     subContainer.append(heading);
 
-    let description = CREATE_NEW_USERS_DESC
+    let description = MSG_CREATE_NEW_USERS_DESC
       .replace('{{ADD_EMAIL}}', BTN_ADD_EMAIL)
       .replace('{{CONFIRM_AND_ADD}}', BTN_CONFIRM_AND_ADD);
     description = $('<p/>')
@@ -233,7 +245,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
   }
 
   createAddUserControls() {
-    const id = `form-${this.uid}`;
+    const id = `form-${this.id}`;
     const form = $('<form/>')
       .addClass('col-9 px-0 needs-validation')
       .attr('id', id)
@@ -301,7 +313,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
       : (await ApiHelper.getUsers());
 
     const tbody = this.tabContent
-      .find(`table#table-${this.uid}`)
+      .find(`table#table-${this.id}`)
       .find('tbody');
 
     const rows = tbody.children('[data-username]');
@@ -335,7 +347,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
 
     const select = $('<select/>')
       .addClass('custom-select col-2')
-      .attr('id', `select-${this.uid}`);
+      .attr('id', `select-${this.id}`);
     inputGrp.append(select);
 
     const options = Object.values(SolutionManifest.Cognito.Group).map((group) =>
@@ -348,8 +360,8 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
     const username = $('<input/>')
       .addClass('form-control col-3')
       .attr('type', 'text')
-      .attr('pattern', '[a-zA-Z0-9._%+-]{1,128}')
-      .attr('placeholder', `(${USERNAME})`);
+      .attr('pattern', REGEX_USERNAME)
+      .attr('placeholder', `(${MSG_USERNAME})`);
     inputGrp.append(username);
 
     const removeBtn = $('<button/>')
@@ -430,7 +442,7 @@ export default class UserManagementTab extends mxAlert(mxSpinner(BaseTab)) {
         .map((user) =>
           `<strong>${user.email}</strong>`)
         .join(', ');
-      const message = ERR_FAIL_ADDIND_USERS.replace('{{USERS}}', emails);
+      const message = ERR_FAIL_ADDING_USERS.replace('{{USERS}}', emails);
       await this.showAlert(message);
     }
 

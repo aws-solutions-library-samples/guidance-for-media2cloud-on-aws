@@ -1,63 +1,118 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
-const TextractBacklogJob = require('./index.js');
-const AWS = require('aws-sdk-mock');
-const SDK = require('aws-sdk');
-AWS.setSDKInstance(SDK);
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-jest.mock('../../shared/retry', () => {
-  return {
-    run: jest.fn((fn, params) => {
-      return Promise.resolve({ jobId: params.jobId });
-    })
-  };
-});
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  DynamoDBClient,
+  PutItemCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  marshall,
+} = require('@aws-sdk/util-dynamodb');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
+const {
+  TextractClient,
+  StartDocumentAnalysisCommand,
+  StartDocumentTextDetectionCommand,
+} = require('@aws-sdk/client-textract');
 
+const TextractBacklogJob = require('./index');
+
+const ddbMock = mockClient(DynamoDBClient);
+const textractMock = mockClient(TextractClient);
+const eventbridgeMock = mockClient(EventBridgeClient);
 
 describe('Test TextractBacklogJob', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
-    AWS.mock('DynamoDB.Converter', 'unmarshall', Promise.resolve({ serviceApi: 'test' }));
+    jest.resetModules(); // Most important - it clears the cache
+    ddbMock.reset();
+    textractMock.reset();
   });
 
   afterEach(() => {
-    AWS.restore('DynamoDB.Converter');
   });
 
   test('Test startDocumentAnalysis', async () => {
-    const textractJob = new TextractBacklogJob();
-    const params = {
-      jobId: 'testDocAnalysis'
+    const serviceApi = TextractBacklogJob.ServiceApis.StartDocumentAnalysis;
+    const serviceParams = {
+      jobId: 'testDocAnalysis',
     };
 
-    const response = await textractJob.startDocumentAnalysis('id', params);
-    expect(response.serviceApi).toBe(TextractBacklogJob.ServiceApis.StartDocumentAnalysis);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    textractMock.on(StartDocumentAnalysisCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const textractJob = new TextractBacklogJob();
+
+    const response = await textractJob.startDocumentAnalysis(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startDocumentTextDetection', async () => {
-    const textractJob = new TextractBacklogJob();
-    const params = {
-      jobId: 'testDocTextDetect'
+    const serviceApi = TextractBacklogJob.ServiceApis.StartDocumentTextDetection;
+    const serviceParams = {
+      jobId: 'testDocTextDetection',
     };
 
-    const response = await textractJob.startDocumentTextDetection('id', params);
-    expect(response.serviceApi).toBe(TextractBacklogJob.ServiceApis.StartDocumentTextDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    textractMock.on(StartDocumentTextDetectionCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const textractJob = new TextractBacklogJob();
+
+    const response = await textractJob.startDocumentTextDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 });

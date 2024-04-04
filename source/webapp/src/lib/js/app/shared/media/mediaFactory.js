@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import ApiHelper from '../apiHelper.js';
-import S3Utils from '../s3utils.js';
+import {
+  GetS3Utils,
+} from '../s3utils.js';
 import VideoMedia from './videoMedia.js';
 import PhotoMedia from './photoMedia.js';
 import PodcastMedia from './podcastMedia.js';
@@ -80,37 +82,80 @@ export default class MediaFactory {
 
   static async createPreviewComponent(media, optionalSearchResults) {
     await media.getAnalysisResults();
-    switch (media.type) {
-      case MediaTypes.Video:
-        return new VideoPreview(media, optionalSearchResults);
-      case MediaTypes.Audio:
-        return new PodcastPreview(media, optionalSearchResults);
-      case MediaTypes.Image:
-        return (new PhotoPreview(media, optionalSearchResults)).preload();
-      case MediaTypes.Document:
-        return (new DocumentPreview(media, optionalSearchResults)).preload();
-      default:
-        return undefined;
-    }
+    return media.type === MediaTypes.Video
+      ? new VideoPreview(media, optionalSearchResults)
+      : media.type === MediaTypes.Audio
+        ? new PodcastPreview(media, optionalSearchResults)
+        : media.type === MediaTypes.Image
+          ? (new PhotoPreview(media, optionalSearchResults))
+          : media.type === MediaTypes.Document
+            ? (new DocumentPreview(media, optionalSearchResults))
+            : undefined;
   }
 
   static async fetchMediainfo(data) {
+    if ((data.mediainfo || {}).media) {
+      return data.mediainfo;
+    }
+
     const bucket = data.destination.bucket;
-    const key = data.mediainfo.find(x => /\.json$/.test(x));
-    return (!bucket && !key)
-      ? undefined
-      : S3Utils.getObject(bucket, key)
-        .then(response => JSON.parse(response.Body.toString()).mediaInfo)
-        .catch(e => console.error(e));
+    const key = data.mediainfo
+      .find((x) =>
+        /\.json$/.test(x));
+
+    if (!bucket || !key) {
+      return undefined;
+    }
+
+    const s3utils = GetS3Utils();
+    let response = await s3utils.getObject(
+      bucket,
+      key
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'fail to download mediainfo',
+        key
+      );
+      return undefined;
+    });
+
+    if (response !== undefined) {
+      response = await response.Body.tranformToString()
+        .then((res) =>
+          JSON.parse(res).mediaInfo);
+    }
+
+    return response;
   }
 
   static async fetchImageinfo(data) {
     const bucket = data.destination.bucket;
     const key = data.imageinfo;
-    return (!bucket || !key)
-      ? undefined
-      : S3Utils.getObject(bucket, key)
-        .then(response => JSON.parse(response.Body.toString()))
-        .catch(e => console.error(e));
+
+    if (!bucket || !key) {
+      return undefined;
+    }
+
+    const s3utils = GetS3Utils();
+    let response = await s3utils.getObject(
+      bucket,
+      key
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'fail to download imageinfo',
+        key
+      );
+      return undefined;
+    });
+
+    if (response !== undefined) {
+      response = await response.Body.tranformToString()
+        .then((res) =>
+          JSON.parse(res));
+    }
+
+    return response;
   }
 }

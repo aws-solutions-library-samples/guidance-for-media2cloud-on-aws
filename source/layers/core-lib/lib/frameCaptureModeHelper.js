@@ -5,17 +5,17 @@ const FrameCaptureMode = require('./frameCaptureMode');
 
 class FrameCaptureModeHelper {
   static suggestFrameCaptureRate(srcFramerate, frameCaptureMode) {
-    if (typeof srcFramerate !== 'number') {
+    const framerate = Number(srcFramerate);
+    if (Number.isNaN(framerate)) {
       return [];
     }
     if (Object.values(FrameCaptureMode).indexOf(frameCaptureMode) < 0
     || frameCaptureMode === FrameCaptureMode.MODE_NONE) {
       return [];
     }
-    const denominator = (Number.parseInt(srcFramerate, 10) === srcFramerate)
-      ? 1000
-      : 1001;
+
     let numerator;
+    let denominator;
     switch (frameCaptureMode) {
       case FrameCaptureMode.MODE_1FPS:
       case FrameCaptureMode.MODE_2FPS:
@@ -25,44 +25,78 @@ class FrameCaptureModeHelper {
       case FrameCaptureMode.MODE_10FPS:
       case FrameCaptureMode.MODE_12FPS:
       case FrameCaptureMode.MODE_15FPS:
-        numerator = frameCaptureMode * 1000;
+        numerator = frameCaptureMode;
+        denominator = 1;
         break;
       case FrameCaptureMode.MODE_ALL:
-        numerator = srcFramerate * 1000;
+        numerator = Math.round(framerate);
+        denominator = (numerator === framerate)
+          ? 1000
+          : 1001;
+        numerator *= 1000;
         break;
       case FrameCaptureMode.MODE_HALF_FPS:
-        numerator = (srcFramerate * 1000) / 2;
+        numerator = Math.round(framerate);
+        denominator = (numerator === framerate)
+          ? 1000
+          : 1001;
+        numerator *= (1000 / 2);
         break;
       case FrameCaptureMode.MODE_1F_EVERY_2S:
-        numerator = (1 * 1000) / 2;
+        denominator = 10;
+        numerator = denominator / 2;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_5S:
-        numerator = (1 * 1000) / 5;
+        denominator = 10;
+        numerator = denominator / 5;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_10S:
-        numerator = (1 * 1000) / 10;
+        denominator = 10;
+        numerator = denominator / 10;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_30S:
-        numerator = Math.floor((1 * 1000) / 30);
+        denominator = 30;
+        numerator = 1;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_1MIN:
-        numerator = Math.floor((1 * 1000) / 60);
+        denominator = 1 * 60;
+        numerator = 1;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_2MIN:
-        numerator = Math.floor((1 * 1000) / (60 * 2));
+        denominator = 2 * 60;
+        numerator = 1;
         break;
       case FrameCaptureMode.MODE_1F_EVERY_5MIN:
-        numerator = Math.floor((1 * 1000) / (60 * 5));
+        denominator = 5 * 60;
+        numerator = 1;
+        break;
+      case FrameCaptureMode.MODE_DYNAMIC_FPS:
+        numerator = 1;
+        denominator = 1;
         break;
       default:
         numerator = 0;
     }
-    if (!numerator) {
+    if (!numerator || !denominator) {
       return [];
     }
     return [
       numerator,
       denominator,
+    ];
+  }
+
+  static computeFrameNumAndTimestamp(
+    second,
+    framerate,
+    frameCapture
+  ) {
+    const num = Math.round(
+      (second * framerate * frameCapture.denominator) / frameCapture.numerator
+    );
+    return [
+      num,
+      Math.round((num * 1000) / framerate),
     ];
   }
 }

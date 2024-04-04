@@ -1,39 +1,47 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 const PATH = require('path');
 const {
+  RekognitionClient,
+} = require('@aws-sdk/client-rekognition');
+const {
   StateData,
-  AnalysisError,
   CommonUtils,
-  Retry,
+  MapDataVersion,
+  Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 
 const CATEGORY = 'rekognition';
-const RESULTS_PER_FILE = 10; // merge 10 detection results into one file
-const MAP_FILENAME = 'mapFile.json';
 const MAX_SAMPLING_RATE = 2000; // 2s max sampling rate
+const MIN_SAMPLING_RATE = 800; // min 800ms
+const MAP_FILENAME = 'mapFile.json';
+const DATA_FILENAME = '00000000.json';
+
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class BaseCollectResultsIterator {
   constructor(stateData, subCategory, namedKey) {
     if (!(stateData instanceof StateData)) {
-      throw new AnalysisError('stateData not StateData object');
+      throw new M2CException('stateData not StateData object');
     }
     /* detection type such as label, celeb, and etc */
     if (!subCategory) {
-      throw new AnalysisError('subCategory not specified');
+      throw new M2CException('subCategory not specified');
     }
     /* JSON output file's root key */
     if (!namedKey) {
-      throw new AnalysisError('namedKey not specified');
+      throw new M2CException('namedKey not specified');
     }
     this.$stateData = stateData;
     this.$subCategory = subCategory;
     this.$namedKey = namedKey;
     this.$dataset = [];
-    this.$mapData = undefined;
-    this.$func = undefined;
+    this.$mapData = [];
     this.$paramOptions = undefined;
+    this.$modelMetadata = undefined;
   }
 
   get [Symbol.toStringTag]() {
@@ -56,6 +64,10 @@ class BaseCollectResultsIterator {
     return this.$dataset;
   }
 
+  set dataset(val) {
+    this.$dataset = val;
+  }
+
   get mapData() {
     return this.$mapData;
   }
@@ -64,39 +76,30 @@ class BaseCollectResultsIterator {
     this.$mapData = val;
   }
 
-  get func() {
-    return this.$func;
-  }
-
   get paramOptions() {
     return this.$paramOptions;
   }
 
-  /* derived class to implement */
-  mapUniqueNameToSequenceFile(mapFile, data, seqFile) {
-    throw new AnalysisError('dervied class to implement mapUniqueNameToSequenceFile');
+  get modelMetadata() {
+    return this.$modelMetadata;
+  }
+
+  set modelMetadata(val) {
+    this.$modelMetadata = val;
+  }
+
+  get minConfidence() {
+    return this.stateData.data[this.subCategory].minConfidence;
   }
 
   async process() {
     const data = this.stateData.data[this.subCategory];
     if (!data.jobId) {
-      throw new AnalysisError(`missing data.${this.subCategory}.jobId`);
+      throw new M2CException(`missing data.${this.subCategory}.jobId`);
     }
-    if (typeof this.func !== 'function') {
-      throw new AnalysisError('this.func not implement');
-    }
-    do {
-      const t0 = new Date();
-      await this.processResults(data.jobId);
-      await this.flushDataset();
-      /* make sure we allocate enough time for the next iteration */
-      const remained = this.stateData.getRemainingTime();
-      const consumed = new Date() - t0;
-      if (this.stateData.quitNow() || (remained - (consumed * 1.2) <= 0)) {
-        break;
-      }
-    } while (data.nextToken);
-    await this.flushDataset();
+
+    data.nextToken = await this.processResults(data.jobId);
+    data.numOutputs = 1;
 
     return (!data.nextToken)
       ? this.setCompleted()
@@ -105,29 +108,93 @@ class BaseCollectResultsIterator {
 
   async processResults(jobId) {
     const data = this.stateData.data[this.subCategory];
-    let batchIdx = 0;
+    const bucket = data.bucket;
+    const prefix = this.makeRawDataPrefix(this.subCategory);
+
+    let nextToken = data.nextToken;
+    let lambdaTimeout;
     do {
-      await this.getDetectionResults({
+      const response = await this.getDetectionResults({
         ...this.paramOptions,
         JobId: jobId,
-        NextToken: data.nextToken,
-      }).then((dataset) => {
-        data.nextToken = dataset.NextToken;
-        return this.dataset.splice(this.dataset.length, 0, ...this.parseResults(dataset));
+        NextToken: nextToken,
       });
-    } while (data.nextToken && batchIdx++ < RESULTS_PER_FILE);
+      nextToken = this.collectResults(response);
+      lambdaTimeout = this.stateData.quitNow();
+    } while (nextToken !== undefined && !lambdaTimeout);
+
     if (!data.sampling) {
       data.sampling = BaseCollectResultsIterator.computeSampling(this.dataset);
     }
-    return data.nextToken;
+
+    await this.updateOutputs(bucket, prefix, nextToken);
+
+    return nextToken;
+  }
+
+  collectResults(data) {
+    if (!this.modelMetadata) {
+      this.modelMetadata = this.parseModelMetadata(data);
+    }
+
+    const parsed = this.parseResults(data);
+    this.dataset = this.dataset.concat(parsed);
+
+    const uniques = this.getUniqueNames(parsed);
+
+    this.mapData = this.mapData.concat(uniques);
+    this.mapData = [
+      ...new Set(this.mapData),
+    ];
+
+    return data.NextToken;
+  }
+
+  parseModelMetadata(dataset) {
+    return {
+      VideoMetadata: dataset.VideoMetadata,
+    };
+  }
+
+  async updateOutputs(bucket, prefix, nextToken) {
+    return Promise.all([
+      this.updateDataFile(bucket, prefix, DATA_FILENAME, this.dataset, nextToken),
+      this.updateMapFile(bucket, prefix, MAP_FILENAME, this.mapData, DATA_FILENAME),
+    ]);
+  }
+
+  getUniqueNames(dataset) {
+    throw new M2CException('subclass to implement getUniqueNames');
+  }
+
+  getRunCommand(params) {
+    throw new M2CException('subclass to implement getRunCommand');
   }
 
   async getDetectionResults(params) {
-    return Retry.run(this.func, params)
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = this.getRunCommand(params);
+
+    return rekognitionClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }))
       .catch((e) => {
-        e.message = `${CATEGORY}.${this.subCategory}.${params.JobId}: ${e.message}`;
-        console.error(e);
-        throw new AnalysisError(e);
+        console.error(
+          'ERR:',
+          'BaseCollectResultsIterator.getDetectionResults:',
+          `${command.constructor.name}:`,
+          e.$metadata.httpStatusCode,
+          e.name,
+          e.message,
+          JSON.stringify(command.input)
+        );
+        throw e;
       });
   }
 
@@ -135,57 +202,94 @@ class BaseCollectResultsIterator {
     return dataset[this.namedKey];
   }
 
-  async flushDataset() {
-    if (!this.dataset.length) {
-      return undefined;
-    }
-    const data = this.stateData.data[this.subCategory];
-    const bucket = data.bucket;
-    const prefix = this.makeRawDataPrefix(this.subCategory);
-    const seqFile = BaseCollectResultsIterator.makeSequenceFileName(data.numOutputs++);
-    return Promise.all([
-      this.updateMapFile(bucket, prefix, seqFile, this.dataset),
-      this.uploadFile(bucket, prefix, seqFile, this.dataset),
-    ]).then(() =>
-      this.dataset.length = 0);
+  async updateMapFile(
+    bucket,
+    prefix,
+    name,
+    mapData,
+    dataFile
+  ) {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const key = PATH.join(prefix, name);
+    let merged = await CommonUtils.download(
+      bucket,
+      key
+    ).then((x) =>
+      JSON.parse(x).data)
+      .catch(() =>
+        ([]));
+
+    merged = {
+      version: MapDataVersion,
+      file: dataFile,
+      data: [
+        ...new Set(merged.concat(mapData)),
+      ],
+    };
+
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      merged
+    ).catch((e) =>
+      console.error(e));
   }
 
-  async updateMapFile(bucket, prefix, seqFile, data) {
-    const name = MAP_FILENAME;
-    /* download and merge mapData */
-    if (!this.mapData) {
-      this.mapData = await CommonUtils.download(bucket, PATH.join(prefix, name), false)
-        .then(x => JSON.parse(x.Body.toString()))
-        .catch(() => ({}));
-    }
-    this.mapData = this.mapUniqueNameToSequenceFile(this.mapData, data, seqFile);
-    return (this.mapData)
-      ? CommonUtils.uploadFile(bucket, prefix, name, this.mapData)
-        .catch(e => console.error(e))
-      : undefined;
-  }
+  async updateDataFile(
+    bucket,
+    prefix,
+    name,
+    dataset,
+    nextToken
+  ) {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const key = PATH.join(prefix, name);
+    let merged = await CommonUtils.download(
+      bucket,
+      key
+    ).then((x) =>
+      JSON.parse(x))
+      .catch(() => ({
+        [this.namedKey]: [],
+      }));
 
-  async uploadFile(bucket, prefix, seqFile, data) {
-    return CommonUtils.uploadFile(bucket, prefix, seqFile, {
-      [this.namedKey]: data,
-    }).catch(e => console.error(e));
+    merged = {
+      ...this.modelMetadata,
+      [this.namedKey]: merged[this.namedKey]
+        .concat(dataset),
+    };
+
+    if (nextToken === undefined) {
+      merged = await this.postProcessAllResults(merged);
+    }
+
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      merged
+    ).catch((e) =>
+      console.error(e));
   }
 
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory];
     const timestamp = CommonUtils.toISODateTime(data.requestTime);
-    return PATH.join(
-      data.prefix,
-      'raw',
-      timestamp,
-      CATEGORY,
-      subCategory,
-      '/'
-    );
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return PATH.join(data.prefix, 'raw', timestamp, CATEGORY, subCategory, '/');
   }
 
   setCompleted() {
-    this.stateData.data[this.subCategory].cursor = 0;
+    const data = this.stateData.data[this.subCategory];
+    data.cursor = 0;
+    const prefix = this.makeRawDataPrefix(this.subCategory);
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    data.output = PATH.join(prefix, MAP_FILENAME);
     this.stateData.setCompleted();
     return this.stateData.toJSON();
   }
@@ -195,21 +299,37 @@ class BaseCollectResultsIterator {
     return this.stateData.toJSON();
   }
 
-  static makeSequenceFileName(idx) {
-    return `${String(idx).padStart(8, '0')}.json`;
-  }
-
   static computeSampling(dataset) {
     if (!dataset.length || dataset[0].Timestamp === undefined) {
       return undefined;
     }
-    const timestamps = [...new Set(dataset.map(x => x.Timestamp))].sort((a, b) => a - b);
+
+    /* take the first 200 samples */
+    const samples = dataset.slice(0, 200);
+
+    const timestamps = [
+      ...new Set(samples
+        .map((x) =>
+          x.Timestamp)),
+    ].sort((a, b) =>
+      a - b);
+
     const diffs = [];
     for (let i = 0; i < timestamps.length - 1; i++) {
       diffs.push(timestamps[i + 1] - timestamps[i]);
     }
     const max = Math.round(Math.max(...diffs));
-    return Math.min(max, MAX_SAMPLING_RATE);
+    return Math.max(
+      Math.min(
+        max,
+        MAX_SAMPLING_RATE
+      ),
+      MIN_SAMPLING_RATE
+    );
+  }
+
+  async postProcessAllResults(data) {
+    return data;
   }
 }
 

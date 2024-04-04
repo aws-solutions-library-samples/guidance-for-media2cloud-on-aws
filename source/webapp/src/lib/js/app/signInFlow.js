@@ -2,54 +2,72 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from './shared/localization.js';
-import IotSubscriber from './shared/iotSubscriber.js';
-import CognitoConnector from './shared/cognitoConnector.js';
-import ApiHelper from './shared/apiHelper.js';
 import AppUtils from './shared/appUtils.js';
+import AuthenticationFlow from './shared/cognito/authenticationFlow.js';
+import {
+  UserSession,
+  GetUserSession,
+  LoadUserSessionFromCache,
+  OPT_USERNAME,
+} from './shared/cognito/userSession.js';
+import {
+  GetIotSubscriber,
+} from './shared/iotSubscriber.js';
+import {
+  GetSettingStore,
+} from './shared/localCache/settingStore.js';
+
+const {
+  ChallengeNameType,
+} = window.AWSv3;
 
 const SOLUTION_ICON = '/images/m2c-full-black.png';
 
-export default class SignInFlow {
-  constructor() {
-    this.$ids = {
-      container: `signin-${AppUtils.randomHexstring()}`,
-      carousel: `signin-${AppUtils.randomHexstring()}`,
-      slides: {
-        signIn: `signin-slide-${AppUtils.randomHexstring()}`,
-        newPassword: `signin-slide-${AppUtils.randomHexstring()}`,
-        resetSendCode: `signin-slide-${AppUtils.randomHexstring()}`,
-        resetPassword: `signin-slide-${AppUtils.randomHexstring()}`,
-      },
-      normal: {
-        username: `signin-normal-${AppUtils.randomHexstring()}`,
-        password: `signin-normal-${AppUtils.randomHexstring()}`,
-      },
-      new: {
-        password01: `signin-new-${AppUtils.randomHexstring()}`,
-        password02: `signin-new-${AppUtils.randomHexstring()}`,
-      },
-      reset: {
-        code: `signin-new-${AppUtils.randomHexstring()}`,
-        email: `signin-new-${AppUtils.randomHexstring()}`,
-        username: `signin-new-${AppUtils.randomHexstring()}`,
-        password: `signin-new-${AppUtils.randomHexstring()}`,
-      },
-    };
-    this.$view = $('<div/>').attr('id', this.$ids.container);
-    this.$cognito = CognitoConnector.getSingleton();
-    this.$dialog = undefined;
-  }
+const {
+  Copyright: COPYRIGHT,
+  RegularExpressions: {
+    Username: REGEX_USERNAME,
+  },
+  Messages: {
+    Title: MSG_TITLE,
+    PwdRequirement: MSG_PASSWORD_REQ,
+    ResetSendCode: MSG_RESET_SEND_CODE,
+    ResetPwd: MSG_RESET_PASSWORD,
+  },
+  Alerts: {
+    Oops: OOPS,
+    MismatchPwds: MSG_MISMATCH_PASSWORDS,
+    PwdConformance: MSG_PASSWORD_NOT_CONFORM,
+    SignInProblem: MSG_SIGNIN_PROBLEM,
+    UsernameConformance: MSG_USERNAME_NOT_CONFORM,
+  },
+} = Localization;
 
-  static get Events() {
-    return {
-      View: {
-        Hidden: 'signin:view:hidden',
-      },
-    };
-  }
+const RANDOM_ID = AppUtils.randomHexstring();
+const ID_SPINNER = `signin-spinner-${RANDOM_ID}`;
+const ID_CONTAINER = `signin-${RANDOM_ID}`;
+const ID_MODAL = `signin-modal-${RANDOM_ID}`;
+const ID_CAROUSEL = `signin-carousel-${RANDOM_ID}`;
+const ID_PASSWORD = `signin-password-${RANDOM_ID}`;
+const ID_PASSWORD_01 = `signin-password-01-${RANDOM_ID}`;
+const ID_PASSWORD_02 = `signin-password-02-${RANDOM_ID}`;
+const SLIDEID_SIGNIN = `slide-signin-${RANDOM_ID}`;
+const SLIDEID_NEW_PASSWORD = `slide-new-password-${RANDOM_ID}`;
+const SLIDEID_SEND_CODE = `slide-send-code-${RANDOM_ID}`;
+const SLIDEID_RESET_PASSWORD = `slide-reset-password-${RANDOM_ID}`;
 
-  get ids() {
-    return this.$ids;
+const ON_SIGNIN_VIEW_HIDDEN = 'signin:view:hidden';
+
+const _tmpFlowData = {};
+
+class SignInFlow {
+  constructor(title = MSG_TITLE, logo = undefined) {
+    this.$view = $('<div/>')
+      .attr('id', ID_CONTAINER);
+
+    this.$title = title;
+    this.$customLogo = logo;
+    this.$authFlow = new AuthenticationFlow();
   }
 
   appendTo(parent) {
@@ -60,49 +78,91 @@ export default class SignInFlow {
     return this.$view;
   }
 
-  get dialog() {
-    return this.$dialog;
+  get title() {
+    return this.$title;
   }
 
-  set dialog(val) {
-    this.$dialog = val;
+  get customLogo() {
+    return this.$customLogo;
   }
 
-  get cognito() {
-    return this.$cognito;
+  get authFlow() {
+    return this.$authFlow;
   }
 
   async show() {
     await this.hide();
-    const user = await this.userSignIn()
-      .catch(() =>
-        undefined);
 
-    this.dialog = $('<div/>').addClass('modal fade')
+    /* try to auto sign in */
+    let username;
+    try {
+      const userSession = await this.userSignInFromCache();
+
+      username = (userSession || {}).username;
+
+      if (username !== undefined) {
+        return this.view.trigger(ON_SIGNIN_VIEW_HIDDEN);
+      }
+    } catch (e) {
+      /* do nothing */
+    } finally {
+      if (username === undefined) {
+        const store = GetSettingStore();
+        username = await store.getItem(OPT_USERNAME);
+      }
+    }
+
+    const modal = $('<div/>')
+      .addClass('modal fade')
+      .attr('id', ID_MODAL)
       .attr('tabindex', -1)
       .attr('role', 'dialog');
+    this.view.append(modal);
 
-    const modal = $('<div/>').addClass('modal-dialog')
-      .attr('role', 'document')
-      .append($('<div/>').addClass('modal-content')
-        .append($('<div/>').addClass('modal-header')
-          .append($('<h5/>').addClass('modal-title lead')
-            .html(Localization.Messages.Title)))
-        .append($('<div/>').addClass('modal-body')
-          .append(this.createCarousel(user)))
-        .append($('<div/>').addClass('modal-footer')
-          .append(this.createCopyright())));
+    const modalDialog = $('<div/>')
+      .addClass('modal-dialog')
+      .attr('role', 'document');
+    modal.append(modalDialog);
 
-    this.dialog.append(modal);
-    this.view.append(this.dialog);
+    const content = $('<div/>')
+      .addClass('modal-content');
+    modalDialog.append(content);
 
-    this.dialog.off('hidden.bs.modal').on('hidden.bs.modal', () =>
-      this.view.trigger(SignInFlow.Events.View.Hidden));
+    const header = $('<div/>')
+      .addClass('modal-header');
+    content.append(header);
 
-    if (user) {
-      return this.view.trigger(SignInFlow.Events.View.Hidden);
-    }
-    return this.dialog.modal({
+    const title = $('<h5/>')
+      .addClass('modal-title lead')
+      .html(this.title);
+    header.append(title);
+
+    const body = $('<div/>')
+      .addClass('modal-body');
+    content.append(body);
+
+    const carousel = this.createCarousel(username);
+    body.append(carousel);
+
+    const footer = $('<div/>')
+      .addClass('modal-footer');
+    content.append(footer);
+
+    const copyright = this.createCopyright();
+    footer.append(copyright);
+
+    const spinner = this.createSpinner();
+    modalDialog.append(spinner);
+
+    modal.on('hidden.bs.modal', () => {
+      Object.keys(_tmpFlowData)
+        .forEach((key) =>
+          delete _tmpFlowData[key]);
+
+      this.view.trigger(ON_SIGNIN_VIEW_HIDDEN);
+    });
+
+    return modal.modal({
       backdrop: 'static',
       keyboard: false,
       show: true,
@@ -110,349 +170,715 @@ export default class SignInFlow {
   }
 
   async hide() {
-    this.view.children().remove();
-    this.dialog = undefined;
+    this.view.children()
+      .remove();
   }
 
   async userSignIn() {
-    const user = await this.cognito.signIn();
-    if (user !== undefined) {
-      /* grant iot policy to the user */
-      await ApiHelper.attachIot();
-      console.log(`iot permission granted to '${user.username}'...`);
+    const session = GetUserSession();
+
+    const credentials = await session.signIn();
+
+    if (credentials !== undefined) {
       /* start iot connection */
-      await IotSubscriber.getSingleton().connect();
+      const subscriber = GetIotSubscriber();
+      await subscriber.connect();
     }
-    return user;
+
+    return session;
   }
 
-  createCarousel(user) {
-    const slides = [
-      {
-        id: this.ids.slides.signIn,
-        el: this.createSignInForm(user),
-      },
-      {
-        id: this.ids.slides.newPassword,
-        el: this.createNewPasswordForm(user),
-      },
-      {
-        id: this.ids.slides.resetSendCode,
-        el: this.createResetSendCodeForm(user),
-      },
-      {
-        id: this.ids.slides.resetPassword,
-        el: this.createResetPasswordForm(user),
-      },
-    ];
+  async userSignInFromCache() {
+    const session = await LoadUserSessionFromCache();
 
-    const inner = $('<div/>').addClass('carousel-inner');
-    for (let i = 0; i < slides.length; i++) {
-      const classes = (i === 0) ? 'carousel-item active' : 'carousel-item';
-      inner.append($('<div/>').addClass(classes)
-        .attr('id', slides[i].id)
-        .append(slides[i].el));
+    if (session === undefined) {
+      return session;
     }
 
-    return $('<div/>').addClass('carousel slide')
+    return this.userSignIn();
+  }
+
+  createCarousel(username) {
+    const carousel = $('<div/>')
+      .addClass('carousel slide')
       .attr('data-ride', false)
       .attr('data-interval', false)
-      .attr('id', this.ids.carousel)
-      .append(inner);
+      .attr('id', ID_CAROUSEL);
+
+    const carouselInner = $('<div/>')
+      .addClass('carousel-inner');
+    carousel.append(carouselInner);
+
+    const carouselItems = [
+      {
+        id: SLIDEID_SIGNIN,
+        el: this.createSignInForm(username),
+      },
+      {
+        id: SLIDEID_NEW_PASSWORD,
+        el: this.createNewPasswordForm(),
+      },
+      {
+        id: SLIDEID_SEND_CODE,
+        el: this.createResetSendCodeForm(),
+      },
+      {
+        id: SLIDEID_RESET_PASSWORD,
+        el: this.createResetPasswordForm(),
+      },
+    ].map((slide) => {
+      const carouselItem = $('<div/>')
+        .addClass('carousel-item')
+        .attr('id', slide.id)
+        .append(slide.el);
+
+      return carouselItem;
+    });
+
+    /* set 1st slide active */
+    carouselItems[0]
+      .addClass('active');
+
+    carouselInner.append(carouselItems);
+
+    return carousel;
   }
 
-  createSignInForm(user) {
-    const form = $('<form/>').addClass('form-signin text-center needs-validation')
-      .attr('novalidate', 'novalidate')
-      .append(this.createLogo())
-      .append(this.createUserInput(this.ids.normal.username, 'Username', (user || {}).username))
-      .append(this.createPasswordInput())
-      .append(this.createSubmitButton())
-      .append(this.createResetLink());
-    form.off('submit').submit(async (event) => {
+  createSignInForm(username) {
+    const formContainer = $('<form/>')
+      .addClass('form-signin text-center needs-validation')
+      .attr('novalidate', 'novalidate');
+
+    const logo = this.createLogo();
+    formContainer.append(logo);
+
+    const inputId = `signin-username-${RANDOM_ID}`;
+    const userInput = this.createUserInput(
+      inputId,
+      'Username',
+      username
+    );
+    formContainer.append(userInput);
+
+    const passwordId = ID_PASSWORD;
+    const passwordInput = this.createPasswordInput(
+      passwordId,
+      'Password',
+      'current-password'
+    );
+    formContainer.append(passwordInput);
+
+    const submitBtn = this.createSubmitButton();
+    formContainer.append(submitBtn);
+
+    const resetLink = this.createResetLink();
+    formContainer.append(resetLink);
+
+    resetLink.on('click', async () => {
+      this.slideTo(SLIDEID_SEND_CODE);
+    });
+
+    formContainer.submit(async (event) => {
       event.preventDefault();
-      if (form[0].checkValidity() === false) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
-        return false;
-      }
-      const username = form.find(`#${this.ids.normal.username}`);
-      const password = form.find(`#${this.ids.normal.password}`);
 
       try {
-        const response = await this.cognito.authenticate({
-          Username: username.val(),
-          Password: password.val(),
-        });
-        password.val('');
-        if (response.status === 'newPasswordRequired') {
-          return this.slideTo(this.ids.slides.newPassword);
+        this.loading();
+
+        if (formContainer[0].checkValidity() === false) {
+          event.stopPropagation();
+          this.shake();
+
+          throw MSG_PASSWORD_NOT_CONFORM;
         }
+
+        const [
+          inputUsername,
+          inputPassword,
+        ] = [
+          inputId,
+          passwordId,
+        ].map((id) =>
+          formContainer.find(`#${id}`));
+
+        const response = await this.authFlow.authenticateUser(
+          inputUsername.val(),
+          inputPassword.val()
+        );
+
+        if (response instanceof UserSession) {
+          await this.userSignIn();
+
+          inputUsername.val('');
+          inputPassword.val('');
+
+          setTimeout(() => {
+            const modal = this.view
+              .find(`div#${ID_MODAL}`);
+
+            modal.modal('hide');
+          }, 10);
+
+          return true;
+        }
+
+        if (response.ChallengeName === ChallengeNameType.NEW_PASSWORD_REQUIRED) {
+          _tmpFlowData.username = inputUsername.val();
+          _tmpFlowData.challengeResponse = response;
+
+          this.slideTo(SLIDEID_NEW_PASSWORD);
+          return true;
+        }
+
+        console.log(
+          'ERR:',
+          'authenticateUser:',
+          response
+        );
+
+        throw new Error(`fail to authenticate user, ${(response.$metadata || {}).httpStatusCode}`);
+      } catch (e) {
+        let message = e;
+
+        if (e instanceof Error) {
+          message = [
+            MSG_SIGNIN_PROBLEM,
+            `<br><pre class="text-danger small">(error: ${e.message})</pre>`,
+          ].join('');
+        }
+
+        await this.showMessage(
+          'danger',
+          OOPS,
+          message
+        );
+
+        return false;
+      } finally {
+        this.loading(false);
+      }
+    });
+
+    return formContainer;
+  }
+
+  createNewPasswordForm() {
+    const container = $('<div/>');
+
+    const desc = $('</p>')
+      .addClass('text-muted')
+      .html(MSG_PASSWORD_REQ);
+    container.append(desc);
+
+    const formContainer = $('<form/>')
+      .addClass('form-signin text-center needs-validation')
+      .attr('novalidate', 'novalidate');
+    container.append(formContainer);
+
+    const inputs = [
+      [
+        ID_PASSWORD_01,
+        'New Password',
+        'new-password',
+      ],
+      [
+        ID_PASSWORD_02,
+        'Confirm Password',
+        'new-password',
+      ],
+    ].map((x) =>
+      this.createPasswordInput(
+        ...x
+      ));
+    formContainer.append(inputs);
+
+    const confirmBtn = this.createSubmitButton('Confirm');
+    formContainer.append(confirmBtn);
+
+    formContainer.submit(async (event) => {
+      event.preventDefault();
+
+      const [
+        password01,
+        password02,
+      ] = [
+        ID_PASSWORD_01,
+        ID_PASSWORD_02,
+      ].map((id) =>
+        formContainer.find(`#${id}`));
+
+      try {
+        this.loading();
+
+        if (password01.val() !== password02.val()) {
+          event.stopPropagation();
+          this.shake();
+
+          throw MSG_MISMATCH_PASSWORDS;
+        }
+
+        if (formContainer[0].checkValidity() === false) {
+          event.stopPropagation();
+          this.shake();
+
+          throw MSG_PASSWORD_NOT_CONFORM;
+        }
+
+        await this.authFlow.newPasswordRequired(
+          _tmpFlowData.challengeResponse,
+          _tmpFlowData.username,
+          password01.val()
+        );
+
         await this.userSignIn();
-        return this.dialog.modal('hide');
-      } catch (e) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, `${Localization.Alerts.SignInProblem}<br><span class="small">(error: ${encodeURIComponent(e.message).replace(/%20/g, ' ')})</span>`);
-        return false;
-      }
-    });
-    return form;
-  }
 
-  createNewPasswordForm(user) {
-    const div = $('<div/>').append($('</p>').addClass('text-muted')
-      .html(Localization.Messages.PwdRequirement));
-
-    const form = $('<form/>').addClass('form-signin text-center needs-validation')
-      .attr('novalidate', 'novalidate')
-      .append(this.createPasswordInput(this.ids.new.password01, 'New Password', ''))
-      .append(this.createPasswordInput(this.ids.new.password02, 'Confirm Password', ''))
-      .append(this.createSubmitButton('Confirm'));
-    form.off('submit').submit(async (event) => {
-      event.preventDefault();
-      const password01 = form.find(`#${this.ids.new.password01}`);
-      const password02 = form.find(`#${this.ids.new.password02}`);
-
-      if (password01.val() !== password02.val()) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.MismatchPwds);
-        password02.val('');
-        return false;
-      }
-
-      if (form[0].checkValidity() === false) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
         password01.val('');
         password02.val('');
-        return false;
-      }
 
-      try {
-        await this.cognito.confirmNewPassword(password01.val());
-        const btn = form.find('button[type="submit"]');
-        btn.addClass('disabled')
-          .attr('disabled', 'disabled');
-        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed, 3000);
-        this.cognito.signOut();
-        password01.val('');
+        setTimeout(() => {
+          const modal = this.view
+            .find(`div#${ID_MODAL}`);
+
+          modal.modal('hide');
+        }, 10);
+
+        return true;
+      } catch (e) {
+        let message = e;
+
+        if (e instanceof Error) {
+          message = `<pre class="text-danger">(error: ${e.message})</pre>`;
+        }
+
+        await this.showMessage(
+          'danger',
+          OOPS,
+          message
+        );
+
         password02.val('');
-        return this.slideTo(this.ids.slides.signIn);
-      } catch (e) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, `${Localization.Alerts.SessionExpired}</br><span class="small">(error: ${encodeURIComponent(e.message).replace(/%20/g, ' ')})</span>`);
         return false;
+      } finally {
+        this.loading(false);
       }
     });
-    return div.append(form);
+
+    return container;
   }
 
-  createResetSendCodeForm(user) {
-    const div = $('<div/>').append($('</p>').addClass('text-muted')
-      .html(Localization.Messages.ResetSendCode));
+  createResetSendCodeForm() {
+    const container = $('<div/>');
 
-    const form = $('<form/>').addClass('form-signin text-center needs-validation')
-      .attr('novalidate', 'novalidate')
-      .append(this.createUserInput(this.ids.reset.username, 'Username', undefined, ''))
-      .append(this.createSubmitButton('Send code'));
-    form.off('submit').submit(async (event) => {
+    const desc = $('</p>')
+      .addClass('text-muted')
+      .html(MSG_RESET_SEND_CODE);
+    container.append(desc);
+
+    const formContainer = $('<form/>')
+      .addClass('form-signin text-center needs-validation')
+      .attr('novalidate', 'novalidate');
+    container.append(formContainer);
+
+    const inputId = `reset-form-username-${RANDOM_ID}`;
+    const userInput = this.createUserInput(
+      inputId,
+      'Username'
+    );
+    formContainer.append(userInput);
+
+    const submitBtn = this.createSubmitButton('Send code');
+    formContainer.append(submitBtn);
+
+    formContainer.submit(async (event) => {
       event.preventDefault();
-      const username = form.find(`#${this.ids.reset.username}`);
-      if (form[0].checkValidity() === false) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.UsernameConformance);
-        username.val('');
-        return false;
-      }
+
+      const input = formContainer
+        .find(`input#${inputId}`);
 
       try {
-        const response = await this.cognito.forgotPasswordFlow({
-          Username: username.val(),
-        });
-        /* pass the email destination to reset password slide */
-        // this.dialog.find(`#${this.ids.reset.email}`).val(response.data.CodeDeliveryDetails.Destination);
-        return this.slideTo(this.ids.slides.resetPassword);
+        if (formContainer[0].checkValidity() === false) {
+          event.stopPropagation();
+          this.shake();
+
+          throw MSG_USERNAME_NOT_CONFORM;
+        }
+
+        /* start forgot password flow */
+        const username = input.val();
+        await this.authFlow.forgotPassword(username);
+
+        _tmpFlowData.username = username;
+
+        this.slideTo(SLIDEID_RESET_PASSWORD);
+
+        return true;
       } catch (e) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, `${Localization.Alerts.SessionExpired}</br><span class="small">(error: ${encodeURIComponent(e.message).replace(/%20/g, ' ')})</span>`);
+        let message = e;
+
+        if (e instanceof Error) {
+          message = `<pre class="text-danger">(error: ${e.message})</pre>`;
+        }
+
+        await this.showMessage(
+          'danger',
+          OOPS,
+          message
+        );
+
+        input.val('');
         return false;
       }
     });
-    return div.append(form);
+
+    return container;
   }
 
-  createResetPasswordForm(user) {
-    const div = $('<div/>').append($('</p>').addClass('text-muted')
-      .html(Localization.Messages.ResetPwd));
+  createResetPasswordForm() {
+    const container = $('<div/>');
 
-    const form = $('<form/>').addClass('form-signin text-center needs-validation')
-      .attr('novalidate', 'novalidate')
-      .append(this.createCodeInput(this.ids.reset.code))
-      .append(this.createPasswordInput(this.ids.reset.password, 'New Password', ''))
-      .append(this.createSubmitButton('Reset Password'));
-    form.off('submit').submit(async (event) => {
+    const desc = $('</p>')
+      .addClass('text-muted')
+      .html(MSG_RESET_PASSWORD);
+    container.append(desc);
+
+    const formContainer = $('<form/>')
+      .addClass('form-signin text-center needs-validation')
+      .attr('novalidate', 'novalidate');
+    container.append(formContainer);
+
+    const confirmationCodeId = `reset-form-confirmation-code-${RANDOM_ID}`;
+    const confirmationCode = this.createCodeInput(confirmationCodeId);
+    formContainer.append(confirmationCode);
+
+    const resetPasswordId = `reset-form-reset-password-${RANDOM_ID}`;
+    const resetPassword = this.createPasswordInput(
+      resetPasswordId,
+      'New Password',
+      'new-password'
+    );
+    formContainer.append(resetPassword);
+
+    const submitBtn = this.createSubmitButton('Reset Password');
+    formContainer.append(submitBtn);
+
+    formContainer.submit(async (event) => {
       event.preventDefault();
-      const code = form.find(`#${this.ids.reset.code}`);
-      const password = form.find(`#${this.ids.reset.password}`);
 
-      if (form[0].checkValidity() === false) {
-        event.stopPropagation();
-        this.shake();
-        await this.showMessage('danger', Localization.Alerts.Oops, Localization.Alerts.PwdConformance);
-        code.val('');
-        password.val('');
-        return false;
-      }
+      const inputConfirmationCode = confirmationCode
+        .find(`input#${confirmationCodeId}`);
+
+      const inputResetPassword = resetPassword
+        .find(`input#${resetPasswordId}`);
 
       try {
-        await this.cognito.confirmPassword(code.val(), password.val());
-        await this.showMessage('success', Localization.Alerts.Confirmed, Localization.Alerts.PwdConfirmed);
-        this.cognito.signOut();
-        code.val('');
-        password.val('');
-        return this.slideTo(this.ids.slides.signIn);
+        this.loading();
+
+        if (formContainer[0].checkValidity() === false) {
+          event.stopPropagation();
+          this.shake();
+
+          throw MSG_PASSWORD_NOT_CONFORM;
+        }
+
+        /* confirm password change */
+        await this.authFlow.confirmPasswordChange(
+          _tmpFlowData.username,
+          inputResetPassword.val(),
+          inputConfirmationCode.val()
+        );
+
+        /* authenticate user w/ new password */
+        await this.authFlow.authenticateUser(
+          _tmpFlowData.username,
+          inputResetPassword.val()
+        );
+
+        await this.userSignIn();
+
+        inputConfirmationCode.val('');
+        inputResetPassword.val('');
+
+        setTimeout(() => {
+          const modal = this.view
+            .find(`div#${ID_MODAL}`);
+
+          modal.modal('hide');
+        }, 10);
+
+        return true;
       } catch (e) {
-        event.stopPropagation();
-        this.shake();
-        code.val('');
-        password.val('');
-        await this.showMessage('danger', Localization.Alerts.Oops, `${Localization.Alerts.SessionExpired}</br><span class="small">(error: ${encodeURIComponent(e.message).replace(/%20/g, ' ')})</span>`);
+        let message = e;
+
+        if (e instanceof Error) {
+          message = `<pre class="text-danger">(error: ${e.message})</pre>`;
+        }
+
+        inputResetPassword.val('');
+        inputConfirmationCode.val('');
+
+        await this.showMessage(
+          'danger',
+          OOPS,
+          message
+        );
+
         return false;
+      } finally {
+        this.loading(false);
       }
     });
-    return div.append(form);
+
+    return container;
   }
 
   createLogo() {
-    return $('<img/>').addClass('mb-4')
+    if (this.customLogo !== undefined) {
+      return this.customLogo;
+    }
+
+    return $('<img/>')
+      .addClass('mb-4')
       .attr('src', SOLUTION_ICON)
       .attr('alt', 'media2cloud logo')
       .attr('width', 240);
   }
 
-  createUserInput(id, title, username, sr = 'sr-only') {
-    return $('<div/>').addClass('text-left')
-      .append($('<label/>').addClass(sr)
-        .attr('for', id)
-        .html(title))
-      .append($('<input/>').addClass('form-control')
-        .attr('type', 'text')
-        .attr('id', id)
-        .attr('pattern', '[a-zA-Z0-9._%+-]+')
-        .attr('placeholder', title)
-        .attr('value', username)
-        .attr('required', 'required')
-        .attr('autofocus', 'autofocus'))
-      .append($('<div/>').addClass('invalid-feedback')
-        .html('Invalid username'));
+  createUserInput(
+    id,
+    title,
+    username = '',
+    sr = 'sr-only'
+  ) {
+    const container = $('<div/>')
+      .addClass('text-left');
+
+    const label = $('<label/>')
+      .addClass(sr)
+      .attr('for', id)
+      .html(title);
+    container.append(label);
+
+    const input = $('<input/>')
+      .addClass('form-control')
+      .attr('type', 'text')
+      .attr('id', id)
+      .attr('pattern', REGEX_USERNAME)
+      .attr('placeholder', title)
+      .attr('value', username)
+      .attr('autocomplete', 'username')
+      .attr('required', 'required')
+      .attr('autofocus', 'autofocus');
+    container.append(input);
+
+    const invalid = $('<div/>')
+      .addClass('invalid-feedback')
+      .html('Invalid username');
+    container.append(invalid);
+
+    return container;
   }
 
-  createPasswordInput(id = this.ids.normal.password, name = 'Password', sr = 'sr-only') {
-    return $('<div/>')
-      .addClass('text-left')
-      .append($('<label/>').addClass(sr)
-        .attr('for', id)
-        .html(name))
-      .append($('<input/>').addClass('form-control')
-        .attr('type', 'password')
-        .attr('id', id)
-        .attr('pattern', '(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z]).{8,}')
-        .attr('placeholder', 'Password')
-        .attr('required', 'required'))
-      .append($('<div/>').addClass('invalid-feedback')
-        .html('Invalid password'));
+  createPasswordInput(
+    id = `signin-password-${RANDOM_ID}`,
+    title = 'Password',
+    autocomplete = 'current-password',
+    sr = 'sr-only'
+  ) {
+    const container = $('<div/>')
+      .addClass('text-left');
+
+    const label = $('<label/>')
+      .addClass(sr)
+      .attr('for', id)
+      .html(title);
+    container.append(label);
+
+    const input = $('<input/>')
+      .addClass('form-control')
+      .attr('type', 'password')
+      .attr('id', id)
+      .attr('pattern', '(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z]).{8,}')
+      .attr('placeholder', 'Password')
+      .attr('autocomplete', autocomplete)
+      .attr('required', 'required');
+    container.append(input);
+
+    const invalid = $('<div/>')
+      .addClass('invalid-feedback')
+      .html('Invalid password');
+    container.append(invalid);
+
+    return container;
   }
 
-  createCodeInput(id, title = 'Verification Code', code = undefined, sr = '') {
-    return $('<div/>').addClass('text-left mb-2')
-      .append($('<label/>').addClass(sr)
-        .attr('for', id)
-        .html(title))
-      .append($('<input/>').addClass('form-control')
-        .attr('type', 'text')
-        .attr('id', id)
-        .attr('pattern', '[0-9]{6}')
-        .attr('placeholder', title)
-        .attr('value', code)
-        .attr('required', 'required')
-        .attr('autofocus', 'autofocus'))
-      .append($('<div/>').addClass('invalid-feedback')
-        .html('Invalid code'));
+  createCodeInput(
+    id,
+    title = 'Verification Code',
+    code = undefined,
+    sr = ''
+  ) {
+    const container = $('<div/>')
+      .addClass('text-left mb-2');
+
+    const label = $('<label/>')
+      .addClass(sr)
+      .attr('for', id)
+      .html(title);
+    container.append(label);
+
+    const input = $('<input/>').addClass('form-control')
+      .attr('type', 'text')
+      .attr('id', id)
+      .attr('pattern', '[0-9]{6}')
+      .attr('placeholder', title)
+      .attr('value', code)
+      .attr('autocomplete', 'one-time-code')
+      .attr('required', 'required')
+      .attr('autofocus', 'autofocus');
+    container.append(input);
+
+    const invalid = $('<div/>')
+      .addClass('invalid-feedback')
+      .html('Invalid code');
+    container.append(invalid);
+
+    return container;
   }
 
   createSubmitButton(text = 'Sign in') {
-    return $('<div/>').addClass('mt-4')
-      .append($('<button/>').addClass('btn btn-primary btn-block')
-        .attr('type', 'submit')
-        .html(text));
+    const container = $('<div/>')
+      .addClass('mt-4');
+
+    const button = $('<button/>')
+      .addClass('btn btn-primary btn-block')
+      .attr('type', 'submit')
+      .html(text);
+    container.append(button);
+
+    return container;
   }
 
   createResetLink() {
-    const button = $('<button/>').addClass('btn btn-sm btn-link mt-2')
+    const button = $('<button/>')
+      .addClass('btn btn-sm btn-link mt-2')
       .attr('type', 'button')
       .html('Forgot password?');
-    button.off('click').on('click', () =>
-      this.slideTo(this.ids.slides.resetSendCode));
+
     return button;
   }
 
   createCopyright() {
-    return $('<p/>').addClass('font-weight-light text-muted mb-0')
-      .html('copyright &copy; 2020');
+    const copyright = $('<p/>')
+      .addClass('font-weight-light text-muted mb-0')
+      .html(COPYRIGHT);
+
+    return copyright;
+  }
+
+  createSpinner() {
+    let spinner = this.view
+      .find(`#${ID_SPINNER}`);
+    if (spinner.length > 0) {
+      return undefined;
+    }
+
+    spinner = $('<div/>')
+      .attr('id', ID_SPINNER)
+      .addClass('collapse')
+      .addClass('spinner-grow text-secondary loading-4');
+
+    const text = $('<span/>')
+      .addClass('lead-sm sr-only')
+      .html('Loading...');
+    spinner.append(text);
+
+    return spinner;
+  }
+
+  loading(enabled = true) {
+    const spinner = this.view
+      .find(`#${ID_SPINNER}`);
+
+    if (enabled) {
+      return spinner.removeClass('collapse');
+    }
+
+    return spinner.addClass('collapse');
   }
 
   async showMessage(type, header, description, duration = 5 * 1000) {
-    return new Promise((resolve, notuse) => {
-      const message = $('<div/>').addClass(`alert alert-dismissible fade show alert-${type}`)
-        .attr('role', 'alert')
-        .append($('<h4/>').addClass('alert-heading')
-          .html(header))
-        .append($('<p/>')
-          .html(description))
-        .append($('<button/>').addClass('close')
-          .attr('type', 'button')
-          .attr('data-dismiss', 'alert')
-          .attr('aria-label', 'Close')
-          .append($('<span/>')
-            .attr('aria-hidden', true)
-            .html('&times;')));
+    return new Promise((resolve) => {
+      const color = `alert-${type}`;
+
+      const alertContainer = $('<div/>')
+        .addClass('alert alert-dismissible fade show')
+        .addClass(color)
+        .attr('role', 'alert');
+
+      const heading = $('<h4/>')
+        .addClass('alert-heading')
+        .html(header);
+      alertContainer.append(heading);
+
+      const desc = $('<p/>')
+        .html(description);
+      alertContainer.append(desc);
+
+      const closeBtn = $('<button/>').addClass('close')
+        .attr('type', 'button')
+        .attr('data-dismiss', 'alert')
+        .attr('aria-label', 'Close')
+        .append($('<span/>')
+          .attr('aria-hidden', true)
+          .html('&times;'));
+      alertContainer.append(closeBtn);
 
       let timer = setTimeout(() => {
-        message.alert('close');
+        alertContainer.alert('close');
         timer = undefined;
       }, duration);
 
-      message.on('close.bs.alert', () => {
+      alertContainer.on('close.bs.alert', () => {
         clearInterval(timer);
         timer = undefined;
       });
 
-      message.on('closed.bs.alert', () => {
-        message.alert('dispose');
-        message.remove();
+      alertContainer.on('closed.bs.alert', () => {
+        alertContainer.alert('dispose');
+        alertContainer.remove();
         resolve();
       });
-      this.dialog.append(message);
+
+      const modal = this.view
+        .find(`div#${ID_MODAL}`);
+
+      modal.append(alertContainer);
     });
   }
 
   shake(delay = 200) {
-    this.dialog.addClass('shake-sm')
-      .off('webkitAnimationEnd oanimationend msAnimationEnd animationend')
-      .on('webkitAnimationEnd oanimationend msAnimationEnd animationend', e =>
-        this.dialog.delay(delay).removeClass('shake-sm'));
+    const modal = this.view
+      .find(`div#${ID_MODAL}`);
+
+    modal.addClass('shake-sm')
+      .on('webkitAnimationEnd oanimationend msAnimationEnd animationend', (e) =>
+        modal.delay(delay)
+          .removeClass('shake-sm'));
   }
 
   slideTo(id) {
-    const carousel = this.dialog.find(`#${this.ids.carousel}`).first();
-    const idx = carousel.find(`#${id}`).index();
+    const carousel = this.view
+      .find(`div#${ID_CAROUSEL}`)
+      .first();
+
+    const idx = carousel
+      .find(`#${id}`)
+      .index();
+
     carousel.carousel(idx);
   }
 }
+
+export {
+  SignInFlow,
+  ON_SIGNIN_VIEW_HIDDEN,
+};

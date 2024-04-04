@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
-import S3Utils from '../s3utils.js';
+import {
+  GetS3Utils,
+} from '../s3utils.js';
 import AppUtils from '../appUtils.js';
 import ApiHelper from '../apiHelper.js';
 import mxReadable from '../../mixins/mxReadable.js';
-import ImageStore from '../localCache/imageStore.js';
-import DatasetStore from '../localCache/datasetStore.js';
+import {
+  GetImageStore,
+  GetDatasetStore,
+} from '../localCache/index.js';
 
 const DEFAULT_IMAGE = './images/image.png';
 
@@ -18,8 +22,8 @@ export default class BaseMedia extends mxReadable(class {}) {
       ...data,
     };
     this.$analysisResults = undefined;
-    this.$store = ImageStore.getSingleton();
-    this.$datasetStore = DatasetStore.getSingleton();
+    this.$store = GetImageStore();
+    this.$datasetStore = GetDatasetStore();
   }
 
   get data() {
@@ -114,12 +118,24 @@ export default class BaseMedia extends mxReadable(class {}) {
     return this.$data.mediainfo;
   }
 
+  set mediainfo(val) {
+    this.$data.mediainfo = val;
+  }
+
   get imageinfo() {
     return this.$data.imageinfo;
   }
 
+  set imageinfo(val) {
+    this.$data.imageinfo = val;
+  }
+
   get docinfo() {
     return this.$data.docinfo;
+  }
+
+  set docinfo(val) {
+    this.$data.docinfo = val;
   }
 
   get executionArn() {
@@ -176,31 +192,24 @@ export default class BaseMedia extends mxReadable(class {}) {
   }
 
   async refresh() {
-    const data = await ApiHelper.getRecord(this.uuid);
-    const bucket = data.destination.bucket;
-    /* reload mediainfo */
-    if (Array.isArray(data.mediainfo) && data.mediainfo.length > 0) {
-      const key = data.mediainfo.find(x => /\.json$/.test(x));
-      if (bucket && key) {
-        data.mediainfo = await S3Utils.getObject(bucket, key)
-          .then((res) =>
-            JSON.parse(res.Body.toString()).mediaInfo)
-          .catch((e) =>
-            console.error(`[ERR]: fail to get mediainfo. ${encodeURIComponent(e.message)}`));
-      }
-    } else if (data.imageinfo) {
-      /* reload imageinfo */
-      data.imageinfo = await S3Utils.getObject(bucket, data.imageinfo)
-        .then((res) =>
-          JSON.parse(res.Body.toString()))
-        .catch((e) =>
-          console.error(`[ERR]: fail to get imageinfo. ${encodeURIComponent(e.message)}`));
-    }
-    this.data = data;
+    /* remove local cache */
+    const promiseRemoveCache = this.datasetStore
+      .deleteItemsBy(this.uuid);
+
+    this.data = await ApiHelper.getRecord(this.uuid);
+
+    /* load technical metadata */
+    await Promise.all([
+      this.loadMediaInfo(),
+      this.loadImageInfo(),
+    ]);
+
     /* reload analysis results */
     if (this.status === SolutionManifest.Statuses.AnalysisCompleted) {
       await this.getAnalysisResults(true);
     }
+
+    await promiseRemoveCache;
     return this;
   }
 
@@ -219,13 +228,32 @@ export default class BaseMedia extends mxReadable(class {}) {
   }
 
   async getImageUrl(uuid, bucket, key) {
-    return this.store.getImageURL(uuid, bucket, key).catch(() => undefined)
-      || S3Utils.signUrl(bucket, key);
+    let url = await this.store.getImageURL(
+      uuid,
+      bucket,
+      key
+    ).catch(() =>
+      undefined);
+
+    if (!url) {
+      const s3utils = GetS3Utils();
+      url = await s3utils.signUrl(
+        bucket,
+        key
+      );
+    }
+
+    return url;
   }
 
   /* type other than image */
   async getUrl(bucket, key) {
-    return S3Utils.signUrl(bucket, key);
+    const s3utils = GetS3Utils();
+
+    return s3utils.signUrl(
+      bucket,
+      key
+    );
   }
 
   getMediainfo() {
@@ -244,18 +272,40 @@ export default class BaseMedia extends mxReadable(class {}) {
     return this.proxyBucket;
   }
 
+  getProxyPrefix() {
+    return this.proxyPrefix;
+  }
+
   async getProxyVideo() {
-    const proxy = this.proxies.find(x => x.type === 'video');
-    return (proxy)
-      ? S3Utils.signUrl(this.proxyBucket, proxy.key)
-      : undefined;
+    const proxy = this.proxies
+      .find((x) =>
+        x.type === 'video');
+
+    if (proxy !== undefined) {
+      const s3utils = GetS3Utils();
+      return s3utils.signUrl(
+        this.proxyBucket,
+        proxy.key
+      );
+    }
+
+    return undefined;
   }
 
   async getProxyAudio() {
-    const proxy = this.proxies.find(x => x.type === 'audio');
-    return (proxy)
-      ? S3Utils.signUrl(this.proxyBucket, proxy.key)
-      : undefined;
+    const proxy = this.proxies
+      .find((x) =>
+        x.type === 'audio');
+
+    if (proxy !== undefined) {
+      const s3utils = GetS3Utils();
+      return s3utils.signUrl(
+        this.proxyBucket,
+        proxy.key
+      );
+    }
+
+    return undefined;
   }
 
   getBasename(key) {
@@ -263,16 +313,41 @@ export default class BaseMedia extends mxReadable(class {}) {
   }
 
   async getProxyImage() {
-    const proxy = this.proxies.filter(x => x.type === 'image')
-      .sort((a, b) => b.fileSize - a.fileSize)[0];
-    return (proxy)
-      ? this.getImageUrl(`${this.uuid}-${this.getBasename(proxy.key)}`, this.proxyBucket, proxy.key)
-      : this.defaultImage;
+    const proxy = this.proxies
+      .filter((x) =>
+        x.type === 'image')
+      .sort((a, b) =>
+        b.fileSize - a.fileSize)[0];
+
+    if (proxy !== undefined) {
+      const imageId = [
+        this.uuid,
+        this.getBasename(proxy.key),
+      ].join('-');
+
+      return this.getImageUrl(
+        imageId,
+        this.proxyBucket,
+        proxy.key
+      );
+    }
+
+    return this.defaultImage;
   }
 
   async getNamedImageUrl(bucket, key) {
     const name = this.getBasename(key);
-    const url = await this.getImageUrl(`${this.uuid}-${name}`, bucket, key);
+    const imageId = [
+      this.uuid,
+      name,
+    ].join('-');
+
+    const url = await this.getImageUrl(
+      imageId,
+      bucket,
+      key
+    );
+
     return {
       name,
       url,
@@ -280,10 +355,21 @@ export default class BaseMedia extends mxReadable(class {}) {
   }
 
   async getProxyNamedImageAll() {
-    const proxy = this.proxies.filter(x => x.type === 'image');
-    return (proxy.length)
-      ? Promise.all(proxy.map(x => this.getNamedImageUrl(this.proxyBucket, x.key)))
-      : undefined;
+    const proxy = this.proxies
+      .filter((x) =>
+        x.type === 'image');
+
+    if (proxy && proxy.length > 0) {
+      return Promise.all(
+        proxy.map((image) =>
+          this.getNamedImageUrl(
+            this.proxyBucket,
+            image.key
+          ))
+      );
+    }
+
+    return undefined;
   }
 
   async getAnalysisResults(reload = false) {
@@ -325,5 +411,71 @@ export default class BaseMedia extends mxReadable(class {}) {
   /* BLIP model */
   getImageAutoCaptioning() {
     return ((this.analysisResults || [])[0] || {}).caption;
+  }
+
+  async loadMediaInfo() {
+    if (Array.isArray(this.mediainfo)
+    && this.mediainfo.length > 0) {
+      const bucket = this.proxyBucket;
+      const key = this.mediainfo
+        .find((x) =>
+          /\.json$/.test(x));
+      if (bucket && key) {
+        const s3utils = GetS3Utils();
+        let mediainfo = await s3utils.getObject(
+          bucket,
+          key
+        ).catch((e) => {
+          console.error(
+            'ERR:',
+            'fail to get mediainfo',
+            key,
+            e.message
+          );
+
+          return undefined;
+        });
+
+        if (mediainfo) {
+          mediainfo = await mediainfo.Body.transformToString()
+            .then((res) =>
+              JSON.parse(res)
+                .mediaInfo);
+          this.mediainfo = mediainfo;
+        }
+      }
+    }
+
+    return this.mediainfo;
+  }
+
+  async loadImageInfo() {
+    if (typeof this.imageinfo === 'string'
+    && this.proxyBucket) {
+      const s3utils = GetS3Utils();
+      let imageinfo = await s3utils.getObject(
+        this.proxyBucket,
+        this.imageinfo
+      ).catch((e) => {
+        console.error(
+          'ERR:',
+          'fail to get imageinfo',
+          this.imageinfo,
+          e.message
+        );
+
+        return undefined;
+      });
+
+      if (imageinfo) {
+        imageinfo = await imageinfo.Body.transformToString()
+          .then((res) =>
+            JSON.parse(res));
+
+        this.imageinfo = imageinfo;
+      }
+    }
+
+    return this.imageinfo;
   }
 }

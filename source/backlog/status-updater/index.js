@@ -3,6 +3,7 @@
 
 const {
   BacklogJob,
+  M2CException,
 } = require('service-backlog-lib');
 const CloudWatchStatus = require('./lib/cloudwatch');
 const SnsStatus = require('./lib/sns');
@@ -21,7 +22,7 @@ exports.handler = async (event, context) => {
       && (event.Records[0].Sns || {}).TopicArn === topic.SNSTopicArn) {
       instance = new SnsStatus(event, context);
     } else {
-      throw new Error('event not supported. exiting....');
+      throw new M2CException('event not supported. exiting....');
     }
     return instance.process();
   } catch (e) {

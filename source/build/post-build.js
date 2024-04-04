@@ -15,6 +15,11 @@ const COMMAND = {
   BUILDHTML: 'build-html',
 };
 
+const EXTERNAL_IMPORTS = [
+  '/solution-manifest.js',
+  '/third_party/dist/js/timecode.min.js',
+];
+
 function usage(message) {
   if (message) {
     console.error(`ERROR: ${message}`);
@@ -51,32 +56,27 @@ function parseCmdline() {
   while (args.length) {
     options[args.shift().slice(2)] = args.shift();
   }
-  switch (command) {
-    case COMMAND.ROLLUP:
-      if (!options.input) {
-        return usage('\'--input\' must be specified');
-      }
-      if (!options.output) {
-        return usage('\'--output\' must be specified');
-      }
-      break;
-    case COMMAND.BUILDHTML:
-      if (!options.html) {
-        return usage('\'--html\' must be specified');
-      }
-      break;
-    case COMMAND.MINIFY:
-      if (!options.dir) {
-        return usage('\'--dir\' must be specified');
-      }
-      break;
-    case COMMAND.INJECTSRI:
-      if (!options.html) {
-        return usage('\'--html\' must be specified');
-      }
-      break;
-    default:
-      return usage(`command '${command}' not supported`);
+  if (command === COMMAND.ROLLUP) {
+    if (!options.input) {
+      return usage('\'--input\' must be specified');
+    }
+    if (!options.output) {
+      return usage('\'--output\' must be specified');
+    }
+  } else if (command === COMMAND.BUILDHTML) {
+    if (!options.html) {
+      return usage('\'--html\' must be specified');
+    }
+  } else if (command === COMMAND.MINIFY) {
+    if (!options.dir) {
+      return usage('\'--dir\' must be specified');
+    }
+  } else if (command === COMMAND.INJECTSRI) {
+    if (!options.html) {
+      return usage('\'--html\' must be specified');
+    }
+  } else {
+    return usage(`command '${command}' not supported`);
   }
   options.command = command;
   return options;
@@ -114,9 +114,7 @@ async function rollupCommand(options) {
       output: {
         format: 'es',
       },
-      external: [
-        '/solution-manifest.js',
-      ],
+      external: EXTERNAL_IMPORTS,
     });
     let bundle = '';
 
@@ -127,14 +125,24 @@ async function rollupCommand(options) {
     stream.on('error', e =>
       reject(e));
   });
-  if (!output || output[0].indexOf('import SolutionManifest') !== 0) {
+
+  if (!output || output.findIndex((x) => x.indexOf('import SolutionManifest') >= 0) < 0) {
     throw new Error(`fail to rollup ${options.input}`);
   }
+
+  /* convert relative path to absolute path for the external libraries */
+  EXTERNAL_IMPORTS.forEach((external) => {
+    const idx = output
+      .findIndex((x) =>
+        x.indexOf(external) > 0);
+    if (idx >= 0) {
+      output[idx] = output[idx].replace(/(\.\.\/)+/g, '/');
+    }
+  });
   console.log(`>>> rollup ${options.input} END...`);
-  output[0] = 'import SolutionManifest from \'/solution-manifest.js\';';
 
   console.log('>>> terser.minify BEGIN...');
-  const minified = await Terser.minify(output.join('\n'), {
+  const minified = Terser.minify(output.join('\n'), {
     ecma: 6,
     // keep_classnames: true,
     // warnings: 'verbose',
@@ -147,15 +155,23 @@ async function rollupCommand(options) {
   return options.output;
 }
 
+// eslint-disable-next-line
+// nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
 async function minifyJSCommand(options) {
+  // eslint-disable-next-line
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   let parsed = PATH.parse(PATH.resolve(options.dir));
   if (parsed.ext.length > 0) {
     parsed = parsed.dir;
   } else {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     parsed = PATH.join(parsed.dir, parsed.base);
   }
 
   const files = await new Promise((resolve, reject) => {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     GLOB(PATH.join(parsed, '**/*.js'), (e, data) =>
       ((e)
         ? reject(e)
@@ -225,6 +241,8 @@ function insertSRI(line, rootDir, regex) {
     throw new Error(`failed to find '>' enclose tag: ${line}`);
   }
 
+  // eslint-disable-next-line
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   const path = PATH.resolve(PATH.join(rootDir, found[1]));
   const integrity = computeFileSHA384(path);
   return [
@@ -236,6 +254,7 @@ function insertSRI(line, rootDir, regex) {
 
 function createBackupCopy(path) {
   const buffer = FS.readFileSync(path);
+  // FS.writeFileSync(`${path}.bak`, buffer);
   return buffer;
 }
 

@@ -27,7 +27,7 @@ const event_StateRunMediaInfo = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-east-1-ingest",
       "key": "thenewshort/thenewshort.mp4",
       "uuid": "3168c4e2-be37-8395-ad0b-62e5636eeef8",
       "aiOptions": {
@@ -65,7 +65,7 @@ const event_StateRunMediaInfo = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-east-1-proxy",
         "prefix": "3168c4e2-be37-8395-ad0b-62e5636eeef8/thenewshort/"
       },
       "type": "video"
@@ -93,13 +93,13 @@ const event_StateRunMediaInfo = {
 
 const event_StateStartTranscode = {
     "uuid": "3168c4e2-be37-8395-ad0b-62e5636eeef8",
-    "stateMachine": "so0050-0a9ab6b1a00f-ingest-main",
+    "stateMachine": "so0050-111111111111-ingest-main",
     "operation": "run-mediainfo",
     "overallStatus": "PROCESSING",
     "status": "COMPLETED",
     "progress": 100,
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-east-1-ingest",
       "key": "thenewshort/thenewshort.mp4",
       "uuid": "3168c4e2-be37-8395-ad0b-62e5636eeef8",
       "aiOptions": {
@@ -137,7 +137,7 @@ const event_StateStartTranscode = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-east-1-proxy",
         "prefix": "3168c4e2-be37-8395-ad0b-62e5636eeef8/thenewshort/"
       },
       "type": "video",

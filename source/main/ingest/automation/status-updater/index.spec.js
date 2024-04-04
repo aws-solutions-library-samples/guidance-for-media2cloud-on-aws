@@ -24,7 +24,7 @@ const { JobCompleted } = require('core-lib/lib/states');
 const event_CloudWatchStatus = {
     "operation": "create-record",
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-account-number-us-east-1-ingest",
+      "bucket": "so0050-111111111111-account-number-us-east-1-ingest",
       "key": "speech/speech.mp3",
       "uuid": "60aa12c0-b046-1db7-b9e2-3a3aac69b500",
       "aiOptions": {
@@ -62,11 +62,11 @@ const event_CloudWatchStatus = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-account-number-us-east-1-proxy",
+        "bucket": "so0050-111111111111-account-number-us-east-1-proxy",
         "prefix": "60aa12c0-b046-1db7-b9e2-3a3aac69b500/speech/"
       }
     },
-    "executionArn": "arn:aws:states:us-east-1:account-number:execution:so0050-0a9ab6b1a00f-ingest-main:b13ecca9-ad1e-440a-9773-1e1bc6095a0f"
+    "executionArn": "arn:aws:states:us-east-1:account-number:execution:so0050-111111111111-ingest-main:b13ecca9-ad1e-440a-9773-1e1bc6095a0f"
   }
 
 

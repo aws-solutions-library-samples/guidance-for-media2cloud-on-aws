@@ -1,14 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
+let https = require('node:https');
+const {
+  M2CException,
+} = require('core-lib');
 
-const HTTPS = (() => {
+if (process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined) {
   try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureHTTPs(require('https'));
+    const {
+      captureHTTPs,
+    } = require('aws-xray-sdk-core');
+    https = captureHTTPs(require('node:https'));
   } catch (e) {
-    return require('https');
+    console.log('aws-xray-sdk-core not loaded');
   }
-})();
+}
 
 const SUCCESS = 'SUCCESS';
 const FAILED = 'FAILED';
@@ -37,14 +43,14 @@ class CloudFormationResponse {
       'LogicalResourceId',
     ].filter(x => this.$event[x] === undefined);
     if (missing.length) {
-      throw new Error(`event missing ${missing.join(', ')}`);
+      throw new M2CException(`event missing ${missing.join(', ')}`);
     }
 
     missing = [
       'logStreamName',
     ].filter(x => this.$context[x] === undefined);
     if (missing.length) {
-      throw new Error(`context missing ${missing.join(', ')}`);
+      throw new M2CException(`context missing ${missing.join(', ')}`);
     }
   }
 
@@ -124,7 +130,7 @@ class CloudFormationResponse {
     return new Promise((resolve, reject) => {
       let result = '';
 
-      const request = HTTPS.request(params, (response) => {
+      const request = https.request(params, (response) => {
         response.setEncoding('utf8');
 
         response.on('data', (chunk) => {
@@ -133,7 +139,7 @@ class CloudFormationResponse {
 
         response.on('end', () => {
           if (response.statusCode >= 400) {
-            const e = new Error(`${params.method} ${params.path} ${response.statusCode}`);
+            const e = new M2CException(`${params.method} ${params.path} ${response.statusCode}`);
             e.statusCode = response.statusCode;
             reject(e);
           } else {

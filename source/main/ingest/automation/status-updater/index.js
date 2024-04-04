@@ -3,6 +3,7 @@
 
 const {
   SNS,
+  M2CException,
 } = require('core-lib');
 const CloudWatchStatus = require('./lib/cloudwatch');
 const DDBStreamEvent = require('./lib/ddbstream');
@@ -11,7 +12,7 @@ const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_INGEST_BUCKET',
@@ -31,7 +32,7 @@ exports.handler = async (event, context) => {
     const missing = REQUIRED_ENVS.filter(x =>
       process.env[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing env, ${missing.join(', ')}`);
+      throw new M2CException(`missing env, ${missing.join(', ')}`);
     }
     let instance;
     if (event.source) {
@@ -39,7 +40,7 @@ exports.handler = async (event, context) => {
     } else if (event.Records && event.Records[0].eventSource === DDB_STREAM_SOURCE) {
       instance = new DDBStreamEvent(event, context);
     } else {
-      throw new Error('event not supported. exiting....');
+      throw new M2CException('event not supported. exiting....');
     }
     return instance.process();
   } catch (e) {

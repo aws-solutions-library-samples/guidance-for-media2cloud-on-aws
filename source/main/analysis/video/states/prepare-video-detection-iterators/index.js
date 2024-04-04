@@ -3,18 +3,28 @@
 
 const {
   StateData,
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Person,
+      Segment,
+      Text,
+    },
+  },
   AnalysisError,
+  FrameCaptureMode,
 } = require('core-lib');
 
-const SUBCATEGORY_CELEB = AnalysisTypes.Rekognition.Celeb;
-const SUBCATEGORY_FACE = AnalysisTypes.Rekognition.Face;
-const SUBCATEGORY_FACEMATCH = AnalysisTypes.Rekognition.FaceMatch;
-const SUBCATEGORY_LABEL = AnalysisTypes.Rekognition.Label;
-const SUBCATEGORY_MODERATION = AnalysisTypes.Rekognition.Moderation;
-const SUBCATEGORY_PERSON = AnalysisTypes.Rekognition.Person;
-const SUBCATEGORY_SEGMENT = AnalysisTypes.Rekognition.Segment;
-const SUBCATEGORY_TEXT = AnalysisTypes.Rekognition.Text;
+const {
+  Statuses: {
+    NotStarted,
+  },
+} = StateData;
+
 const ITERATORS = 'iterators';
 const OPT_FRAMEBASED = 'framebased';
 
@@ -35,28 +45,45 @@ class StatePrepareVideoDetectionIterators {
   }
 
   async process() {
-    const input = this.stateData.input;
-    const bucket = input.destination.bucket;
-    const prefix = input.destination.prefix;
-    const key = input.video.key;
-    const aiOptions = input.aiOptions;
+    const {
+      input: {
+        uuid,
+        duration,
+        framerate,
+        aiOptions,
+        destination: {
+          bucket,
+          prefix,
+        },
+        video: {
+          key,
+        },
+        request: {
+          timestamp,
+        },
+      },
+    } = this.stateData;
+
     const stateData = {
-      uuid: input.uuid,
-      status: StateData.Statuses.NotStarted,
+      uuid,
+      status: NotStarted,
       progress: 0,
     };
+
     const iteratorData = {
       bucket,
       prefix,
       key,
-      duration: input.duration,
-      framerate: input.framerate,
-      requestTime: input.request.timestamp,
+      duration,
+      framerate,
+      requestTime: timestamp,
       minConfidence: aiOptions.minConfidence,
       cursor: 0,
       numOutputs: 0,
     };
+
     const iterators = [];
+
     if (!aiOptions[OPT_FRAMEBASED]) {
       iterators.splice(iterators.length, 0, ...[
         this.makeCelebParams(aiOptions, stateData, iteratorData),
@@ -80,55 +107,70 @@ class StatePrepareVideoDetectionIterators {
   }
 
   makeCelebParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_CELEB, aiOptions, stateData, iteratorData);
+    return this.makeParams(Celeb, aiOptions, stateData, iteratorData);
   }
 
   makeFaceParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_FACE, aiOptions, stateData, iteratorData);
+    return this.makeParams(Face, aiOptions, stateData, iteratorData);
   }
 
   makeFaceMatchParams(aiOptions, stateData, iteratorData) {
-    const params = this.makeParams(SUBCATEGORY_FACEMATCH, aiOptions, stateData, iteratorData);
+    const params = this.makeParams(FaceMatch, aiOptions, stateData, iteratorData);
     if (params) {
-      params.data[SUBCATEGORY_FACEMATCH].faceCollectionId = aiOptions.faceCollectionId;
+      params.data[FaceMatch].faceCollectionId = aiOptions.faceCollectionId;
     }
     return params;
   }
 
   makeLabelParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_LABEL, aiOptions, stateData, iteratorData);
+    return this.makeParams(Label, aiOptions, stateData, iteratorData);
   }
 
   makeModerationParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_MODERATION, aiOptions, stateData, iteratorData);
+    return this.makeParams(Moderation, aiOptions, stateData, iteratorData);
   }
 
   makePersonParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_PERSON, aiOptions, stateData, iteratorData);
+    return this.makeParams(Person, aiOptions, stateData, iteratorData);
   }
 
   makeSegmentParams(aiOptions, stateData, iteratorData) {
-    return this.makeParams(SUBCATEGORY_SEGMENT, aiOptions, stateData, iteratorData);
+    // if frame based analysis with dynamic frame mode is enabled,
+    // let the dynamic-frame-segmentation state machine to run segment detection
+    if (aiOptions[OPT_FRAMEBASED]
+    && aiOptions.frameCaptureMode === FrameCaptureMode.MODE_DYNAMIC_FPS) {
+      return undefined;
+    }
+    return this.makeParams(Segment, aiOptions, stateData, iteratorData);
   }
 
   makeTextParams(aiOptions, stateData, iteratorData) {
-    const params = this.makeParams(SUBCATEGORY_TEXT, aiOptions, stateData, iteratorData);
+    const params = this.makeParams(Text, aiOptions, stateData, iteratorData);
     if (params) {
-      params.data[SUBCATEGORY_TEXT].textROI = aiOptions.textROI;
+      params.data[Text].textROI = aiOptions.textROI;
     }
     return params;
   }
 
   makeParams(subcategory, aiOptions, stateData, iteratorData) {
-    return aiOptions[subcategory]
-      && {
-        ...stateData,
-        data: {
-          [subcategory]: {
-            ...iteratorData,
-          },
+    if (!aiOptions[subcategory]) {
+      return undefined;
+    }
+
+    let filterSettings;
+    if ((aiOptions.filters || {})[subcategory]) {
+      filterSettings = aiOptions.filters[subcategory];
+    }
+
+    return {
+      ...stateData,
+      data: {
+        [subcategory]: {
+          ...iteratorData,
+          filterSettings,
         },
-      };
+      },
+    };
   }
 }
 

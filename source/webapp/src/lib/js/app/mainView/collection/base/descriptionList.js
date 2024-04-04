@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../shared/localization.js';
-import S3Utils from '../../../shared/s3utils.js';
+import {
+  GetS3Utils,
+} from '../../../shared/s3utils.js';
 import mxReadable from '../../../mixins/mxReadable.js';
 import {
   AWSConsoleS3,
   AWSConsoleStepFunctions,
 } from '../../../shared/awsConsole.js';
 
+const MSG_VIEW_ON_CONSOLE = Localization.Tooltips.ViewOnAWSConsole;
+const MSG_DOWNLOAD_FILE = Localization.Tooltips.DownloadFile;
 const CSS_DL = 'row text-left lead-xs ml-2 mb-2';
 const CSS_DT = 'col-sm-2';
 const CSS_DD = 'col-sm-10';
@@ -56,25 +60,20 @@ export default class DescriptionList extends mxReadable(class {}) {
   }
 
   createDetailGroup(name, indent = 0) {
-    let css;
-    if (!indent) {
-      css = {
+    const css = (!indent)
+      ? {
         margin: '',
         lead: 'lead-s',
-      };
-    }
-    else if (indent === 1) {
-      css = {
-        margin: 'ml-2',
-        lead: 'lead-s',
-      };
-    }
-    else {
-      css = {
-        margin: 'ml-4',
-        lead: 'lead-s',
-      };
-    }
+      }
+      : (indent === 1)
+        ? {
+          margin: 'ml-2',
+          lead: 'lead-s',
+        }
+        : {
+          margin: 'ml-4',
+          lead: 'lead-s',
+        };
     const details = $('<details/>').addClass(css.margin)
       .append($('<summary/>').addClass('my-2')
         .append($('<span/>').addClass(`${css.lead} text-capitalize`)
@@ -84,27 +83,43 @@ export default class DescriptionList extends mxReadable(class {}) {
 
   readableValue(data, name) {
     if (name === 'key' && data.bucket) {
-      const console = $('<a/>').addClass('mr-1')
+      const container = $('<div/>');
+      const consoleLink = $('<a/>')
+        .addClass('mr-1')
         .addClass('badge badge-pill badge-primary mr-1 mb-1 lead-xs')
         .attr('href', AWSConsoleS3.getLink(data.bucket, data.key))
         .attr('target', '_blank')
-        .html(Localization.Tooltips.ViewOnAWSConsole);
-      const download = $('<a/>').addClass('mr-1')
-        .attr('href', S3Utils.signUrl(data.bucket, data.key))
+        .html(MSG_VIEW_ON_CONSOLE);
+      container.append(consoleLink);
+
+      const downloadLink = $('<a/>')
+        .addClass('mr-1')
         .attr('download', '')
         .attr('target', '_blank')
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
-        .attr('title', Localization.Tooltips.DownloadFile)
+        .attr('title', MSG_DOWNLOAD_FILE)
         .append(data.key)
         .tooltip({
           trigger: 'hover',
         });
+      container.append(downloadLink);
 
-      return $('<div/>')
-        .append(download)
-        .append(console);
+      container.ready(async () => {
+        const s3utils = GetS3Utils();
+        const signed = await s3utils.signUrl(
+          data.bucket,
+          data.key
+        );
+        downloadLink.attr(
+          'href',
+          signed
+        );
+      });
+
+      return container;
     }
+
     if (name === 'fileSize') {
       return DescriptionList.readableFileSize(data.fileSize);
     }
@@ -120,7 +135,7 @@ export default class DescriptionList extends mxReadable(class {}) {
         .attr('target', '_blank')
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
-        .attr('title', Localization.Tooltips.ViewOnAWSConsole)
+        .attr('title', MSG_VIEW_ON_CONSOLE)
         .html(data[name].split(':').pop())
         .tooltip({
           trigger: 'hover',

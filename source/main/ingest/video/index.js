@@ -8,12 +8,13 @@ const {
 } = require('core-lib');
 const StateRunMediaInfo = require('./states/run-mediainfo');
 const StateStartTranscode = require('./states/start-transcode');
+const StateComputePerceptualHash = require('./states/compute-perceptual-hash');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_MEDIACONVERT_HOST',
@@ -38,6 +39,9 @@ exports.handler = async (event, context) => {
         break;
       case StateData.States.StartTranscode:
         instance = new StateStartTranscode(stateData);
+        break;
+      case StateData.States.ComputePerceptualHash:
+        instance = new StateComputePerceptualHash(stateData);
         break;
       default:
         break;

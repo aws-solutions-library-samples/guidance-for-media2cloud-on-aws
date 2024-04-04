@@ -4,7 +4,7 @@
     "States": {
         "Run PDFInfo and extract pages": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestDocumentLambda.Arn}",
             "Parameters": {
                 "operation": "run-docinfo",
                 "uuid.$": "$.uuid",

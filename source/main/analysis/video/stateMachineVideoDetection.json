@@ -1,0 +1,111 @@
+{
+    "Comment": "video based detection state machine, substate of analysis video workflow. Uses Amazon Rekognition Video APIs",
+    "StartAt": "Start video detection and wait",
+    "States": {
+        "Start video detection and wait": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${AnalysisVideoLambda}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "operation": "start-detection-iterator",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "data.$": "$.data"
+                }
+            },
+            "TimeoutSeconds": 86400,
+            "Next": "Collect video detection results"
+        },
+        "Collect video detection results": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "operation": "collect-results-iterator",
+                "data.$": "$.data"
+            },
+            "Next": "More detection results?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More detection results?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Create video detection tracks"
+                }
+            ],
+            "Default": "Collect video detection results"
+        },
+        "Create video detection tracks": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "create-track-iterator",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "Next": "More tracks?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More tracks?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Index video detection results"
+                }
+            ],
+            "Default": "Create video detection tracks"
+        },
+        "Index video detection results": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "index-analysis-results",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        }
+    }
+}

@@ -1,27 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../../../../shared/localization.js';
 import KnowledgeGraph from '../base/knowledgeGraph.js';
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
 
-const TITLE = 'Knowledge Graph';
-const DESC = 'Demonstrates a graph representation of the content and how it is related to other contents in your archive library';
-const NO_DATA = Localization.Messages.NoData;
+const {
+  Messages: {
+    KnowledgeGraphTab: TITLE,
+    KnowledgeGraphTabDesc: DESC,
+    NoData: NO_DATA,
+  },
+} = Localization;
 const COL_TAB = 'col-11';
 
 export default class KnowledgeGraphTab extends BaseAnalysisTab {
-  constructor(previewComponent, defaultTab = false) {
-    super(TITLE, previewComponent, defaultTab);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
   }
 
   static canSupport() {
-    return (
-      SolutionManifest.KnowledgeGraph &&
-      SolutionManifest.KnowledgeGraph.Endpoint &&
-      SolutionManifest.KnowledgeGraph.ApiKey
-    );
+    return KnowledgeGraph.canSupport();
   }
 
   async createContent() {
@@ -66,31 +65,6 @@ export default class KnowledgeGraphTab extends BaseAnalysisTab {
   }
 
   async createKnowledgeGraph(container) {
-    return new KnowledgeGraph(container, this.media, this);
-  }
-
-  async graphApi(query) {
-    const url = new URL(SolutionManifest.KnowledgeGraph.Endpoint);
-    Object.keys(query)
-      .forEach((x) => {
-        if (query[x] !== undefined) {
-          url.searchParams.append(x, query[x]);
-        }
-      });
-
-    return fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-cache',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': SolutionManifest.KnowledgeGraph.ApiKey,
-      },
-    }).then((res) => {
-      if (!res.ok) {
-        return undefined;
-      }
-      return res.json();
-    });
+    return new KnowledgeGraph(container, this.media);
   }
 }

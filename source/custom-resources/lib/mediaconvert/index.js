@@ -1,15 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  MediaConvertClient,
+  DescribeEndpointsCommand,
+  ResourceNotFoundException,
+} = require('@aws-sdk/client-mediaconvert');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 /**
  * @function MediaConvertEndpoint
@@ -27,28 +30,34 @@ exports.MediaConvertEndpoint = async (event, context) => {
       return x0.responseData;
     }
 
-    const instance = new AWS.MediaConvert({
-      apiVersion: '2017-08-29',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
+    const mediaconvertClient = xraysdkHelper(new MediaConvertClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeEndpointsCommand({
+      MaxResults: 1,
     });
 
-    const {
-      Endpoints = [],
-    } = await instance.describeEndpoints({
-      MaxResults: 1,
-    }).promise();
-
-    /* sanity check the response */
-    if (Endpoints.length === 0 || !Endpoints[0].Url) {
-      throw new Error('failed to get endpoint');
-    }
-
-    x0.storeResponseData('Endpoint', Endpoints[0].Url);
-    x0.storeResponseData('Status', 'SUCCESS');
-
-    return x0.responseData;
+    return mediaconvertClient.send(command)
+      .then((res) => {
+        const url = ((res.Endpoints || [])[0] || {}).Url;
+        if (!url) {
+          throw new ResourceNotFoundException('fail to get endpoint');
+        }
+        x0.storeResponseData('Endpoint', url);
+        x0.storeResponseData('Status', 'SUCCESS');
+        return x0.responseData;
+      });
   } catch (e) {
-    e.message = `MediaConvertEndpoint: ${e.message}`;
+    console.error(
+      'ERR:',
+      'MediaConvertEndpoint:',
+      'DescribeEndpointsCommand:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
     throw e;
   }
 };

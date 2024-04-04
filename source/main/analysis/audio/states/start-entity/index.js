@@ -1,35 +1,27 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const {
-  Environment,
-} = require('core-lib');
+  BatchDetectEntitiesCommand,
+} = require('@aws-sdk/client-comprehend');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const SUB_CATEGORY = 'entity';
 
 class StateStartEntity extends BaseStateStartComprehend {
   constructor(stateData) {
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
     super(stateData, {
       subCategory: SUB_CATEGORY,
-      func: comprehend.batchDetectEntities.bind(comprehend),
     });
   }
 
   get [Symbol.toStringTag]() {
     return 'StateStartEntity';
+  }
+
+  async startDetection(params) {
+    const command = new BatchDetectEntitiesCommand(params);
+    return BaseStateStartComprehend.RunCommand(command);
   }
 
   parseJobResults(results, reference) {

@@ -1,27 +1,26 @@
 {
   "name": "mediainfo",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Amazon Lambda Layer of Mediainfo (NodeJS) on Amazon Linux 2",
   "main": "index.js",
   "private": true,
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
+  "author": "aws-mediaent-solutions",
+  "license": "ISC",
+  "dependencies": {
+    "xml2js": "^0.5.0"
   },
-  "license": "Apache-2.0",
-  "dependencies": {},
   "scripts": {
     "pretest": "npm install",
     "test": "jest --coverage --coverageDirectory=../../test/coverage-reports/jest/layers/mediainfo/",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/mediainfo",
     "build:copy": "cp -rv package.json index.js build-mediainfo.sh amazon dist/nodejs/node_modules/mediainfo",
-    "build:install": "cd dist/nodejs/node_modules/mediainfo && npm install --omit=dev --omit=optional",
+    "build:install": "cd dist/nodejs/node_modules/mediainfo && npm install --omit=dev",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
   "devDependencies": {
-    "jest": "^29.3.1",
-    "aws-sdk": "2.831.0",
-    "aws-sdk-mock": "5.8.0"
+    "@aws-sdk/client-s3": "^3.468.0",
+    "@aws-sdk/s3-request-presigner": "^3.468.0",
+    "aws-sdk-client-mock": "^2.2.0"
   }
 }

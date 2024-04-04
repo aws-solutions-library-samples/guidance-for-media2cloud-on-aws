@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
-Description: (%%SOLUTION_ID%%) Media2Cloud - the solution is designed to demonstrate a serverless ingest and analysis framework that can quickly setup a baseline ingest workflow for placing video assets and associated metadata under management control of an AWS customer. Version %%VERSION%%
+Description: (%%SOLUTION_ID%%) Guidance for Media2Cloud on AWS - this guidance is designed to demonstrate a serverless ingest and analysis framework that can quickly setup a baseline ingest workflow for placing video assets and associated metadata under management control of an AWS customer. Version %%VERSION%%
 
 Mappings:
     Solution:
@@ -9,9 +9,9 @@ Mappings:
             LowerCaseId: "%%SOLUTION_ID_LOWERCASE%%"
             Version: "%%VERSION%%"
             CustomUserAgent: AWSSOLUTION/%%SOLUTION_ID%%/%%VERSION%%
-            SolutionName: "Media2Cloud on AWS"
-            AppRegistryApplicationName: "Media2CloudOnAws"
-            ApplicationType: "AWS-Solutions"
+            SolutionName: Media2Cloud on AWS
+            AppRegistryApplicationName: Media2CloudOnAws
+            ApplicationType: AWS-Solutions
         Template:
             S3Bucket: "%%BUCKET_NAME%%"
             KeyPrefix: "%%KEYPREFIX%%"
@@ -20,10 +20,15 @@ Mappings:
             Core: media2cloud-core-stack.template
             Backend: media2cloud-backend-stack.template
             WebApp: media2cloud-webapp-stack.template
+            Graph: media2cloud-graph-stack.template
+            Shoppable: media2cloud-shoppable-stack.template
+            CodeBuild: media2cloud-codebuild-stack.template
     Workflow:
         CustomResources:
             Package: "%%PKG_CUSTOM_RESOURCES%%"
             Name: custom-resources
+        ShoppableStack:
+            Enable: "%%ENABLE_SHOPPABLE%%"
     AIML:
         Options:
             DefaultMinConfidence: 80
@@ -31,15 +36,37 @@ Mappings:
             S3Key: _settings/aioptions.json
     Node:
         Runtime:
-            Version: nodejs16.x
+            Version: nodejs20.x
     Send:
-        AnonymizedUsage:
+        AnonymousUsage:
             Data: "Yes"
     Cognito:
         Group:
             Viewer: viewer
             Creator: creator
             Admin: admin
+    DockerImage:
+        Faiss:
+            Repo: "%%FAISS_REPO%%"
+            Version: "%%FAISS_VER%%"
+        Shoppable:
+            Repo: "%%SHOPPABLE_REPO%%"
+            Version: "%%SHOPPABLE_VER%%"
+        ZeroshotClassifier:
+            Repo: "%%ZEROSHOT_CLASSIFIER_REPO%%"
+            Version: "%%ZEROSHOT_CLASSIFIER_VER%%"
+        ZeroshotObject:
+            Repo: "%%ZEROSHOT_OBJECT_REPO%%"
+            Version: "%%ZEROSHOT_OBJECT_VER%%"
+    AnthropicClaude:
+        Sonnet:
+            Name: Anthropic Claude 3 Sonnet
+            ModelId: anthropic.claude-3-sonnet-20240229-v1:0
+            ModelVersion: bedrock-2023-05-31
+        Haiku:
+            Name: Anthropic Claude 3 Haiku
+            ModelId: anthropic.claude-3-haiku-20240307-v1:0
+            ModelVersion: bedrock-2023-05-31
 
 Parameters:
     # User defined Ingest Bucket
@@ -53,6 +80,7 @@ Parameters:
         Description: Configure Amazon OpenSearch cluster size
         Default: Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)
         AllowedValues:
+            - Use Amazon OpenSearch Serverless
             - Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)
             - Suitable for Production Workload (t3.medium=3,m5.large=2,gp2=20,az=2)
             - Recommended for Production Workload (t3.medium=3,m5.large=4,gp2=20,az=2)
@@ -61,11 +89,12 @@ Parameters:
     DefaultAIOptions:
         Type: String
         Description: Configure AI/ML settings
-        Default: Default (celeb,label,segment,transcribe,keyphrase,entity,textract)
+        Default: Recommended V4 features (v4.default)
         AllowedValues:
+            - Recommended V4 features (v4.default)
             - Default (celeb,label,segment,transcribe,keyphrase,entity,textract)
-            - All (celeb,face,facematch,label,moderation,person,text,segment,transcribe,keyphrase,entity,sentiment,textract)
-            - Video analysis (celeb,face,facematch,label,moderation,person,text,segment)
+            - All (celeb,face,facematch,label,moderation,text,segment,transcribe,keyphrase,entity,sentiment,textract)
+            - Video analysis (celeb,face,facematch,label,moderation,text,segment)
             - Audio analysis (transcribe,keyphrase,entity)
             - Image analysis (celeb,face,facematch,label,moderation,text)
             - Document analysis (textract)
@@ -96,24 +125,55 @@ Parameters:
         AllowedValues:
             - "NO"
             - "YES"
-    # Neptune Knowledge Graph endpoint
-    KnowledgeGraphEndpoint:
+    # Amazon Neptune Knowledge Graph (Optional)
+    EnableKnowledgeGraph:
         Type: String
-        Description: specify the API endpoint of the Knowledge Graph database. Leave it blank to disable the feature.
-        Default: ""
-    KnowledgeGraphApiKey:
+        Description: Enable knowledge graph to visualize how the relationships of your assets in your library. The knowledge graph feature create additional resources such as Amazon Neptune Serverless, Amazon VPC, AWS PrivateLink, additional AWS API Gateway endpoint and AWS Step Functions and will incur additional cost to the workflow.
+        Default: "NO"
+        AllowedValues:
+            - "NO"
+            - "YES"
+    CidrBlock:
         Type: String
-        Description: specify the API Key of the Knowledge Graph API endpoint. Leave it blank to disable the feature.
-        Default: ""
-    # BLIP model (auto caption for image)
-    BlipImageArn:
+        Description: Specify CIDR block of an Amazon VPC where the Amazon Neptune Serverless db cluster of the knowledge graph will run on.
+        Default: 172.31.0.0/16
+    # Amazon Bedrock secondary region access
+    BedrockSecondaryRegionAccess:
         Type: String
-        Description: specify the ECR image Arn of the Auto Captioning feature (BLIP model), ie., {{account}}.dkr.ecr.{{region}}.amazonaws.com/{{repo}}:{{tag}}. Leave it blank to disable the feature.
-        Default: ""
+        Description: If Amazon Bedrock service is not available in your current AWS region, you can select a nearby region to try out the Generative AI feature. You would also need to grant model access for Anthropic Claude 3 models through Amazon Bedrock console, Model access page.
+        Default: North Virginia [US East] (us-east-1)
+        AllowedValues:
+            - North Virginia [US East] (us-east-1)
+            - Oregon [US West] (us-west-2)
+            - No, do not enable Amazon Bedrock
+            # - Frankfurt [Europe] (eu-central-1)
+            # - Tokyo [Asia Pacific] (ap-northeast-1)
+            # - Singapore [Asia Pacific] (ap-southeast-1)
+    # Bedrock models
+    BedrockModel:
+        Type: String
+        Description: Select a foundation model of Amazon Bedrock to use. Make sure you have granted model access to use these models through Amazon Bedrock console, Model access page.
+        Default: Anthropic Claude 3 Haiku
+        AllowedValues:
+            - Anthropic Claude 3 Haiku
+            - Anthropic Claude 3 Sonnet
+    # Version compatibility statement
+    VersionCompatibilityStatement:
+        Type: String
+        Description: The new Version 4 of Media2Cloud is not compatible with previous versions due to several optimization changes. These changes include the Amazon OpenSearch cluster indexes and consolidation of the generated metadata. While a migration tool is being developed to help customers migrate from previous versions to Version 4, this CloudFormation template SHOULD NOT be used to update your existing Media2Cloud V3 deployment to the latest version. Confirm that you have read and understand the version compatibility statement. If you are creating a new stack, select "Yes, I understand and proceed".
+        Default: No, do not proceed
+        AllowedValues:
+            - Yes, I understand and proceed
+            - No, do not proceed
 
 Metadata:
     AWS::CloudFormation::Interface:
         ParameterGroups:
+            -
+                Label:
+                    default: Version Compatibility
+                Parameters:
+                    - VersionCompatibilityStatement
             -
                 Label:
                     default: Amazon Cognito / Amazon Simple Notification Service
@@ -142,16 +202,19 @@ Metadata:
                     - StartOnObjectCreation
             -
                 Label:
-                    default: (EXPERIMENTAL FEATURE) Knowledge Graph
+                    default: (EXPERIMENTAL FEATURE) Knowledge Graph with Amazon Neptune Serverless
                 Parameters:
-                    - KnowledgeGraphEndpoint
-                    - KnowledgeGraphApiKey
+                    - EnableKnowledgeGraph
+                    - CidrBlock
             -
                 Label:
-                    default: (EXPERIMENTAL FEATURE) Auto-Captioning for Images
+                    default: (EXPERIMENTAL FEATURE) Generative AI with Amazon Bedrock service
                 Parameters:
-                    - BlipImageArn
+                    - BedrockSecondaryRegionAccess
+                    - BedrockModel
         ParameterLabels:
+            VersionCompatibilityStatement:
+                default: Please read the following statement
             Email:
                 default: Email
             PriceClass:
@@ -164,12 +227,14 @@ Metadata:
                 default: User defined Amazon S3 Bucket for ingest
             StartOnObjectCreation:
                 default: Allow autostart on ingest S3 bucket
-            KnowledgeGraphEndpoint:
-                default: Knowledge Graph API Endpoint
-            KnowledgeGraphApiKey:
-                default: Knowledge Graph API Endpoint API Key
-            BlipImageArn:
-                default: ECR Image ARN of the BLIP model
+            EnableKnowledgeGraph:
+                default: Enable Knowledge Graph
+            CidrBlock:
+                default: VPC CIDR Settings
+            BedrockSecondaryRegionAccess:
+                default: Allow access to Amazon Bedrock service in a different region.
+            BedrockModel:
+                default: Foundation Model (Text & Vision)
 
 Conditions:
     # Using email address for Cognito User Pool
@@ -196,6 +261,25 @@ Conditions:
             - Template
             - SingleRegion
         - "true"
+    bOpenSearchServerless: !Equals
+        - !Ref OpenSearchCluster
+        - Use Amazon OpenSearch Serverless
+    bEnableKnowledgeGraph: !Equals
+        - !Ref EnableKnowledgeGraph
+        - "YES"
+    bBedrockSecondaryRegionAccess: !Not
+        - !Equals
+            - !Ref BedrockSecondaryRegionAccess
+            - "No, do not enable Amazon Bedrock"
+    bAnthropicClaude3Sonnet: !Equals
+        - !Ref BedrockModel
+        - Anthropic Claude 3 Sonnet
+    bEnableShoppable: !Equals
+        - !FindInMap
+            - Workflow
+            - ShoppableStack
+            - Enable
+        - "YES"
 
 Resources:
     ################################################################################
@@ -325,7 +409,7 @@ Resources:
                 - Node
                 - Runtime
                 - Version
-            MemorySize: 128
+            MemorySize: 256
             Timeout: 900
             Handler: index.handler
             Role: !GetAtt CustomResourcesRole.Arn
@@ -342,7 +426,7 @@ Resources:
                             - ""
                             - !Sub "-${AWS::Region}"
                 S3Key: !Sub
-                    - "${keyprefix}/${package}"
+                    - ${keyprefix}/${package}
                     -
                         keyprefix: !FindInMap
                             - Solution
@@ -371,6 +455,18 @@ Resources:
 
     ################################################################################
     #
+    # Version Compatibility
+    #
+    ################################################################################
+    CheckVersionCompatibilityStatement:
+        Type: Custom::CheckVersionCompatibilityStatement
+        Properties:
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                VersionCompatibilityStatement: !Ref VersionCompatibilityStatement
+
+    ################################################################################
+    #
     # Core stack
     # * create the core resources shared among other stacks such as:
     #   Buckets, Lambda Layers, IoT, etc
@@ -378,6 +474,8 @@ Resources:
     ################################################################################
     CoreStack:
         Type: AWS::CloudFormation::Stack
+        DependsOn:
+            - CheckVersionCompatibilityStatement
         Properties:
             TemplateURL: !Sub
                 - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
@@ -440,59 +538,76 @@ Resources:
                                         - !Ref AWS::StackId
                 CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
                 CustomResourcesRoleName: !Ref CustomResourcesRole
+                CustomResourcesRoleArn: !GetAtt CustomResourcesRole.Arn
                 UserDefinedIngestBucket: !Ref UserDefinedIngestBucket
-                OpenSearchDedicatedMaster: !Select
-                    - 0
-                    - !Split
-                        - ","
-                        - !Select
-                            - 0
-                            - !Split
-                                - ")"
-                                - !Select
-                                    - 1
-                                    - !Split
-                                        - "("
-                                        - !Ref OpenSearchCluster
-                OpenSearchInstance: !Select
-                    - 1
-                    - !Split
-                        - ","
-                        - !Select
-                            - 0
-                            - !Split
-                                - ")"
-                                - !Select
-                                    - 1
-                                    - !Split
-                                        - "("
-                                        - !Ref OpenSearchCluster
-                OpenSearchVolume: !Select
-                    - 2
-                    - !Split
-                        - ","
-                        - !Select
-                            - 0
-                            - !Split
-                                - ")"
-                                - !Select
-                                    - 1
-                                    - !Split
-                                        - "("
-                                        - !Ref OpenSearchCluster
-                OpenSearchAvailabilityZone: !Select
-                    - 3
-                    - !Split
-                        - ","
-                        - !Select
-                            - 0
-                            - !Split
-                                - ")"
-                                - !Select
-                                    - 1
-                                    - !Split
-                                        - "("
-                                        - !Ref OpenSearchCluster
+                OpenSearchDedicatedMaster: !If
+                    - bOpenSearchServerless
+                    - skip=1
+                    - !Select
+                        - 0
+                        - !Split
+                            - ","
+                            - !Select
+                                - 0
+                                - !Split
+                                    - ")"
+                                    - !Select
+                                        - 1
+                                        - !Split
+                                            - "("
+                                            - !Ref OpenSearchCluster
+                OpenSearchInstance: !If
+                    - bOpenSearchServerless
+                    - skip=1
+                    - !Select
+                        - 1
+                        - !Split
+                            - ","
+                            - !Select
+                                - 0
+                                - !Split
+                                    - ")"
+                                    - !Select
+                                        - 1
+                                        - !Split
+                                            - "("
+                                            - !Ref OpenSearchCluster
+                OpenSearchVolume: !If
+                    - bOpenSearchServerless
+                    - skip=1
+                    - !Select
+                        - 2
+                        - !Split
+                            - ","
+                            - !Select
+                                - 0
+                                - !Split
+                                    - ")"
+                                    - !Select
+                                        - 1
+                                        - !Split
+                                            - "("
+                                            - !Ref OpenSearchCluster
+                OpenSearchAvailabilityZone: !If
+                    - bOpenSearchServerless
+                    - skip=1
+                    - !Select
+                        - 3
+                        - !Split
+                            - ","
+                            - !Select
+                                - 0
+                                - !Split
+                                    - ")"
+                                    - !Select
+                                        - 1
+                                        - !Split
+                                            - "("
+                                            - !Ref OpenSearchCluster
+                OpenSearchServerless: !If
+                    - bOpenSearchServerless
+                    - true
+                    - false
                 PriceClass: !Select
                     - 0
                     - !Split
@@ -576,14 +691,15 @@ Resources:
                     - Solution
                     - Project
                     - CustomUserAgent
-                AnonymizedUsage: !FindInMap
+                AnonymousUsage: !FindInMap
                     - Send
-                    - AnonymizedUsage
+                    - AnonymousUsage
                     - Data
                 CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
                 CustomResourcesRoleName: !Ref CustomResourcesRole
                 AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
                 CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                TokenizerLayer: !GetAtt CoreStack.Outputs.TokenizerLayer
                 SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
                 IotHost: !GetAtt CoreStack.Outputs.IotHost
                 IotTopic: !GetAtt CoreStack.Outputs.IotTopic
@@ -595,6 +711,7 @@ Resources:
                 CloudFrontDistributionDomainName: !GetAtt CoreStack.Outputs.CloudFrontDistributionDomainName
                 OpenSearchDomainName: !GetAtt CoreStack.Outputs.OpenSearchDomainName
                 OpenSearchDomainEndpoint: !GetAtt CoreStack.Outputs.OpenSearchDomainEndpoint
+                OpenSearchCollection: !GetAtt CoreStack.Outputs.OpenSearchCollection
                 DefaultAIOptions: !Select
                     - 0
                     - !Split
@@ -612,6 +729,48 @@ Resources:
                     - AIML
                     - Options
                     - S3Key
+                BedrockSecondaryRegionAccess: !If
+                    - bBedrockSecondaryRegionAccess
+                    - !Select
+                        - 0
+                        - !Split
+                            - ")"
+                            - !Select
+                                - 1
+                                - !Split
+                                    - "("
+                                    - !Ref BedrockSecondaryRegionAccess
+                    - ""
+                BedrockModelName: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - Name
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - Name
+                BedrockModelId: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - ModelId
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - ModelId
+                BedrockModelVersion: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - ModelVersion
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - ModelVersion
 
     ################################################################################
     #
@@ -684,14 +843,15 @@ Resources:
                     - Solution
                     - Project
                     - CustomUserAgent
-                AnonymizedUsage: !FindInMap
+                AnonymousUsage: !FindInMap
                     - Send
-                    - AnonymizedUsage
+                    - AnonymousUsage
                     - Data
                 CustomResourcesLambdaArn: !GetAtt CustomResourcesLambda.Arn
                 CustomResourcesRoleName: !Ref CustomResourcesRole
                 AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
                 CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                TokenizerLayer: !GetAtt CoreStack.Outputs.TokenizerLayer
                 SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
                 IotHost: !GetAtt CoreStack.Outputs.IotHost
                 IotTopic: !GetAtt CoreStack.Outputs.IotTopic
@@ -702,6 +862,7 @@ Resources:
                 #CloudFrontDistributionId: !GetAtt CoreStack.Outputs.CloudFrontDistributionId
                 OpenSearchDomainName: !GetAtt CoreStack.Outputs.OpenSearchDomainName
                 OpenSearchDomainEndpoint: !GetAtt CoreStack.Outputs.OpenSearchDomainEndpoint
+                OpenSearchCollection: !GetAtt CoreStack.Outputs.OpenSearchCollection
                 DefaultAIOptions: !Select
                     - 0
                     - !Split
@@ -721,12 +882,246 @@ Resources:
                     - AIML
                     - Options
                     - S3Key
-                BlipImageArn: !Ref BlipImageArn
+                # Media2Cloud Workflow events
+                UnifiedStateMachineStatusBusName: !GetAtt CoreStack.Outputs.UnifiedStateMachineStatusBusName
+                ZeroshotClassifierImageUri: !GetAtt CodeBuildStack.Outputs.ZeroshotClassifierImageUri
+                FaissImageUri: !GetAtt CodeBuildStack.Outputs.FaissImageUri
+                BedrockSecondaryRegionAccess: !If
+                    - bBedrockSecondaryRegionAccess
+                    - !Select
+                        - 0
+                        - !Split
+                            - ")"
+                            - !Select
+                                - 1
+                                - !Split
+                                    - "("
+                                    - !Ref BedrockSecondaryRegionAccess
+                    - ""
+                BedrockModelName: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - Name
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - Name
+                BedrockModelId: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - ModelId
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - ModelId
+                BedrockModelVersion: !If
+                    - bAnthropicClaude3Sonnet
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Sonnet
+                        - ModelVersion
+                    - !FindInMap
+                        - AnthropicClaude
+                        - Haiku
+                        - ModelVersion
+
+    ################################################################################
+    #
+    # CodeBuild stack
+    # * Run codebuild to build and publish docker images if necessary
+    #
+    ################################################################################
+    CodeBuildStack:
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
+                -
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - CodeBuild
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                # Faiss
+                FaissRepositoryName: !GetAtt ECRDescribeImages.FaissRepositoryName
+                FaissImageTag: !GetAtt ECRDescribeImages.FaissImageTag
+                FaissImageUri: !GetAtt ECRDescribeImages.FaissImageUri
+                # Shoppable
+                ShoppableRepositoryName: !GetAtt ECRDescribeImages.ShoppableRepositoryName
+                ShoppableImageTag: !GetAtt ECRDescribeImages.ShoppableImageTag
+                ShoppableImageUri: !GetAtt ECRDescribeImages.ShoppableImageUri
+                # ZeroshotClassifier
+                ZeroshotClassifierRepositoryName: !GetAtt ECRDescribeImages.ZeroshotClassifierRepositoryName
+                ZeroshotClassifierImageTag: !GetAtt ECRDescribeImages.ZeroshotClassifierImageTag
+                ZeroshotClassifierImageUri: !GetAtt ECRDescribeImages.ZeroshotClassifierImageUri
+                # ZeroshotObject
+                ZeroshotObjectRepositoryName: !GetAtt ECRDescribeImages.ZeroshotObjectRepositoryName
+                ZeroshotObjectImageTag: !GetAtt ECRDescribeImages.ZeroshotObjectImageTag
+                ZeroshotObjectImageUri: !GetAtt ECRDescribeImages.ZeroshotObjectImageUri
+
+    ################################################################################
+    # Custom::ECRDescribeImages
+    # Returns:
+    # * XXXRepositoryName
+    # * XXXImageTag
+    # * XXXImageUri (empty string if image not exist)
+    # * XXXImageDigest (empty string if image not exist)
+    CustomResourcesRoleECR:
+        Type: AWS::IAM::Policy
+        DependsOn:
+            - CheckVersionCompatibilityStatement
+        Properties:
+            Roles:
+                - !Ref CustomResourcesRole
+            PolicyName: AllowDescribeImagesECR
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # ECR
+                    -
+                        Effect: Allow
+                        Action: ecr:DescribeImages
+                        Resource:
+                            - !Sub
+                                - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${repo}
+                                -
+                                    repo: !FindInMap
+                                        - DockerImage
+                                        - Faiss
+                                        - Repo
+                            - !Sub
+                                - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${repo}
+                                -
+                                    repo: !FindInMap
+                                        - DockerImage
+                                        - Shoppable
+                                        - Repo
+                            - !Sub
+                                - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${repo}
+                                -
+                                    repo: !FindInMap
+                                        - DockerImage
+                                        - ZeroshotClassifier
+                                        - Repo
+                            - !Sub
+                                - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${repo}
+                                -
+                                    repo: !FindInMap
+                                        - DockerImage
+                                        - ZeroshotObject
+                                        - Repo
+
+    ECRDescribeImages:
+        DependsOn: CustomResourcesRoleECR
+        Type: Custom::ECRDescribeImages
+        Properties:
+            ServiceToken: !GetAtt CustomResourcesLambda.Arn
+            Data:
+                Faiss:
+                    registryId: !Ref AWS::AccountId
+                    repositoryName: !FindInMap
+                        - DockerImage
+                        - Faiss
+                        - Repo
+                    imageIds:
+                        - imageTag: !FindInMap
+                            - DockerImage
+                            - Faiss
+                            - Version
+                Shoppable:
+                    registryId: !Ref AWS::AccountId
+                    repositoryName: !FindInMap
+                        - DockerImage
+                        - Shoppable
+                        - Repo
+                    imageIds:
+                        - imageTag: !FindInMap
+                            - DockerImage
+                            - Shoppable
+                            - Version
+                ZeroshotClassifier:
+                    registryId: !Ref AWS::AccountId
+                    repositoryName: !FindInMap
+                        - DockerImage
+                        - ZeroshotClassifier
+                        - Repo
+                    imageIds:
+                        - imageTag: !FindInMap
+                            - DockerImage
+                            - ZeroshotClassifier
+                            - Version
+                ZeroshotObject:
+                    registryId: !Ref AWS::AccountId
+                    repositoryName: !FindInMap
+                        - DockerImage
+                        - ZeroshotObject
+                        - Repo
+                    imageIds:
+                        - imageTag: !FindInMap
+                            - DockerImage
+                            - ZeroshotObject
+                            - Version
 
     ################################################################################
     #
     # PostProcess
     # * Attach Backend resources to ApiRole once stack is created
+    # * Attach Shoppable resources to ApiRole
     # * Create solution manifest
     # * Register cognito user
     # * Subscribe to SNS topic
@@ -735,25 +1130,16 @@ Resources:
     ################################################################################
     ApiRolePolicyBackend:
         Type: AWS::IAM::Policy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W76
+                        reason: Suppress SPCM warning to have fine grained permission
         Properties:
             Roles:
                 - !GetAtt WebAppStack.Outputs.ApiRole
-            PolicyName: !Sub
-                - ${solutionId}-${stackId}-api-backend
-                -
-                    solutionId: !FindInMap
-                        - Solution
-                        - Project
-                        - LowerCaseId
-                    stackId: !Select
-                        - 4
-                        - !Split
-                            - "-"
-                            - !Select
-                                - 2
-                                - !Split
-                                    - "/"
-                                    - !Ref AWS::StackId
+            PolicyName: ApiAccessBackendResources
             PolicyDocument:
                 Version: "2012-10-17"
                 Statement:
@@ -767,6 +1153,8 @@ Resources:
                             - !GetAtt BackendStack.Outputs.MainStateMachine
                             - !GetAtt BackendStack.Outputs.IngestMainStateMachine
                             - !GetAtt BackendStack.Outputs.AnalysisMainStateMachine
+                            - !GetAtt BackendStack.Outputs.AssetRemovalStateMachine
+                            - !GetAtt BackendStack.Outputs.UpdateFaceIndexerStateMachine
                     -
                         Effect: Allow
                         Action:
@@ -776,6 +1164,8 @@ Resources:
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.MainStateMachineName}:*
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.IngestMainStateMachineName}:*
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.AnalysisMainStateMachineName}:*
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.AssetRemovalStateMachineName}:*
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.UpdateFaceIndexerStateMachine}:*
                     # DynamoDB - read/write/delete from ingest and analysis tables
                     -
                         Effect: Allow
@@ -784,16 +1174,41 @@ Resources:
                             - dynamodb:Scan
                             - dynamodb:UpdateItem
                             - dynamodb:DeleteItem
+                            - dynamodb:BatchGetItem
+                            - dynamodb:BatchWriteItem
                         Resource:
                             - !GetAtt BackendStack.Outputs.AnalysisTableArn
                             - !GetAtt BackendStack.Outputs.IngestTableArn
+                            - !GetAtt BackendStack.Outputs.FaceIndexerTableArn
                     # DynamoDB - read from ingest indices
                     -
                         Effect: Allow
                         Action:
                             - dynamodb:Query
                             - dynamodb:Scan
-                        Resource: !Sub ${BackendStack.Outputs.IngestTableArn}/index/*
+                        Resource:
+                            - !Sub ${BackendStack.Outputs.IngestTableArn}/index/*
+                            - !Sub ${BackendStack.Outputs.FaceIndexerTableArn}/index/*
+
+    # Allow API to access Shoppable db table
+    ApiRolePolicyShoppable:
+        Condition: bEnableShoppable
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !GetAtt WebAppStack.Outputs.ApiRole
+            PolicyName: ApiAccessShoppableResources
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # DynamoDB - read/write/delete from ingest and analysis tables
+                    -
+                        Effect: Allow
+                        Action:
+                            - dynamodb:GetItem
+                            - dynamodb:BatchGetItem
+                            - dynamodb:Query
+                        Resource: !GetAtt ShoppableStack.Outputs.ShoppableTableArn
 
     ################################################################################
     # CustomResourcesRoleMain
@@ -836,6 +1251,13 @@ Resources:
                         Effect: Allow
                         Action: sns:Subscribe
                         Resource: !GetAtt BackendStack.Outputs.SNSTopicArn
+                    # Rekognition - create face collection on behalf
+                    -
+                        Effect: Allow
+                        Action:
+                            - rekognition:DescribeCollection
+                            - rekognition:CreateCollection
+                        Resource: !Sub arn:aws:rekognition:${AWS::Region}:${AWS::AccountId}:collection/*
 
     CreateSolutionManifest:
         DependsOn: CustomResourcesRoleMain
@@ -889,6 +1311,8 @@ Resources:
                     Main: !GetAtt BackendStack.Outputs.MainStateMachineName
                     Ingest: !GetAtt BackendStack.Outputs.IngestMainStateMachineName
                     Analysis: !GetAtt BackendStack.Outputs.AnalysisMainStateMachineName
+                    AssetRemoval: !GetAtt BackendStack.Outputs.AssetRemovalStateMachineName
+                    UpdateFaceIndexer: !GetAtt BackendStack.Outputs.UpdateFaceIndexerStateMachineName
                 AIML:
                     MinConfidence: !GetAtt BackendStack.Outputs.DefaultMinConfidence
                     Detections: !Split
@@ -915,10 +1339,27 @@ Resources:
                             - Group
                             - Admin
                 LastUpdated: !GetAtt WebAppStack.Outputs.LastUpdated
-                # Knowledge Graph demo
+                # (OPTIONAL) Knowledge Graph demo
                 KnowledgeGraph:
-                    Endpoint: !Ref KnowledgeGraphEndpoint
-                    ApiKey: !Ref KnowledgeGraphApiKey
+                    Endpoint: !If
+                        - bEnableKnowledgeGraph
+                        - !GetAtt KnowledgeGraphStack.Outputs.ApiEndpoint
+                        - ""
+                    ApiKey: !If
+                        - bEnableKnowledgeGraph
+                        - !GetAtt KnowledgeGraphStack.Outputs.ApiKey
+                        - ""
+                FoundationModels: !GetAtt WebAppStack.Outputs.FoundationModels
+                # (OPTIONAL) Shoppable
+                Shoppable:
+                    Endpoint: !If
+                        - bEnableShoppable
+                        - !GetAtt ShoppableStack.Outputs.ApiEndpoint
+                        - ""
+                    ApiKey: !If
+                        - bEnableShoppable
+                        - !GetAtt ShoppableStack.Outputs.ApiKey
+                        - ""
 
     CognitoRegisterUser:
         DependsOn: CreateSolutionManifest
@@ -990,9 +1431,9 @@ Resources:
                     - Solution
                     - Project
                     - Version
-                AnonymizedUsage: !FindInMap
+                AnonymousUsage: !FindInMap
                     - Send
-                    - AnonymizedUsage
+                    - AnonymousUsage
                     - Data
                 OpenSearchCluster: !Ref OpenSearchCluster
                 SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
@@ -1004,9 +1445,11 @@ Resources:
     ################################################################################
     Application:
         Type: AWS::ServiceCatalogAppRegistry::Application
+        DependsOn:
+            - CheckVersionCompatibilityStatement
         Properties:
             Description: !Sub
-                - Service Catalog application to track and manage all your resources. The Solution ID is ${solutionId} and Solution Version is ${solutionVersion}.      
+                - Service Catalog application to track and manage all your resources. The Solution ID is ${solutionId} and Solution Version is ${solutionVersion}.
                 -
                     solutionId: !FindInMap
                         - Solution
@@ -1034,10 +1477,12 @@ Resources:
 
     DefaultApplicationAttributes:
         Type: AWS::ServiceCatalogAppRegistry::AttributeGroup
+        DependsOn:
+            - CheckVersionCompatibilityStatement
         Properties:
             Name: !Join ["-", [!Ref "AWS::Region", !Ref "AWS::StackName"]]
             Description: Attribute group for solution information.
-            Attributes: { 
+            Attributes: {
                 "ApplicationType": !FindInMap [Solution, Project, ApplicationType],
                 "Version": !FindInMap [Solution, Project, Version],
                 "SolutionID": !FindInMap [Solution, Project, Id],
@@ -1077,6 +1522,187 @@ Resources:
             Application: !GetAtt Application.Id
             Resource: !Ref BackendStack
             ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationGraphStack:
+        Condition: bEnableKnowledgeGraph
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref KnowledgeGraphStack
+            ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationShoppableStack:
+        Condition: bEnableShoppable
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref ShoppableStack
+            ResourceType: CFN_STACK
+
+    AppRegistryApplicationStackAssociationCodeBuildStack:
+        Type: AWS::ServiceCatalogAppRegistry::ResourceAssociation
+        Properties:
+            Application: !GetAtt Application.Id
+            Resource: !Ref CodeBuildStack
+            ResourceType: CFN_STACK
+
+    ################################################################################
+    #
+    # (EXPERIMENTAL FEATURES)
+    # * Knowledge Graph
+    # * Shoppable Experience
+    #
+    ################################################################################
+    KnowledgeGraphStack:
+        Condition: bEnableKnowledgeGraph
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
+                -
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - Graph
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                CustomUserAgent: !FindInMap
+                    - Solution
+                    - Project
+                    - CustomUserAgent
+                CidrBlock: !Ref CidrBlock
+                AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
+                CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
+                IngestBucket: !GetAtt CoreStack.Outputs.IngestBucket
+                ProxyBucket: !GetAtt CoreStack.Outputs.ProxyBucket
+                # Media2Cloud Workflow events
+                UnifiedStateMachineStatusBusName: !GetAtt CoreStack.Outputs.UnifiedStateMachineStatusBusName
+
+    ShoppableStack:
+        Condition: bEnableShoppable
+        Type: AWS::CloudFormation::Stack
+        Properties:
+            TemplateURL: !Sub
+                - http://${bucket}${region}.s3.amazonaws.com/${keyprefix}/${stackName}
+                -
+                    bucket: !FindInMap
+                        - Solution
+                        - Template
+                        - S3Bucket
+                    region: !If
+                        - bSingleRegion
+                        - ""
+                        - !Sub -${AWS::Region}
+                    keyprefix: !FindInMap
+                        - Solution
+                        - Template
+                        - KeyPrefix
+                    stackName: !FindInMap
+                        - Solution
+                        - Stack
+                        - Shoppable
+            Parameters:
+                S3Bucket: !Sub
+                    - ${bucket}${region}
+                    -
+                        bucket: !FindInMap
+                            - Solution
+                            - Template
+                            - S3Bucket
+                        region: !If
+                            - bSingleRegion
+                            - ""
+                            - !Sub -${AWS::Region}
+                KeyPrefix: !FindInMap
+                    - Solution
+                    - Template
+                    - KeyPrefix
+                SolutionId: !FindInMap
+                    - Solution
+                    - Project
+                    - Id
+                SolutionLowerCaseId: !FindInMap
+                    - Solution
+                    - Project
+                    - LowerCaseId
+                SolutionUuid: !GetAtt CoreStack.Outputs.SolutionUuid
+                ResourcePrefix: !Sub
+                    - ${solutionId}-${stackId}
+                    -
+                        solutionId: !FindInMap
+                            - Solution
+                            - Project
+                            - LowerCaseId
+                        stackId: !Select
+                            - 4
+                            - !Split
+                                - "-"
+                                - !Select
+                                    - 2
+                                    - !Split
+                                        - "/"
+                                        - !Ref AWS::StackId
+                CustomUserAgent: !FindInMap
+                    - Solution
+                    - Project
+                    - CustomUserAgent
+                AwsSdkLayer: !GetAtt CoreStack.Outputs.AwsSdkLayer
+                CoreLibLayer: !GetAtt CoreStack.Outputs.CoreLibLayer
+                ProxyBucket: !GetAtt CoreStack.Outputs.ProxyBucket
+                ShoppableImageUri: !GetAtt CodeBuildStack.Outputs.ShoppableImageUri
+                # Media2Cloud Workflow events
+                UnifiedStateMachineStatusBusName: !GetAtt CoreStack.Outputs.UnifiedStateMachineStatusBusName
 
 Outputs:
     HomePage:

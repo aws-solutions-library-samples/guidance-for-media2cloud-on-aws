@@ -1,9 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const PATH = require('path');
+const PATH = require('node:path');
 const {
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Segment,
+    },
+  },
   CommonUtils,
   WebVttTrack,
   EDLComposer,
@@ -11,7 +15,17 @@ const {
 } = require('core-lib');
 const BaseCreateTrackIterator = require('../shared/baseCreateTrackIterator');
 
-const SUBCATEGORY = AnalysisTypes.Rekognition.Segment;
+// ColorBars | EndCredits | BlackFrames | OpeningCredits | StudioLogo | Slate | Content
+const CUE_ABBREV = {
+  OpeningCredits: 'OPENI',
+  EndCredits: 'ENDCRD',
+  BlackFrames: 'BLACK',
+  ColorBars: 'COLOR',
+  StudioLogo: 'STUDIO',
+  Slate: 'SLATE',
+  Content: 'CONTEN',
+};
+
 const TYPE_SHOT = 'SHOT';
 const CUE_ALIGNMENT_START = {
   line: 0,
@@ -26,7 +40,7 @@ const CUE_ALIGNMENT_END = {
 
 class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
   constructor(stateData) {
-    super(stateData, SUBCATEGORY);
+    super(stateData, Segment);
   }
 
   get [Symbol.toStringTag]() {
@@ -42,141 +56,200 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
   }
 
   async process() {
-    const data = this.stateData.data[SUBCATEGORY];
-    const detections = {};
-    while (data.cursor < data.numOutputs) {
-      const processed = await this.processTrack(data.cursor);
-      Object.keys(processed).map((x) => {
-        if (detections[x] === undefined) {
-          detections[x] = [];
-        }
-        return detections[x].splice(detections[x].length, 0, ...processed[x]);
-      });
-      data.cursor++;
+    const data = this.stateData.data[Segment];
+    const bucket = data.bucket;
+    const key = data.output;
+    const prefix = PATH.parse(key).dir;
+
+    const mapData = await this.getMapData(
+      bucket,
+      key
+    );
+    if (!mapData || !mapData.data || !mapData.data.length) {
+      return this.setCompleted();
     }
-    /* create webvtt track */
-    await this.createWebVttFiles(detections);
-    /* create metadata files */
-    await this.createMetadataFiles(detections);
-    /* create EDL zip package */
-    await this.createEdlZipFile(detections);
-    return (data.cursor < data.numOutputs)
-      ? this.setProgress(Math.round((data.cursor / data.numOutputs) * 100))
-      : this.setCompleted();
+
+    const dataset = await this.getDataFile(
+      bucket,
+      PATH.join(prefix, mapData.file)
+    );
+    if (!dataset
+      || !dataset.Segments
+      || !dataset.Segments.length) {
+      return this.setCompleted();
+    }
+
+    await this.processTrack(
+      undefined,
+      dataset
+    );
+
+    return this.setCompleted();
   }
 
-  async processTrack(idx) {
-    const data = this.stateData.data[SUBCATEGORY];
-    const prefix = this.makeRawDataPrefix(SUBCATEGORY);
-    const name = CreateSegmentTrackIterator.makeSequenceFileName(idx);
+  async processTrack(name, dataset) {
+    const data = this.stateData.data[Segment];
+    const bucket = data.bucket;
+    const title = PATH.parse(data.key).name
+      .replace(/[\W_]+/g, ' ');
+
     const detections = {};
-    const segments = await CommonUtils.download(data.bucket, PATH.join(prefix, name), false)
-      .then((x) =>
-        JSON.parse(x.Body.toString()).Segments.Segments)
-      .catch(e => console.error(e));
-    while (segments && segments.length) {
-      const segment = segments.shift();
-      if (segment.Type === TYPE_SHOT) {
-        const typed = segment.Type.toLowerCase();
-        if (detections[typed] === undefined) {
-          detections[typed] = [];
+    dataset.Segments
+      .forEach((segment, idx) => {
+        let item;
+
+        if (segment.ShotSegment !== undefined) {
+          item = _makeShotSegmentItem(segment, detections);
+        } else if (segment.TechnicalCueSegment !== undefined) {
+          item = _makeTechnicalCueItem(segment, detections);
         }
-        detections.shot.push({
-          type: segment.Type,
-          name: `Shot ${segment.ShotSegment.Index.toString().padStart(3, '0')}`,
-          confidence: Number(Number(segment.ShotSegment.Confidence).toFixed(2)),
-          begin: segment.StartTimestampMillis,
-          end: segment.EndTimestampMillis,
-          smpteBegin: segment.StartTimecodeSMPTE,
-          smpteEnd: segment.EndTimecodeSMPTE,
-        });
-      } else {
-        const typed = segment.TechnicalCueSegment.Type.toLowerCase();
-        if (detections[typed] === undefined) {
-          detections[typed] = [];
+
+        if (item !== undefined) {
+          if (detections[item.type] === undefined) {
+            detections[item.type] = [];
+          }
+          detections[item.type].push(item);
         }
-        detections[typed].push({
-          type: segment.TechnicalCueSegment.Type,
-          name: `${segment.TechnicalCueSegment.Type.substring(0, 5)}${String(detections[typed].length).padStart(3, '0')}`,
-          confidence: segment.TechnicalCueSegment.Confidence,
-          begin: segment.StartTimestampMillis,
-          end: segment.EndTimestampMillis,
-          smpteBegin: segment.StartTimecodeSMPTE,
-          smpteEnd: segment.EndTimecodeSMPTE,
-        });
-      }
-    }
+      });
+
+    await Promise.all([
+      this.createWebVttFiles(
+        bucket,
+        this.makeVttPrefix(),
+        `${Segment}.json`,
+        detections
+      ),
+      this.createMetadataFiles(
+        bucket,
+        this.makeMetadataPrefix(),
+        `${Segment}.json`,
+        detections
+      ),
+      this.createEdlZipFile(
+        bucket,
+        this.makeEdlPrefix(),
+        `${Segment}.zip`,
+        title,
+        detections
+      ),
+    ]);
     return detections;
   }
 
-  async createWebVttFiles(detections) {
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeVttPrefix();
-    const promises = Object.values(detections).map((data) => {
-      if (!data || data.length === 0) {
-        return undefined;
-      }
-      const type = data[0].type;
-      const name = `${type.toLowerCase()}.vtt`;
-      const alignment = (type === TYPE_SHOT)
-        ? CUE_ALIGNMENT_START
-        : CUE_ALIGNMENT_END;
-      const body = this.createWebVtt(data, alignment);
-      return CommonUtils.uploadFile(bucket, prefix, name, body);
+  async createWebVttFiles(
+    bucket,
+    prefix,
+    name,
+    detections
+  ) {
+    const vtts = Object.keys(detections)
+      .filter((x) =>
+        detections[x] && detections[x].length > 0)
+      .reduce((a0, c0) => ({
+        ...a0,
+        [c0]: this.createWebVttText(
+          detections[c0],
+          (c0 === TYPE_SHOT)
+            ? CUE_ALIGNMENT_START
+            : CUE_ALIGNMENT_END
+        ),
+      }), {});
+
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      vtts
+    ).then(() => {
+      const key = PATH.join(prefix, name);
+      this.stateData.data[Segment].vtt = key;
+      return key;
+    }).catch((e) => {
+      console.error(e);
+      return undefined;
     });
-    return Promise.all(promises);
   }
 
-  async createEdlZipFile(detections) {
+  async createMetadataFiles(
+    bucket,
+    prefix,
+    name,
+    detections
+  ) {
+    const metadata = Object.keys(detections)
+      .filter((x) =>
+        detections[x] && detections[x].length > 0)
+      .reduce((a0, c0) => ({
+        ...a0,
+        [c0]: detections[c0],
+      }), {});
+
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      metadata
+    ).then(() => {
+      const key = PATH.join(prefix, name);
+      this.stateData.data[Segment].metadata = key;
+      return key;
+    }).catch((e) => {
+      console.error(e);
+      return undefined;
+    });
+  }
+
+  async createEdlZipFile(
+    bucket,
+    prefix,
+    name,
+    title,
+    detections
+  ) {
     const zip = new AdmZip();
-    const parsed = PATH.parse(this.stateData.data[SUBCATEGORY].key);
-    const title = parsed.name.replace(/[\W_]+/g, ' ');
+    Object.keys(detections)
+      .filter((x) =>
+        detections[x] && detections[x].length > 0)
+      .forEach((x) => {
+        const events = detections[x]
+          .map((item, idx) => ({
+            id: idx + 1,
+            reelName: item.name,
+            clipName: title,
+            startTime: item.smpteBegin,
+            endTime: item.smpteEnd,
+          }));
 
-    Object.values(detections).forEach((data) => {
-      if (data.length === 0) {
-        return;
-      }
-      const type = data[0].type.toLowerCase();
-      const events = data.map((item, idx) => ({
-        id: idx + 1,
-        reelName: item.name,
-        clipName: parsed.base,
-        startTime: item.smpteBegin,
-        endTime: item.smpteEnd,
-      }));
-      const edl = new EDLComposer({
-        title,
-        events,
+        const edl = new EDLComposer({
+          title,
+          events,
+        });
+
+        const buf = Buffer.from(edl.compose(), 'utf8');
+        zip.addFile(`${x}.edl`, buf, x);
       });
-      const buf = Buffer.from(edl.compose(), 'utf8');
-      zip.addFile(`${type}.edl`, buf, type);
+
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      zip.toBuffer()
+    ).then(() => {
+      const key = PATH.join(prefix, name);
+      this.stateData.data[Segment].edl = key;
+      return key;
+    }).catch((e) => {
+      console.error(e);
+      return undefined;
     });
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeEdlPrefix();
-    const name = `${SUBCATEGORY}.zip`;
-    return CommonUtils.uploadFile(bucket, prefix, name, zip.toBuffer());
   }
 
-  async createMetadataFiles(detections) {
-    const bucket = this.stateData.data[SUBCATEGORY].bucket;
-    const prefix = this.makeMetadataPrefix();
-    const promises = Object.values(detections).map((data) => {
-      if (!data || data.length === 0) {
-        return undefined;
-      }
-      const type = data[0].type;
-      const name = `${type.toLowerCase()}.json`;
-      return CommonUtils.uploadFile(bucket, prefix, name, data);
-    });
-    return Promise.all(promises);
-  }
-
-  createWebVtt(items, placement) {
+  createWebVttText(items, placement) {
     const track = new WebVttTrack();
     items.forEach((x) => {
       const cueText = [
         x.name,
-        `<c.confidence>(${x.confidence})</c>`,
+        `<c.confidence>(${Math.round(x.confidence)}%)</c>`,
       ].join(' ');
       const cueAlignment = [
         `align:${placement.align}`,
@@ -188,10 +261,62 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
     });
     return track.toString();
   }
+}
 
-  static makeSequenceFileName(idx) {
-    return `${String(idx).padStart(8, '0')}.json`;
+function _makeShotSegmentItem(segment, detections) {
+  const {
+    ShotSegment: {
+      Index,
+      Confidence,
+    },
+  } = segment;
+
+  const name = `${TYPE_SHOT} ${String(Index).padStart(3, '0')}`;
+
+  return _makeItem(segment, TYPE_SHOT, name, Confidence);
+}
+
+function _makeTechnicalCueItem(segment, detections) {
+  const {
+    TechnicalCueSegment: {
+      Type,
+      Confidence,
+    },
+  } = segment;
+
+  let name = CUE_ABBREV[Type];
+  if (!name) {
+    name = Type.substring(0, 5).toUpperCase();
   }
+
+  const padding = 8 - name.length;
+  const index = String((detections[Type] || []).length)
+    .padStart(padding, '0');
+
+  name = `${name}${index}`;
+
+  return _makeItem(segment, Type, name, Confidence);
+}
+
+function _makeItem(segment, type, name, confidence) {
+  const {
+    StartTimestampMillis: begin,
+    EndTimestampMillis: end,
+    StartTimecodeSMPTE: smpteBegin,
+    EndTimecodeSMPTE: smpteEnd,
+  } = segment;
+
+  const item = {
+    type,
+    name,
+    confidence: Number(confidence.toFixed(2)),
+    begin,
+    end,
+    smpteBegin,
+    smpteEnd,
+  };
+
+  return item;
 }
 
 module.exports = CreateSegmentTrackIterator;

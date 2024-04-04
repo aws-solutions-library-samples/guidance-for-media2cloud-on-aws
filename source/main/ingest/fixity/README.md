@@ -1,89 +1,81 @@
 # Ingest Fixity State Machine
 
-The Ingest Fixity State Machine is a sub-state machine focuses on computing and validating the MD5 checksum of the ingested file. If the file is stored in ```GLACIER``` or ```DEEP_ARCHIVE``` storage class, the state machine temporarily restores the object before the checksum is performed.
+The Ingest Fixity State Machine is a sub-state machine that focuses on computing and validating the MD5 checksum of the ingested file. If the file is stored in the "GLACIER" or "DEEP_ARCHIVE" storage class, the state machine temporarily restores the object before the checksum is performed.
 
-![Ingest Fixty state machine](../../../../deployment/tutorials/images/ingest-fixity-state-machine.png)
+![Ingest Fixity state machine](../../../../deployment/tutorials/images/ingest-fixity-state-machine.png)
 
-__
+#### _State: Check restore status_
 
-## State: Check restore status
-A state where a lambda function uses ```S3.HeadOject``` api to confirm the file is in ```STANDARD``` storage class and can be processed. If the file is in ```GLACIER``` or ```DEEP_ARCHIVE``` storage class, the lamba function call S3.RestoreStore to start the restore process.
+The state machine starts with a "Check restore status" Lambda function, which checks the current storage class of the ingested media using the `s3:HeadObject` API. If the media file is in the "STANDARD" storage class, the Lambda function sets the `$.status` to "COMPLETED," indicating the media file is ready for the fixity check process. If the media file is in the "GLACIER" or "DEEP_ARCHIVE" storage class, the Lambda function initiates an object restore process by using the `s3.RestoreObject` API. The Lambda function sets the `$.status` to "PROCESSING," indicating the object is being processed (restored).
 
-__
+#### _State: Restore completed?_
 
-## State: Check restore status
-A state where a lambda function uses ```S3.HeadOject``` api to confirm the file is in ```STANDARD``` storage class and can be processed. If the file is in ```GLACIER``` or ```DEEP_ARCHIVE``` storage class, the lamba function call S3.RestoreStore to start the restore process.
+If the restoration is completed (status = "COMPLETED"), the workflow moves to the "Compute checksum" Lambda function, which calculates a checksum for the restored data.
 
-__
+If the restoration is still in progress (status = "PROCESSING"), the workflow enters one of the Wait states: "Wait 4 mins" for 4 minutes, "Wait 12 hrs" for 12 hours, or "Wait 4 hrs" for 4 hours, depending on the storage class the media file is currently in. It then transitions back to the "Check restore status" Lambda function. This loop continues until the restoration is completed.
 
-## State: Restore completed?
-A Choice state that checks _$.status_ flag. If the flag is set to _COMPLETED_ indicating the file is ready to be consumed, transitions to ```Compute Checksum``` state. Otherwise, moves to one of the following Wait states:
-* ```Wait 4 mins``` state if _$.data.restore.tier_ is set to Expedited
-* ```Wait 12 hrs``` state if _$.data.restore.storageClass_ is set to DEEP_ARCHIVE and _$.data.restore.tier_ is set to Bulk
-*  ```Wait 4 hrs``` state for the rest of the conditions.
+#### _State: Wait 4 mins, Wait 12 hrs, Wait 4 hrs_
 
-__
+The state machine waits for a specific duration before rechecking the restoration status, depending on the storage class the media file is in.
 
-## State: Wait 4 mins
-A Wait state to wait for 4 minutes and move back to ```Check restore status``` state.
+#### _State: Compute checksum_
 
-__
+A Lambda function calculates a checksum for the media file using `s3.GetObject`. Without downloading the media file locally, the Lambda function uses the byte range feature to fetch 20 GB chunks at a time, computes the incremental MD5 hash value of each chunk, and stores the hash value in `$.checksum.intermediateHash`. This allows the computation to be resumed in the next call. The Lambda function sets `$.status` to "COMPLETED" if the checksum of the entire media file has been calculated, or "PROCESSING" to resume the next computation.
 
-## State: Wait 12 hrs
-A Wait state to wait for 12 hours and move back to ```Check restore status``` state.
+#### _State: More data?_
 
-__
+If the status is "COMPLETED," the workflow proceeds to the "Validate checksum" Lambda function, which validates the computed checksum against an expected value.
 
-## State: Wait 4 hrs
-A Wait state to wait for 4 hours and move back to ```Check restore status``` state.
+#### _State: Validate checksum_
 
-__
+The validation is performed under the following conditions:
+1. If an object metadata (`x-amz-metadata-md5`) is specified when the media file is uploaded, the Lambda function validates the computed checksum against the value of the object metadata.
+2. If the checksum of the media file has been calculated by Media2Cloud in the past, Media2Cloud stores the computed checksum to the object taggings, named **computed-md5**, along with the last computed date, named **computed-md5-last-modified**. The Lambda function validates the newly computed checksum against this previously computed-md5 value, and updates the computed-md5-last-modified taggings with the current date and time.
 
-## State: Compute checksum
-A state where a lambda function computes MD5 checksum value of the file. The lambda function uses ```S3.GetObject``` byte range to fetch 20GB chunk at a time and computes the incremental MD5 hash value of the chunk, stores the incremental MD5 hash value to the _$.checksum.intermediateHash_ and tranistions to ```More data?``` State.
+Once the "Validate checksum" Lambda function completes, the state machine ends.
 
-__
+### AWS Lambda function (ingest-fixity)
 
-## State: More data?
-A Choice state to check _$.status flag_. If it is set to _COMPLETED_ indicating checksum has been computed, move to the next state, ```Validate checksum``` state. Otherwise, re-enters ```Compute checksum``` state to continue the next 20GB chunk of the file.
+The Ingest-Fixity Lambda function provides the implementation to support the different states of the Ingest Fixity state machine. It requires permission to access media files stored in the Amazon S3 bucket and modify the object taggings of the media file.
 
-__
+#### _IAM Role Policy_
 
-## State: Validate checksum
-A state where a lambda function compares and validates the MD5 checksum value we computed ealier against _previously_ computed MD5 checksum value that was stored in the object metadata (```x-amz-metdata-md5```) or in the object tag (```computed-md5```).
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "[CLOUDWATCH_LOGS]",
+      "Effect": "Allow"
+    },
+    {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersionTagging",
+        "s3:PutObject",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionTagging",
+        "s3:RestoreObject"
+      ],
+      "Resource": "[INGEST_BUCKET]",
+      "Effect": "Allow"
+    }
+  ]
+}
+```
 
-__
+#### _X-Ray Trace_
 
-## AWS Lambda function (ingest-fixity)
-The ingest-fixity lambda function provides the implementation to support different states of the Fixity state machine. The following AWS XRAY trace diagram illustrates the AWS resources this lambda function communicates to.
+The following AWS X-Ray trace diagram demonstrates the AWS services that this Lambda function communicates with.
 
 ![Ingest Fixity Lambda function](../../../../deployment/tutorials/images/ingest-fixity-lambda.png)
 
 __
 
-## IAM Role Permission
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Action": [
-                "s3:GetObject",
-                "s3:GetObjectTagging",
-                "s3:GetObjectVersionTagging",
-                "s3:PutObject",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:RestoreObject"
-            ],
-            "Resource": "INGEST_BUCKET",
-            "Effect": "Allow"
-        }
-    ]
-}
-```
-
-__
-
-Back to [Ingest Main State Machine](../main/README.md) | Back to [Table of contents](../../../../README.md#table-of-contents)
+Back to [Ingestion Main State Machine](../main/README.md) | Back to [Table of contents](../../../../README.md#table-of-contents)

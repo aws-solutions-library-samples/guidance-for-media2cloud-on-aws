@@ -43,7 +43,7 @@ class StateCheckRestoreStatus {
   async process() {
     const src = this.stateData.input;
     if (!src.bucket || !src.key) {
-      throw new RestoreError('mising input parameters');
+      throw new RestoreError('missing input parameters');
     }
 
     const response = await CommonUtils.headObject(src.bucket, src.key);
@@ -54,7 +54,13 @@ class StateCheckRestoreStatus {
       ? new Date(restoreData[KEY_EXPIRY_DATE]).getTime()
       : undefined;
 
-    const storageClass = response.StorageClass;
+    /* INTELLIGENT_TIERING storage class reports the archive access in ArchiveStatus field */
+    let storageClass = response.StorageClass;
+    if (response.ArchiveStatus === 'DEEP_ARCHIVE_ACCESS') {
+      storageClass = 'DEEP_ARCHIVE';
+    } else if (response.ArchiveStatus === 'ARCHIVE_ACCESS') {
+      storageClass = 'GLACIER';
+    }
     const tier = this.findRestoreRequestTier(storageClass);
 
     const startTime = ((this.stateData.data || {}).restore || {}).startTime || new Date().getTime();
@@ -150,7 +156,7 @@ class StateCheckRestoreStatus {
 
     await CommonUtils.restoreObject(src.bucket, src.key, {
       RestoreRequest: {
-        Days: days,
+        // Days: days, // <- INTELLIGENT_TIERING CANNOT SPECIFY THIS FIELD!!!
         GlacierJobParameters: {
           Tier: tier,
         },

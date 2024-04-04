@@ -1,24 +1,36 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
-const FS = require('fs');
-const PATH = require('path');
-const CHILD = require('child_process');
+const {
+  S3Client,
+  GetObjectCommand,
+} = require('@aws-sdk/client-s3');
+const {
+  getSignedUrl,
+} = require('@aws-sdk/s3-request-presigner');
+const {
+  StandardRetryStrategy,
+} = require('@smithy/util-retry');
 const {
   Parser,
   Builder,
 } = require('xml2js');
+const FS = require('fs');
+const PATH = require('path');
+const CHILD = require('child_process');
 
 const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
+const MAX_ATTEMPTS = 4;
+
+const maxAttemptProvider = async () =>
+  MAX_ATTEMPTS;
+
+const retryStrategyOptions = {};
+
+const retryStrategy = new StandardRetryStrategy(
+  maxAttemptProvider,
+  retryStrategyOptions
+);
 
 /**
  * @class MediaInfoError
@@ -40,14 +52,6 @@ class MediaInfoError extends Error {
  */
 class MediaInfoCommand {
   constructor(options) {
-    this.$s3 = new AWS.S3({
-      apiVersion: '2006-03-01',
-      computeChecksums: true,
-      signatureVersion: 'v4',
-      s3DisableBodySigning: false,
-      customUserAgent: CUSTOM_USER_AGENT,
-      ...options,
-    });
     this.$rawXml = undefined;
     this.$jsonData = undefined;
   }
@@ -120,10 +124,6 @@ class MediaInfoCommand {
         ],
       },
     };
-  }
-
-  get s3() {
-    return this.$s3;
   }
 
   get rawXml() {
@@ -282,36 +282,55 @@ class MediaInfoCommand {
    * @param {object|string} params
    */
   async presign(params) {
-    return new Promise((resolve, reject) => {
-      if (!params) {
-        reject(new Error('missing params'));
-        return;
-      }
+    if (!params) {
+      throw new Error('missing params');
+    }
 
-      if (typeof params === 'string') {
-        if (MediaInfoCommand.isHttpProto(params)) {
-          resolve(MediaInfoCommand.escapeS3Character(params));
-          return;
-        }
-        if (FS.existsSync(params)) {
-          resolve(params);
-          return;
-        }
-        reject(new Error(`invalid filename '${params}' not supported`));
-        return;
+    if (typeof params === 'string') {
+      if (MediaInfoCommand.isHttpProto(params)) {
+        return MediaInfoCommand.escapeS3Character(params);
       }
-
-      if (typeof params === 'object' && (!params.Bucket || !params.Key)) {
-        reject(new Error(`missing Bucket and Key, ${JSON.stringify(params)}`));
-        return;
+      if (FS.existsSync(params)) {
+        return params;
       }
+      throw new Error(`invalid filename '${params}' not supported`);
+    }
 
-      resolve(this.s3.getSignedUrl('getObject', {
-        Bucket: params.Bucket,
-        Key: params.Key,
-        Expires: 60 * 60 * 2,
-      }));
+    if (typeof params === 'object'
+    && (!params.Bucket || !params.Key)) {
+      throw new Error(`missing Bucket and Key, ${JSON.stringify(params)}`);
+    }
+
+    let s3Client = new S3Client({
+      computeChecksums: true,
+      applyChecksum: true,
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy,
     });
+
+    if (process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined) {
+      try {
+        const {
+          captureAWSv3Client,
+        } = require('aws-xray-sdk-core');
+        s3Client = captureAWSv3Client(s3Client);
+      } catch (e) {
+        console.log('aws-xray-sdk-core not loaded');
+      }
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: params.Bucket,
+      Key: params.Key,
+    });
+
+    return getSignedUrl(
+      s3Client,
+      command,
+      {
+        expiresIn: 3600,
+      }
+    );
   }
 
   /**
@@ -385,7 +404,8 @@ class MediaInfoCommand {
     const modified = Object.assign({}, data);
     modified.mediaInfo.media.$.ref = ref;
 
-    for (let track of modified.mediaInfo.media.track) {
+    for (let i = 0; i < modified.mediaInfo.media.track.length; i++) {
+      const track = modified.mediaInfo.media.track[i];
       if (track.completeName !== undefined) {
         track.completeName = ref;
       }
@@ -403,7 +423,7 @@ class MediaInfoCommand {
     function camelCaseKey(k0, obj) {
       const k1 = (k0 === '_' || k0 === '$')
         ? k0
-        : k0.replace(/^([A-Za-z])|^([\s-_.])+(\w)/g, (ignored, p1, p2) =>
+        : k0.replace(/^([A-Za-z])|[\s-_.]{1,}(\w)/g, (ignored, p1, p2) =>
           ((p2) ? p2.toUpperCase() : p1.toLowerCase())).replace(/[\s-_.]$/, '');
       if (k1 !== k0) {
         obj[k1] = obj[k0];
@@ -436,7 +456,7 @@ class MediaInfoCommand {
         v1 = true;
       } else if (/^false$/i.test(v1)) {
         v1 = false;
-      } else if (/^[-|+]?\d+$/.test(v1) || /^[-|+]?\d+\.\d+$/.test(v1)) {
+      } else if (/^[-|+]{0,1}\d+$/.test(v1) || /^[-|+]{0,1}\d+\.\d+$/.test(v1)) {
         const num = Number.parseFloat(v1);
         if (num >= Number.MIN_SAFE_INTEGER && num <= Number.MAX_SAFE_INTEGER) {
           v1 = num;

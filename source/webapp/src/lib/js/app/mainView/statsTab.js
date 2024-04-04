@@ -5,29 +5,85 @@ import AnalysisTypes from '../shared/analysis/analysisTypes.js';
 import Localization from '../shared/localization.js';
 import ApiHelper from '../shared/apiHelper.js';
 import AppUtils from '../shared/appUtils.js';
+import Spinner from '../shared/spinner.js';
 import PieGraph from './stats/pieGraph.js';
-import mxSpinner from '../mixins/mxSpinner.js';
 import BaseTab from '../shared/baseTab.js';
 
-const ID_OVERALLGRAPH = `pie-${AppUtils.randomHexstring()}`;
-const ID_AGGREGATIONGRAPH = `aggs-${AppUtils.randomHexstring()}`;
-const MOST_RECENT_ITEMS = 20;
-const AGGREGATED_KNOWN_FACE_SIZE = 20;
-const AGGREGATED_LABEL_SIZE = 20;
-const AGGREGATED_MODERATION_SIZE = 20;
-const AGGREGATED_KEYPHRASE_SIZE = 20;
-const AGGREGATED_ENTITY_SIZE = 20;
+const RANDOM_ID = AppUtils.randomHexstring();
+const ID_OVERALLGRAPH = `pie-${RANDOM_ID}`;
+const ID_AGGREGATIONGRAPH = `aggs-${RANDOM_ID}`;
+
 const AGGS_TYPE_KNOWNFACES = 'knownFaces';
 const AGGS_TYPE_LABELS = 'labels';
 const AGGS_TYPE_MODERATIONS = 'moderations';
 const AGGS_TYPE_KEYPHRASES = 'keyphrases';
 const AGGS_TYPE_ENTITIES = 'entities';
+const AGGREGATION_SIZE = 20;
 
-export default class StatsTab extends mxSpinner(BaseTab) {
-  constructor(defaultTab = false) {
-    super(Localization.Messages.StatsTab, {
-      selected: defaultTab,
+const {
+  Rekognition: {
+    Celeb,
+    FaceMatch,
+    Label,
+    CustomLabel,
+    Moderation,
+  },
+  Comprehend: {
+    Keyphrase,
+    Entity,
+    CustomEntity,
+  },
+} = AnalysisTypes;
+
+const AGGS_ANALYSIS = [
+  // knownFaces
+  Celeb,
+  FaceMatch,
+  // labels
+  Label,
+  CustomLabel,
+  // moderations
+  Moderation,
+  // keyphrases
+  Keyphrase,
+  // entities
+  Entity,
+  CustomEntity,
+];
+
+const {
+  Messages: {
+    StatsTab: TITLE,
+    StatsDesc: MSG_STATS_DESC,
+    OverallStats: MSG_OVERALL_STATS,
+    Aggregations: MSG_AGGREGATIONS,
+    NoData: MSG_NO_DATA,
+    TotalCount: MSG_TOTAL_COUNT,
+    TotalSize: MSG_TOTAL_SIZE,
+    WorkflowStatuses: MSG_WORKFLOW_STATUSES,
+    MostRecentStats: MSG_MOST_RECENT_STATS,
+    TopKnownFaces: MSG_TOP_KNOWN_FACES,
+    TopLabels: MSG_TOP_LABELS,
+    TopModerations: MSG_TOP_MODERATIONS,
+    TopKeyphrases: MSG_TOP_KEYPHRASES,
+    TopEntities: MSG_TOP_ENTITIES,
+  },
+  Tooltips: {
+    RefreshStats: TOOLTIP_REFRESH_STATS,
+  },
+  Buttons: {
+    Refresh: BTN_REFRESH,
+  },
+} = Localization;
+
+const HASHTAG = TITLE.replaceAll(' ', '');
+
+export default class StatsTab extends BaseTab {
+  constructor() {
+    super(TITLE, {
+      hashtag: HASHTAG,
     });
+
     this.$pieGraphs = {
       overall: {
         totalCount: undefined,
@@ -43,6 +99,8 @@ export default class StatsTab extends mxSpinner(BaseTab) {
         [AGGS_TYPE_ENTITIES]: undefined,
       },
     };
+
+    Spinner.useSpinner();
   }
 
   get overallCountGraph() {
@@ -121,251 +179,288 @@ export default class StatsTab extends mxSpinner(BaseTab) {
     this.$pieGraphs.aggs.entities = val;
   }
 
-  async show() {
+  async show(hashtag) {
     if (!this.initialized) {
-      this.tabContent.append(this.createSkeleton());
-      this.delayContentLoad();
+      const content = this.createSkeleton();
+      this.tabContent.append(content);
     } else {
       await this.refreshContent();
     }
-    return super.show();
+    return super.show(hashtag);
   }
 
   createSkeleton() {
-    const description = this.createDescription();
+    const container = $('<div/>')
+      .addClass('row no-gutters');
+
+    const descContainer = $('<div/>')
+      .addClass('col-9 p-0 mx-auto mt-4');
+    container.append(descContainer);
+
+    const desc = this.createDescription();
+    descContainer.append(desc);
+
+    const overallContainer = $('<div/>')
+      .addClass('col-9 p-0 mx-auto');
+    container.append(overallContainer);
+
     const overall = this.createOverallStatus();
+    overallContainer.append(overall);
+
+    const aggsContainer = $('<div/>')
+      .addClass('col-12 p-0 m-0 p-0 bg-light');
+    container.append(aggsContainer);
+
     const aggs = this.createAggregations();
+    aggsContainer.append(aggs);
+
+    const controlsContainer = $('<div/>')
+      .addClass('col-9 p-0 mx-auto mt-4');
+    container.append(controlsContainer);
+
     const controls = this.createControls();
-    const row = $('<div/>').addClass('row no-gutters')
-      .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
-        .append(description))
-      .append($('<div/>').addClass('col-9 p-0 mx-auto')
-        .append(overall))
-      .append($('<div/>').addClass('col-12 p-0 m-0 p-0 bg-light')
-        .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
-          .append(aggs)))
-      .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
-        .append(controls))
-      .append(this.createLoading());
-    return row;
+    controlsContainer.append(controls);
+
+    container.ready(async () => {
+      await this.refreshContent();
+    });
+
+    return container;
   }
 
   createDescription() {
-    return $('<p/>').addClass('lead')
-      .html(Localization.Messages.StatsDesc);
+    return $('<p/>')
+      .addClass('lead')
+      .html(MSG_STATS_DESC);
   }
 
   createOverallStatus() {
-    const title = $('<span/>').addClass('d-block p-0 lead')
-      .html(Localization.Messages.OverallStats);
-    const pieGraphContainer = $('<div/>').addClass('row no-gutters')
+    const container = $('<div/>')
+      .addClass('col-12 p-0 m-0');
+
+    const title = $('<span/>')
+      .addClass('d-block p-0 lead')
+      .html(MSG_OVERALL_STATS);
+    container.append(title);
+
+    const pieGraphContainer = $('<div/>')
+      .addClass('row no-gutters')
       .attr('id', ID_OVERALLGRAPH);
-    return $('<div/>').addClass('col-12 p-0 m-0')
-      .append(title)
-      .append(pieGraphContainer);
+    container.append(pieGraphContainer);
+
+    return container;
   }
 
   createAggregations() {
-    const title = $('<span/>').addClass('d-block p-0 lead')
-      .html(Localization.Messages.Aggregations);
-    const aggsGraphContainer = $('<div/>').addClass('row no-gutters')
+    const container = $('<div/>')
+      .addClass('col-9 p-0 mx-auto mt-4');
+
+    const title = $('<span/>')
+      .addClass('d-block p-0 lead')
+      .html(MSG_AGGREGATIONS);
+    container.append(title);
+
+    const aggsGraphContainer = $('<div/>')
+      .addClass('row no-gutters')
       .attr('id', ID_AGGREGATIONGRAPH);
-    return $('<div/>').addClass('col-12 p-0 m-0 mb-4')
-      .append(title)
-      .append(aggsGraphContainer);
+    container.append(aggsGraphContainer);
+
+    return container;
   }
 
   createControls() {
-    const refresh = $('<button/>').addClass('btn btn-success')
+    const container = $('<form/>')
+      .addClass('form-inline');
+
+    const btnContainer = $('<div/>')
+      .addClass('mx-auto');
+    container.append(btnContainer);
+
+    container.submit((event) =>
+      event.preventDefault());
+
+    const btnRefresh = $('<button/>')
+      .addClass('btn btn-success')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
-      .attr('title', Localization.Tooltips.RefreshStats)
-      .html(Localization.Buttons.Refresh)
+      .attr('title', TOOLTIP_REFRESH_STATS)
+      .html(BTN_REFRESH)
       .tooltip({
         trigger: 'hover',
       });
-    refresh.off('click').on('click', () =>
+    btnContainer.append(btnRefresh);
+
+    btnRefresh.on('click', () =>
       this.refreshContent());
 
-    const controls = $('<form/>').addClass('form-inline')
-      .append($('<div/>').addClass('mx-auto')
-        .append(refresh));
-    controls.submit(event =>
-      event.preventDefault());
-
-    return controls;
-  }
-
-  delayContentLoad() {
-    return setTimeout(async () => {
-      this.loading(true);
-      await this.refreshContent();
-      this.loading(false);
-    });
+    return container;
   }
 
   async refreshContent() {
-    const stats = await ApiHelper.getStats({
-      size: MOST_RECENT_ITEMS,
-    });
-    const [
-      knownFaces,
-      labels,
-      moderations,
-      keyphrases,
-      entities,
-    ] = await Promise.all([
-      this.aggregateKnownFaces(),
-      this.aggregateLabels(),
-      this.aggregateModerations(),
-      this.aggregateKeyphrases(),
-      this.aggregateEntities(),
-    ]);
+    try {
+      Spinner.loading();
 
-    await this.refreshOverallStats(stats);
-    await this.refreshAggregations({
-      [AGGS_TYPE_KNOWNFACES]: knownFaces.aggregations,
-      [AGGS_TYPE_LABELS]: labels.aggregations,
-      [AGGS_TYPE_MODERATIONS]: moderations.aggregations,
-      [AGGS_TYPE_KEYPHRASES]: keyphrases.aggregations,
-      [AGGS_TYPE_ENTITIES]: entities.aggregations,
-    });
-    return undefined;
-  }
+      const promises = [];
 
-  async aggregateKnownFaces() {
-    return ApiHelper.getStats({
-      size: AGGREGATED_KNOWN_FACE_SIZE,
-      aggregate: [
-        AnalysisTypes.Rekognition.Celeb,
-        AnalysisTypes.Rekognition.FaceMatch,
-      ].join(','),
-    });
-  }
+      /* get overall stats */
+      promises.push(await ApiHelper.getStats({
+        size: AGGREGATION_SIZE,
+      }).then((res) =>
+        this.refreshOverallStats(res)));
 
-  async aggregateLabels() {
-    return ApiHelper.getStats({
-      size: AGGREGATED_LABEL_SIZE,
-      aggregate: [
-        AnalysisTypes.Rekognition.Label,
-        AnalysisTypes.Rekognition.CustomLabel,
-      ].join(','),
-    });
-  }
+      /* get analysis aggs */
+      promises.push(await ApiHelper.getStats({
+        size: AGGREGATION_SIZE,
+        aggregate: AGGS_ANALYSIS.join(','),
+      }).then((res) =>
+        this.refreshAggregations(res.aggregations)));
 
-  async aggregateModerations() {
-    return ApiHelper.getStats({
-      size: AGGREGATED_MODERATION_SIZE,
-      aggregate: [
-        AnalysisTypes.Rekognition.Moderation,
-      ].join(','),
-    });
-  }
-
-  async aggregateKeyphrases() {
-    return ApiHelper.getStats({
-      size: AGGREGATED_KEYPHRASE_SIZE,
-      aggregate: [
-        AnalysisTypes.Comprehend.Keyphrase,
-      ].join(','),
-    });
-  }
-
-  async aggregateEntities() {
-    return ApiHelper.getStats({
-      size: AGGREGATED_ENTITY_SIZE,
-      aggregate: [
-        AnalysisTypes.Comprehend.Entity,
-        AnalysisTypes.Comprehend.CustomEntity,
-      ].join(','),
-    });
+      await Promise.all(promises);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      Spinner.loading(false);
+    }
   }
 
   async refreshOverallStats(data) {
-    const container = this.tabContent.find(`#${ID_OVERALLGRAPH}`);
-    container.children().remove();
+    console.log('refreshOverallStats', data);
+
+    const container = this.tabContent
+      .find(`#${ID_OVERALLGRAPH}`);
+
+    container.children()
+      .remove();
+
     if (!data.stats.types) {
-      return container.append($('<p/>').addClass('text-center text-muted')
-        .append(Localization.Messages.NoData));
+      const noData = $('<p/>')
+        .addClass('text-center text-muted')
+        .append(MSG_NO_DATA);
+
+      return container.append(noData);
     }
-    return container.append(await this.refreshOverallCountStats(data.stats.types))
-      .append(await this.refreshOverallSizeStats(data.stats.types))
-      .append(await this.refreshOverallStatusStats(data.stats.overallStatuses))
-      .append(await this.refreshMostRecentStats(data.recents));
+
+    const stats = await Promise.all([
+      this.refreshOverallCountStats(data.stats.types),
+      this.refreshOverallSizeStats(data.stats.types),
+      this.refreshOverallStatusStats(data.stats.overallStatuses),
+      this.refreshMostRecentStats(data.recents),
+    ]);
+
+    return container.append(stats);
   }
 
   async refreshOverallCountStats(data) {
+    const container = $('<div/>')
+      .addClass('col-6 m-0 p-0');
+
     if (this.overallCountGraph) {
       this.overallCountGraph.destroy();
     }
-    const datasets = data.reduce((a0, c0) => a0.concat({
-      name: c0.type,
-      value: c0.count,
-    }), []);
-    const total = datasets.reduce((a0, c0) => a0 + c0.value, 0);
-    const title = `${Localization.Messages.TotalCount} (${total} files)`;
+
+    const datasets = data.reduce((a0, c0) =>
+      a0.concat({
+        name: c0.type,
+        value: c0.count,
+      }), []);
+
+    const total = datasets.reduce((a0, c0) =>
+      a0 + c0.value, 0);
+
+    const title = `${MSG_TOTAL_COUNT} (${total} files)`;
     const graph = new PieGraph(title, datasets, {
       formatter: '<strong>{b}</strong>: {c} files ({d}%)',
     });
+
     this.overallCountGraph = graph;
-    return $('<div/>').addClass('col-6 m-0 p-0')
-      .append(graph.getGraphContainer());
+
+    const graphContainer = graph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
   }
 
   async refreshOverallSizeStats(data) {
+    const container = $('<div/>')
+      .addClass('col-6 m-0 p-0');
+
     if (this.overallSizeGraph) {
       this.overallSizeGraph.destroy();
     }
+
     const datasets = data.reduce((a0, c0) =>
       a0.concat({
         name: c0.type,
         value: c0.fileSize.total,
       }), []);
+
     const total = datasets.reduce((a0, c0) =>
       a0 + c0.value, 0);
-    const title = `${Localization.Messages.TotalSize} (${AppUtils.readableFileSize(total)})`;
+
+    const title = `${MSG_TOTAL_SIZE} (${AppUtils.readableFileSize(total)})`;
     const graph = new PieGraph(title, datasets, {
       formatter: (point) =>
         `<strong>${point.data.name}:</strong> ${AppUtils.readableFileSize(point.data.value)}`,
     });
+
     this.overallSizeGraph = graph;
-    return $('<div/>').addClass('col-6 m-0 p-0')
-      .append(graph.getGraphContainer());
+
+    const graphContainer = graph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
   }
 
   async refreshOverallStatusStats(data) {
+    const container = $('<div/>')
+      .addClass('col-6 m-0 p-0');
+
     if (this.overallStatusGraph) {
       this.overallStatusGraph.destroy();
     }
+
     const datasets = data.reduce((a0, c0) =>
       a0.concat({
         name: c0.overallStatus,
         value: c0.count,
       }), []);
+
     const total = datasets.reduce((a0, c0) =>
       a0 + c0.value, 0);
-    const title = `${Localization.Messages.WorkflowStatuses} (${total} processes)`;
+
+    const title = `${MSG_WORKFLOW_STATUSES} (${total} processes)`;
+
     const graph = new PieGraph(title, datasets, {
       formatter: '<strong>{b}</strong>: {c} counts ({d}%)',
     });
+
     this.overallStatusGraph = graph;
-    return $('<div/>').addClass('col-6 m-0 p-0')
-      .append(graph.getGraphContainer());
+
+    const graphContainer = graph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
   }
 
   async refreshMostRecentStats(data) {
+    const container = $('<div/>')
+      .addClass('col-6 m-0 p-0');
+
     if (this.mostRecentGraph) {
       this.mostRecentGraph.destroy();
     }
+
     if (!data || !data.length) {
       return undefined;
     }
-    const datasets = data.map(x => ({
+
+    const datasets = data.map((x) => ({
       ...x,
       name: x.basename,
       value: x.fileSize,
     }));
-    const title = `${Localization.Messages.MostRecentStats} (${data.length})`;
+
+    const title = `${MSG_MOST_RECENT_STATS} (${data.length})`;
     const graph = new PieGraph(title, datasets, {
       formatter: (point) => [
         `<strong>name:</strong> ${point.data.basename}`,
@@ -376,57 +471,110 @@ export default class StatsTab extends mxSpinner(BaseTab) {
         `<strong>type:</strong>: ${point.data.type}`,
       ].join('<br/>'),
     });
+
     this.mostRecentGraph = graph;
-    return $('<div/>').addClass('col-6 m-0 p-0')
-      .append(graph.getGraphContainer());
+
+    const graphContainer = graph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
   }
 
   async refreshAggregations(data) {
-    const container = this.tabContent.find(`#${ID_AGGREGATIONGRAPH}`);
-    container.children().remove();
-    if (!data) {
-      return container.append($('<p/>').addClass('text-center text-muted')
-        .append(Localization.Messages.NoData));
+    console.log('refreshAggregations', data);
+
+    const container = this.tabContent
+      .find(`#${ID_AGGREGATIONGRAPH}`);
+
+    container.children()
+      .remove();
+
+    if (data === undefined || Object.keys(data).length === 0) {
+      const noData = $('<p/>')
+        .addClass('text-center text-muted')
+        .append(MSG_NO_DATA);
+
+      return container.append(noData);
     }
-    const aggs = await Promise.all(Object.keys(data).map((type) =>
-      this.refreshAggregateByType(data[type], type)));
+
+    const aggsByTypes = [
+      {
+        type: AGGS_TYPE_KNOWNFACES,
+        title: MSG_TOP_KNOWN_FACES,
+        dataset: this.mergeAggs(data[Celeb], data[FaceMatch]),
+      },
+      {
+        type: AGGS_TYPE_LABELS,
+        title: MSG_TOP_LABELS,
+        dataset: this.mergeAggs(data[Label], data[CustomLabel]),
+      },
+      {
+        type: AGGS_TYPE_MODERATIONS,
+        title: MSG_TOP_MODERATIONS,
+        dataset: data[Moderation] || [],
+      },
+      {
+        type: AGGS_TYPE_KEYPHRASES,
+        title: MSG_TOP_KEYPHRASES,
+        dataset: data[Keyphrase] || [],
+      },
+      {
+        type: AGGS_TYPE_ENTITIES,
+        title: MSG_TOP_ENTITIES,
+        dataset: this.mergeAggs(data[Entity], data[CustomEntity]),
+      },
+    ];
+
+    const aggs = await Promise.all(aggsByTypes
+      .map((agg) =>
+        this.refreshAggregateByType(
+          agg.type,
+          agg.title,
+          agg.dataset
+        )));
+
     return container.append(aggs);
   }
 
-  async refreshAggregateByType(data, type) {
+  mergeAggs(arrayA = [], arrayB = []) {
+    const remained = [];
+
+    arrayB.forEach((b) => {
+      const found = arrayA.find((a) =>
+        a.name === b.name);
+      if (found) {
+        found.count = Math.max(found.count, b.count);
+      } else {
+        remained.push(b);
+      }
+    });
+
+    return arrayA.concat(remained);
+  }
+
+  async refreshAggregateByType(type, title, data) {
     if (this.aggsGraphs[type]) {
       this.aggsGraphs[type].destroy();
     }
+
+    const container = $('<div/>')
+      .addClass('col-6 m-0 p-0');
+
     const datasets = data.reduce((a0, c0) =>
       a0.concat({
         name: c0.name,
         value: c0.count,
       }), []);
-    let title;
-    switch (type) {
-      case AGGS_TYPE_KNOWNFACES:
-        title = Localization.Messages.TopKnownFaces;
-        break;
-      case AGGS_TYPE_LABELS:
-        title = Localization.Messages.TopLabels;
-        break;
-      case AGGS_TYPE_MODERATIONS:
-        title = Localization.Messages.TopModerations;
-        break;
-      case AGGS_TYPE_KEYPHRASES:
-        title = Localization.Messages.TopKeyphrases;
-        break;
-      case AGGS_TYPE_ENTITIES:
-        title = Localization.Messages.TopEntities;
-        break;
-      default:
-        title = undefined;
-    }
+
     const graph = new PieGraph(title, datasets, {
       formatter: '<strong>{b}</strong>: {c} documents',
     });
+
     this.aggsGraphs[type] = graph;
-    return $('<div/>').addClass('col-6 m-0 p-0')
-      .append(graph.getGraphContainer());
+
+    const graphContainer = graph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
   }
 }

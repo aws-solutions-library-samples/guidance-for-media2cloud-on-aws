@@ -1,17 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  S3Client,
+  PutBucketCorsCommand,
+  PutBucketNotificationConfigurationCommand,
+} = require('@aws-sdk/client-s3');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
 
-const ExpectedBucketOwner = process.env.ENV_EXPECTED_BUCKET_OWNER;
+const EXPECTED_BUCKET_OWNER = process.env.ENV_EXPECTED_BUCKET_OWNER;
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
+
+class X0 extends mxBaseResponse(class {}) {}
 
 /**
  * @function SetCORS
@@ -19,7 +24,6 @@ const ExpectedBucketOwner = process.env.ENV_EXPECTED_BUCKET_OWNER;
  * @param {object} context
  */
 exports.SetCORS = async (event, context) => {
-  class X0 extends mxBaseResponse(class {}) {}
   const x0 = new X0(event, context);
   try {
     if (x0.isRequestType('Delete')) {
@@ -35,21 +39,22 @@ exports.SetCORS = async (event, context) => {
       'AllowedHeaders',
       'ExposeHeaders',
       'MaxAgeSeconds',
-    ].filter(x => data[x] === undefined);
+    ].filter((x) =>
+      data[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing ${missing.join(', ')}`);
+      throw new M2CException(`missing ${missing.join(', ')}`);
     }
 
-    const s3 = new AWS.S3({
-      apiVersion: '2006-03-01',
+    const s3Client = xraysdkHelper(new S3Client({
       computeChecksums: true,
-      signatureVersion: 'v4',
-      s3DisableBodySigning: false,
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    await s3.putBucketCors({
+      applyChecksum: true,
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new PutBucketCorsCommand({
       Bucket: data.Bucket,
-      ExpectedBucketOwner,
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
       CORSConfiguration: {
         CORSRules: [
           {
@@ -57,21 +62,30 @@ exports.SetCORS = async (event, context) => {
             AllowedMethods: data.AllowedMethods,
             AllowedHeaders: data.AllowedHeaders,
             ExposeHeaders: data.ExposeHeaders,
-            MaxAgeSeconds: Number.parseInt(data.MaxAgeSeconds, 10),
+            MaxAgeSeconds: Number(data.MaxAgeSeconds),
           },
         ],
       },
-    }).promise();
-    x0.storeResponseData('Status', 'SUCCESS');
-    return x0.responseData;
+    });
+
+    return s3Client.send(command)
+      .then(() => {
+        x0.storeResponseData('Status', 'SUCCESS');
+        return x0.responseData;
+      });
   } catch (e) {
-    e.message = `SetCORS: ${e.code} ${e.message}`;
+    console.error(
+      'ERR:',
+      'SetCORS:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
     throw e;
   }
 };
 
 exports.ConfigureBucketNotification = async (event, context) => {
-  class X0 extends mxBaseResponse(class {}) {}
   const x0 = new X0(event, context);
   try {
     if (x0.isRequestType('Delete')) {
@@ -81,31 +95,38 @@ exports.ConfigureBucketNotification = async (event, context) => {
 
     const data = {
       ...event.ResourceProperties.Data,
-      ExpectedBucketOwner,
+      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
     };
     const missing = [
       'Bucket',
       'NotificationConfiguration',
-    ].filter(x => data[x] === undefined);
+    ].filter((x) =>
+      data[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing ${missing.join(', ')}`);
+      throw new M2CException(`missing ${missing.join(', ')}`);
     }
 
-    const s3 = new AWS.S3({
-      apiVersion: '2006-03-01',
+    const s3Client = xraysdkHelper(new S3Client({
       computeChecksums: true,
-      signatureVersion: 'v4',
-      s3DisableBodySigning: false,
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    await s3.putBucketNotificationConfiguration(data)
-      .promise()
-      .then((res) =>
-        console.log(JSON.stringify(res, null, 2)));
-    x0.storeResponseData('Status', 'SUCCESS');
-    return x0.responseData;
+      applyChecksum: true,
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new PutBucketNotificationConfigurationCommand(data);
+    return s3Client.send(command)
+      .then(() => {
+        x0.storeResponseData('Status', 'SUCCESS');
+        return x0.responseData;
+      });
   } catch (e) {
-    e.message = `ConfigureBucketNotification: ${e.code} ${e.message}`;
+    console.error(
+      'ERR:',
+      'ConfigureBucketNotification:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
     throw e;
   }
 };

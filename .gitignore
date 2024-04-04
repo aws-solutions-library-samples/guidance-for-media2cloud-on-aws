@@ -40,6 +40,7 @@ not-used
 dist
 .vscode
 doc
+# package-lock.json
 global-s3-assets
 regional-s3-assets
 open-source

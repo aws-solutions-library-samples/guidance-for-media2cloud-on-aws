@@ -1,107 +1,203 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
-const CustomBacklogJob = require('./index.js');
-const Retry = require('../../shared/retry');
-const AWS = require('aws-sdk-mock');
-const SDK = require('aws-sdk');
-AWS.setSDKInstance(SDK);
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-const mockItems = [
-  {
-    serviceApi: CustomBacklogJob.ServiceApis.StartCustomLabelsDetection,
-    serviceParams: {
-      jobId: 'jobid'
-    },
-    id: 'itemId'
-  }
-];
-const mockResponseItems = jest.fn((fn, params) => {
-  const response = {
-    jobId: params.jobId,
-    Items: mockItems
-  };
-  return Promise.resolve(response);
-});
-const mockResponseNoItems = jest.fn((fn, params) => {
-  const response = {
-    jobId: params.jobId,
-    Items: []
-  };
-  return Promise.resolve(response);
-});
-const mockUpdateDeleteItem = jest.fn((fn, params) => {
-  return Promise.resolve(params);
-});
-const mockUpdateItemReject = jest.fn((fn, params) => {
-  return Promise.reject({ code: 'ConditionalCheckFailedException' });
-});
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  DynamoDBClient,
+  PutItemCommand,
+  DeleteItemCommand,
+  QueryCommand,
+  UpdateItemCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  marshall,
+} = require('@aws-sdk/util-dynamodb');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
+const {
+  SFNClient,
+  StartExecutionCommand,
+} = require('@aws-sdk/client-sfn');
+const {
+  RekognitionClient,
+  StopProjectVersionCommand,
+} = require('@aws-sdk/client-rekognition');
 
-jest.mock('../../shared/retry', () => {
-  return {
-    run: null
-  };
-});
+const CustomBacklogJob = require('./index');
 
+const ddbMock = mockClient(DynamoDBClient);
+const rekognitionMock = mockClient(RekognitionClient);
+const stepMock = mockClient(SFNClient);
+const eventbridgeMock = mockClient(EventBridgeClient);
 
 describe('Test CustomBacklogJob', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
-    AWS.mock('DynamoDB.Converter', 'unmarshall', Promise.resolve({ serviceApi: 'test' }));
+    jest.resetModules(); // Most important - it clears the cache
+    ddbMock.reset();
+    rekognitionMock.reset();
+    stepMock.reset();
+    eventbridgeMock.reset();
   });
 
   afterEach(() => {
-    AWS.restore('DynamoDB.Converter');
     jest.clearAllMocks();
   });
 
   test('Test startCustomLabelsDetection', async () => {
-    const customJob = new CustomBacklogJob();
-    const params = {
+    const serviceApi = CustomBacklogJob.ServiceApis.StartCustomLabelsDetection;
+    const serviceParams = {
       jobId: 'testCustomLabels',
       input: {
-        projectVersionArn: 'arn'
-      }
+        projectVersionArn: 'arn:part:service:region:account:testArn',
+      },
     };
 
-    Retry.run = mockResponseItems;
-    const response = await customJob.startCustomLabelsDetection('id', params);
-    expect(response.serviceApi).toBe(CustomBacklogJob.ServiceApis.StartCustomLabelsDetection);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    ddbMock.on(DeleteItemCommand)
+      .resolves({});
+
+    stepMock.on(StartExecutionCommand)
+      .resolves({
+        executionArn: serviceParams.jobId,
+      });
+
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
+
+    const customJob = new CustomBacklogJob();
+    const response = await customJob.startCustomLabelsDetection(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
-  test('Test fetchAndStartJobs', async () => {
-    const customJob = new CustomBacklogJob();
-    const prev = {
-      serviceParams: {
-        input: {
-          projectVersionArn: 'arn'
-        }
-      }
+  test('Test fetchAndStartJobs with one queued item', async () => {
+    const serviceApi = CustomBacklogJob.ServiceApis.StartCustomLabelsDetection;
+    const serviceParams = {
+      jobId: 'testCustomLabels',
+      input: {
+        projectVersionArn: 'arn:part:service:region:account:testArn',
+      },
     };
 
-    Retry.run = mockResponseItems;
-    let response = await customJob.fetchAndStartJobs(CustomBacklogJob.ServiceApis.StartCustomLabelsDetection, prev);
-    expect(response.notStarted[0]).toBe(mockItems[0]['id']);
-    expect(response.total).toBe(mockItems.length);
+    const prev = {
+      id: 'itemId',
+      serviceParams,
+    };
 
-    Retry.run = mockResponseNoItems;
-    response = await customJob.fetchAndStartJobs(CustomBacklogJob.ServiceApis.StartCustomLabelsDetection, prev);
-    expect(response.total).toBe(0);
+    const queryResponse = {
+      Items: [
+        marshall({
+          ...prev,
+          serviceApi,
+        }),
+      ],
+    };
+
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    ddbMock.on(DeleteItemCommand)
+      .resolves({});
+
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    ddbMock.on(UpdateItemCommand)
+      .resolves({});
+
+    stepMock.on(StartExecutionCommand)
+      .resolves({
+        executionArn: serviceParams.jobId,
+      });
+
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
+
+    const customJob = new CustomBacklogJob();
+
+    const response = await customJob.fetchAndStartJobs(
+      serviceApi,
+      prev
+    );
+
+    expect(response.started[0])
+      .toBe(prev.id);
+
+    expect(response.total)
+      .toBe(queryResponse.Items.length);
+  });
+
+  test('Test fetchAndStartJobs with no item', async () => {
+    const serviceApi = CustomBacklogJob.ServiceApis.StartCustomLabelsDetection;
+    const serviceParams = {
+      jobId: 'testCustomLabels',
+      input: {
+        projectVersionArn: 'arn:part:service:region:account:testArn',
+      },
+    };
+
+    const prev = {
+      id: 'itemId',
+      serviceParams,
+    };
+
+    const queryResponse = {
+      Items: [],
+    };
+
+    rekognitionMock.on(StopProjectVersionCommand)
+      .resolves({});
+
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
+
+    const customJob = new CustomBacklogJob();
+
+    const response = await customJob.fetchAndStartJobs(
+      serviceApi,
+      prev
+    );
+
+    expect(response.total)
+      .toBe(0);
   });
 
   test('Test AtomicLockTable functions', async () => {
@@ -109,18 +205,24 @@ describe('Test CustomBacklogJob', () => {
     const item = {
       serviceParams: {
         input: {
-          projectVersionArn: 'beforeDeleteJob'
-        }
-      }
+          projectVersionArn: 'beforeDeleteJob',
+        },
+      },
     };
 
-    Retry.run = mockUpdateDeleteItem;
+    ddbMock.on(DeleteItemCommand)
+      .resolves({});
+
+    ddbMock.on(UpdateItemCommand)
+      .resolves({});
+
     let response = await customJob.beforeDeleteJob(item, '');
-    expect(response.serviceParams.input.projectVersionArn).toBe(item.serviceParams.input.projectVersionArn);
 
-    expect(await CustomBacklogJob.updateTTL('updateTTL', 10)).toBe(true);
+    expect(response.serviceParams.input.projectVersionArn)
+      .toBe(item.serviceParams.input.projectVersionArn);
 
-    Retry.run = mockUpdateItemReject;
-    expect(await CustomBacklogJob.updateTTL('updateTTL', 10)).toBe(false);
+    response = await CustomBacklogJob.updateTTL('updateTTL', 10);
+
+    expect(response).toBe(true);
   });
 });

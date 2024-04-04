@@ -62,14 +62,13 @@ Resources:
         Properties:
             FunctionName: downstream-collect-results
             Description: (Media2Cloud Tutorial) Downstream Process state machine lambda
-            Runtime: nodejs16.x
+            Runtime: nodejs20.x
             MemorySize: 256
             Timeout: 900
             Handler: index.handler
             Role: !GetAtt DownstreamCollectResultsRole.Arn
             Code:
                 ZipFile: |
-                    const AWS = require('aws-sdk');
                     exports.handler = async (event, context) => {
                         console.log(JSON.stringify(event, null, 2));
                         return event;

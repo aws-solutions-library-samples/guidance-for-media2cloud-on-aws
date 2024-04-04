@@ -3,7 +3,7 @@
     "States": {
         "Prepare analysis": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisMainLambda.Arn}",
             "Parameters": {
                 "operation": "prepare-analysis",
                 "executionArn.$": "$$.Execution.Id",
@@ -42,7 +42,7 @@
                         },
                         "Start video analysis and wait": {
                             "Type": "Task",
-                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Resource": "arn:aws:states:::states:startExecution.sync:2",
                             "Parameters": {
                                 "Input": {
                                     "uuid.$": "$.uuid",
@@ -51,7 +51,7 @@
                                     "input.$": "$.input",
                                     "data.$": "$.data"
                                 },
-                                "StateMachineArn": "${VideoStateMachine}"
+                                "StateMachineArn": "${AnalysisVideoStateMachine}"
                             },
                             "End": true
                         },
@@ -76,7 +76,7 @@
                         },
                         "Start audio analysis and wait": {
                             "Type": "Task",
-                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Resource": "arn:aws:states:::states:startExecution.sync:2",
                             "Parameters": {
                                 "Input": {
                                     "uuid.$": "$.uuid",
@@ -85,7 +85,7 @@
                                     "input.$": "$.input",
                                     "data.$": "$.data"
                                 },
-                                "StateMachineArn": "${AudioStateMachine}"
+                                "StateMachineArn": "${AnalysisAudioStateMachine}"
                             },
                             "End": true
                         },
@@ -110,7 +110,7 @@
                         },
                         "Start image analysis and wait": {
                             "Type": "Task",
-                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Resource": "arn:aws:states:::states:startExecution.sync:2",
                             "Parameters": {
                                 "Input": {
                                     "uuid.$": "$.uuid",
@@ -119,7 +119,7 @@
                                     "input.$": "$.input",
                                     "data.$": "$.data"
                                 },
-                                "StateMachineArn": "${ImageStateMachine}"
+                                "StateMachineArn": "${AnalysisImageStateMachine}"
                             },
                             "End": true
                         },
@@ -144,7 +144,7 @@
                         },
                         "Start document analysis and wait": {
                             "Type": "Task",
-                            "Resource": "arn:aws:states:::states:startExecution.sync",
+                            "Resource": "arn:aws:states:::states:startExecution.sync:2",
                             "Parameters": {
                                 "Input": {
                                     "uuid.$": "$.uuid",
@@ -153,7 +153,7 @@
                                     "input.$": "$.input",
                                     "data.$": "$.data"
                                 },
-                                "StateMachineArn": "${DocumentStateMachine}"
+                                "StateMachineArn": "${AnalysisDocumentStateMachine}"
                             },
                             "End": true
                         },
@@ -167,14 +167,14 @@
         },
         "Collect analysis results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisMainLambda.Arn}",
             "Parameters": {
                 "operation": "collect-analysis-results",
                 "status": "NOT_STARTED",
                 "progress": 0,
                 "parallelStateOutputs.$": "$"
             },
-            "Next": "Analysis completed",
+            "Next": "Run analysis post process and wait",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -186,9 +186,25 @@
                 }
             ]
         },
+        "Run analysis post process and wait": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
+            "Parameters": {
+                "StateMachineArn": "${AnalysisPostProcessStateMachine.Arn}",
+                "Input": {
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
+            },
+            "OutputPath": "$.Output",
+            "Next": "Analysis completed"
+        },
         "Analysis completed": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisMainLambda.Arn}",
             "Parameters": {
                 "operation": "job-completed",
                 "uuid.$": "$.uuid",

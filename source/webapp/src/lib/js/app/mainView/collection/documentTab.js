@@ -6,9 +6,15 @@ import DocumentCategorySlideComponent from './document/documentCategorySlideComp
 import DocumentPreviewSlideComponent from './document/documentPreviewSlideComponent.js';
 import BaseMediaTab from './base/baseMediaTab.js';
 
+const {
+  Messages: {
+    DocumentTab: TITLE,
+  },
+} = Localization;
+
 export default class DocumentTab extends BaseMediaTab {
-  constructor(defaultTab, plugins) {
-    super(defaultTab, Localization.Messages.DocumentTab, plugins);
+  constructor(options) {
+    super(TITLE, options);
     this.$categorySlideComponent = new DocumentCategorySlideComponent();
     this.$previewSlideComponent = new DocumentPreviewSlideComponent();
   }

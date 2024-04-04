@@ -5,9 +5,15 @@ import Localization from '../../../../../../shared/localization.js';
 import AnalysisTypes from '../../../../../../shared/analysis/analysisTypes.js';
 import BaseComprehendTab from './baseComprehendTab.js';
 
+const {
+  Messages: {
+    KeyphraseTab: TITLE,
+  },
+} = Localization;
+
 export default class KeyphraseTab extends BaseComprehendTab {
-  constructor(previewComponent, defaultTab = false) {
-    super(Localization.Messages.KeyphraseTab, previewComponent, defaultTab);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
   }
 
   async createContent() {

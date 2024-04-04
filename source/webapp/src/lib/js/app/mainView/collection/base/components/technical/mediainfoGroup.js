@@ -4,24 +4,48 @@
 import Localization from '../../../../../shared/localization.js';
 import DescriptionList from '../../descriptionList.js';
 
+const {
+  Messages: {
+    MediaInfoGroup: GROUP_TITLE,
+  },
+} = Localization;
+
 export default class MediaInfoGroup {
   static createGroup(mediainfo) {
     if (!mediainfo) {
       return undefined;
     }
+
     const helper = new DescriptionList({
       dt: 'col-sm-3',
       dd: 'col-sm-9',
     });
-    const group = helper.createDetailGroup(Localization.Messages.MediaInfoGroup);
+
+    const group = helper.createDetailGroup(GROUP_TITLE);
     const tracks = (mediainfo.media || {}).track || [];
+
     tracks.forEach((track) => {
       const subGroup = helper.createDetailGroup(track.$.type, 1);
       const dl = helper.createTableList();
-      const names = Object.keys(track).filter(x =>
-        !(typeof track[x] === 'object' || Array.isArray(track[x]) || x === 'storageClass'));
-      names.forEach(name =>
-        helper.appendTableList(dl, track, name));
+
+      Object.keys(track).forEach((name) => {
+        if (
+          (typeof track[name] === 'object') ||
+          (Array.isArray(track[name])) ||
+          (name === 'storageClass')
+        ) {
+          return;
+        }
+
+        // converting duration to millisecond format
+        const _track = track;
+        if (name === 'duration' || name === 'sourceDuration') {
+          _track[name] *= 1000;
+        }
+
+        helper.appendTableList(dl, _track, name);
+      });
+
       subGroup.append(dl);
       group.append(subGroup);
     });

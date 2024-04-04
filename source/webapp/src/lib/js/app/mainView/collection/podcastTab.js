@@ -6,9 +6,15 @@ import PodcastCategorySlideComponent from './podcast/podcastCategorySlideCompone
 import PodcastPreviewSlideComponent from './podcast/podcastPreviewSlideComponent.js';
 import BaseMediaTab from './base/baseMediaTab.js';
 
+const {
+  Messages: {
+    PodcastTab: TITLE,
+  },
+} = Localization;
+
 export default class PodcastTab extends BaseMediaTab {
-  constructor(defaultTab, plugins) {
-    super(defaultTab, Localization.Messages.PodcastTab, plugins);
+  constructor(options) {
+    super(TITLE, options);
     this.$categorySlideComponent = new PodcastCategorySlideComponent();
     this.$previewSlideComponent = new PodcastPreviewSlideComponent();
   }

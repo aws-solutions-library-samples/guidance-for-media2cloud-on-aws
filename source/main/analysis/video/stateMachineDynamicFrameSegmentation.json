@@ -1,0 +1,142 @@
+{
+    "Comment": "frame segmentation using Amazon Rekognition Shot Segment, perceptual hash distance",
+    "StartAt": "Use frame segmentation",
+    "States": {
+        "Use frame segmentation": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.input",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.segment",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.segment",
+                            "BooleanEquals": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "BooleanEquals": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "NumericEquals": 9999
+                        }
+                    ],
+                    "Next": "Prepare segment detection"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.input",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.segment",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.segment",
+                            "BooleanEquals": false
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "BooleanEquals": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "NumericEquals": 9999
+                        }
+                    ],
+                    "Next": "Dynamically select frames"
+                }
+            ],
+            "Default": "Frame segmentation completed"
+        },
+        "Prepare segment detection": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "prepare-segment-detection",
+                "uuid.$": "$.uuid",
+                "input.$": "$.input",
+                "data.$": "$.data",
+                "status": "NOT_STARTED",
+                "progress": 0
+            },
+            "Next": "Run segment detection and wait"
+        },
+        "Run segment detection and wait": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
+            "Parameters": {
+                "StateMachineArn": "${VideoBasedDetectionStateMachine.Arn}",
+                "Input": {
+                    "operation": "start-detection-iterator",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "data.$": "$.data"
+                }
+            },
+            "OutputPath": "$.Output",
+            "Next": "Dynamically select frames"
+        },
+        "Dynamically select frames": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoFrameSegmentationLambda.Arn}",
+            "Parameters": {
+                "operation": "select-segment-frames",
+                "uuid.$": "$.uuid",
+                "input.$": "$$.Execution.Input.input",
+                "data.$": "$.data",
+                "status": "NOT_STARTED",
+                "progress": 0
+            },
+            "Next": "More frames?"
+        },
+        "More frames?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Frame segmentation completed"
+                }
+            ],
+            "Default": "Dynamically select frames"
+        },
+        "Frame segmentation completed": {
+            "Type": "Succeed"
+        }
+    }
+}

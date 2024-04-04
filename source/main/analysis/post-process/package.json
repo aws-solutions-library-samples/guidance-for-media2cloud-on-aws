@@ -1,0 +1,20 @@
+{
+  "name": "analysis-post-process",
+  "version": "3.0.0",
+  "description": "Analysis Post Process nested state machine lambda to run post processing logics",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "pretest": "npm install",
+    "test": "mocha *.spec.js",
+    "build:clean": "rm -rf dist && mkdir -p dist",
+    "build:copy": "cp -rv index.js package.json states dist/",
+    "build:install": "cd dist && npm install --omit=dev",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "author": "aws-mediaent-solutions",
+  "devDependencies": {
+    "core-lib": "file:../../../layers/core-lib"
+  }
+}

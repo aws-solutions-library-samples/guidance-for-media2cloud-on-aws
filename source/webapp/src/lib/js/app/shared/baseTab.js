@@ -2,52 +2,62 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import AppUtils from './appUtils.js';
+import ObserverHelper from './observerHelper.js';
 
 export default class BaseTab {
-  constructor(title, params) {
+  constructor(title, options = {}) {
+    this.$id = AppUtils.randomHexstring();
     this.$ids = {
-      tabId: `tab-${AppUtils.randomHexstring()}`,
-      contentId: `tabcontent-${AppUtils.randomHexstring()}`,
+      tabId: `tab-${this.$id}`,
+      contentId: `tabcontent-${this.$id}`,
     };
     this.$title = title;
+    this.$hashtag = options.hashtag;
 
-    const anchor = $('<a/>').addClass('nav-link')
+    const anchor = $('<a/>')
+      .addClass('nav-link')
       .attr('id', this.tabId)
       .attr('href', `#${this.contentId}`)
       .attr('role', 'tab')
       .attr('data-toggle', 'tab')
-      .attr('aria-controls', this.$contentId)
-      .attr('aria-selected', !!(params.selected))
-      .css('font-size', params.fontSize || '1.2rem')
-      .html(this.$title);
-    this.$tabLink = $('<li/>').addClass('nav-item')
+      .attr('aria-controls', this.contentId)
+      .attr('aria-selected', false)
+      .css('font-size', options.fontSize || '1.2rem')
+      .html(this.title);
+
+    this.$tabLink = $('<li/>')
+      .addClass('nav-item')
       .append(anchor);
 
-    this.$tabContent = $('<div/>').addClass('tab-pane fade')
+    this.$tabContent = $('<div/>')
+      .addClass('tab-pane fade')
       .attr('id', this.contentId)
       .attr('role', 'tabpanel')
       .attr('aria-labelledby', this.tabId);
 
-    if (params.selected) {
-      anchor.addClass('active');
-      this.$tabContent.addClass('show active');
-    }
+    this.tabContent.ready(() => {
+      ObserverHelper.setHashOnVisible(
+        this.tabContent,
+        this.hashtag
+      );
+    });
 
-    anchor.off('shown.bs.tab').on('shown.bs.tab', async (event) => {
+    anchor.on('shown.bs.tab', async (event) => {
       const target = $(event.target);
       target.parent().siblings()
         .children('.nav-link')
         .removeClass('show active');
-      target.closest('[data-role="custom-tab-group"]')
-        .siblings()
-        .find('.nav-link')
-        .removeClass('show active');
       if (target.prop('id') === this.tabId) {
         await this.show();
       }
+      return true;
     });
 
     this.$initialized = false;
+  }
+
+  get id() {
+    return this.$id;
   }
 
   get ids() {
@@ -55,11 +65,11 @@ export default class BaseTab {
   }
 
   get tabId() {
-    return this.$ids.tabId;
+    return `tab-${this.id}`;
   }
 
   get contentId() {
-    return this.$ids.contentId;
+    return `tabcontent-${this.id}`;
   }
 
   get title() {
@@ -68,7 +78,10 @@ export default class BaseTab {
 
   set title(val) {
     this.$title = val;
-    this.tabLink.children('a.nav-link').html(this.$title);
+
+    this.tabLink
+      .children('a.nav-link')
+      .html(this.$title);
   }
 
   get tabLink() {
@@ -87,20 +100,41 @@ export default class BaseTab {
     this.$initialized = val;
   }
 
-  async show() {
+  get hashtag() {
+    return this.$hashtag;
+  }
+
+  parseHashtag(hashtag = '') {
+    let tag = hashtag;
+
+    if (tag[0] === '#') {
+      tag = tag.slice(1);
+    }
+
+    const components = tag.split('/');
+    return {
+      current: components[0],
+      next: components.slice(1).join('/'),
+    };
+  }
+
+  async show(hashtag) {
     this.initialized = true;
+
+    this.tabLink
+      .children('a')
+      .addClass('show active');
+
+    this.tabContent.tab('show');
+
     return this.tabContent;
   }
 
   async hide() {
-    this.tabContent.children().remove();
-    this.initialized = false;
-  }
+    this.tabContent
+      .children()
+      .remove();
 
-  async showIfActive() {
-    if (this.tabContent.hasClass('active')) {
-      return this.show();
-    }
-    return this;
+    this.initialized = false;
   }
 }

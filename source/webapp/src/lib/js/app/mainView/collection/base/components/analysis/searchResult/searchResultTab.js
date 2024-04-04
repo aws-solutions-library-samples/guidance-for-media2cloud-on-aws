@@ -2,121 +2,181 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../../../../shared/localization.js';
+import AnalysisTypes from '../../../../../../shared/analysis/analysisTypes.js';
 import AppUtils from '../../../../../../shared/appUtils.js';
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
-import AnalysisTypes from '../../../../../../shared/analysis/analysisTypes.js';
-import ApiHelper from '../../../../../../shared/apiHelper.js';
+
+const {
+  Messages: {
+    SearchResultTab: TITLE,
+    SearchResultDesc: MSG_SEARCH_RESULT_DESC,
+    KnownFaces: MSG_KNOWN_FACES,
+    LabelsModeration: MSG_LABEL_MODERATION,
+    TranscriptPhrasesEntities: MSG_TRANSCRIPT_PHRASE_ENTITIES,
+    VisualText: MSG_VISUAL_TEXT,
+    ContentAttributes: MSG_CONTENT_ATTRIBUTES,
+    NoData: MSG_NO_DATA,
+    Category: MSG_CATEGORY,
+  },
+} = Localization;
 
 const COL_TAB = 'col-11';
-const INDEX_INGEST = 'ingest';
+
+const {
+  Rekognition: {
+    Celeb,
+    FaceMatch,
+    Label,
+    CustomLabel,
+    Moderation,
+    Text,
+  },
+  Comprehend: {
+    Keyphrase,
+    Entity,
+    CustomEntity,
+  },
+  Transcribe,
+  Textract,
+} = AnalysisTypes;
+
+const ANALYSIS_FIELDS = [
+  Celeb,
+  FaceMatch,
+  Label,
+  CustomLabel,
+  Moderation,
+  Text,
+  Textract,
+  Transcribe,
+  Keyphrase,
+  Entity,
+  CustomEntity,
+];
 
 export default class SearchResultTab extends BaseAnalysisTab {
-  constructor(previewComponent, defaultTab = false) {
-    super(Localization.Messages.SearchResultTab, previewComponent, defaultTab);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
   }
 
   async createContent() {
-    const col = $('<div/>').addClass(`${COL_TAB} my-4 max-h36r`);
-    setTimeout(async () => {
+    const container = $('<div/>')
+      .addClass(COL_TAB)
+      .addClass('my-4 max-h36r');
+
+    container.ready(async () => {
       this.loading(true);
-      await this.refreshSearchResults(col);
+      await this.refreshSearchResults(container);
       return this.loading(false);
-    }, 10);
-    return col;
+    });
+    return container;
   }
 
   async refreshSearchResults(container) {
     container.children().remove();
-    const searchResults = this.previewComponent.searchResults;
-    if ((searchResults || {}.indices || []).length === 0) {
-      return container.append($('<span/>').addClass('lead')
-        .append(Localization.Messages.NoData));
+
+    const fields = (this.previewComponent.searchResults || {}).fields || {};
+
+    if (fields.length === 0) {
+      const message = $('<span/>')
+        .addClass('lead')
+        .append(MSG_NO_DATA);
+      container.append(message);
+
+      return container;
     }
-    const table = $('<table/>').addClass('table lead-xs');
+
+    const table = $('<table/>')
+      .addClass('table lead-xs');
+    container.append(table);
+
     const headers = [
-      Localization.Messages.Category,
-      Localization.Messages.SearchResultDesc,
+      MSG_CATEGORY,
+      MSG_SEARCH_RESULT_DESC,
     ].map((x) =>
-      $('<th/>').addClass('align-middle text-left b-300')
+      $('<th/>')
+        .addClass('align-middle text-left b-300')
         .attr('scope', 'col')
         .append(x));
     headers[0].addClass('col-2');
+
     table.append($('<thead/>')
-      .append($('<tr/>').append(headers)));
+      .append($('<tr/>')
+        .append(headers)));
+
     const tbody = $('<tbody/>');
     table.append(tbody);
 
-    if (!searchResults.indices.length) {
-      return container.append($('<span/>').addClass('lead')
-        .append(Localization.Messages.SearchQueryFailed));
-    }
-
-    /* search in document */
-    const indices = searchResults.indices.filter((x) =>
-      x !== INDEX_INGEST)
-      .reduce((a0, c0) => ({
-        ...a0,
-        [c0]: true,
-      }), {});
-    const uuid = this.previewComponent.media.uuid;
-    const results = (await ApiHelper.searchInDocument(uuid, {
-      ...indices,
-      query: searchResults.query,
-      exact: searchResults.exact,
-    }).then((res) => res.indices)
-      .catch(() => undefined)) || {};
-
     /* known faces */
     const knownFaces = this.makeTableRowItem([
-      AnalysisTypes.Rekognition.Celeb,
-      AnalysisTypes.Rekognition.FaceMatch,
-    ], results, Localization.Messages.KnownFaces);
+      Celeb,
+      FaceMatch,
+    ], fields, MSG_KNOWN_FACES);
     tbody.append(knownFaces);
+
     /* labels / moderation */
     const labelModerations = this.makeTableRowItem([
       AnalysisTypes.Rekognition.Label,
       AnalysisTypes.Rekognition.CustomLabel,
       AnalysisTypes.Rekognition.Moderation,
-    ], results, Localization.Messages.LabelsModeration);
+    ], fields, MSG_LABEL_MODERATION);
     tbody.append(labelModerations);
+
     /* transcribe / phrases / entities */
     const phrases = this.makeTableRowItemSpeechText([
       AnalysisTypes.Transcribe,
       AnalysisTypes.Comprehend.Keyphrase,
       AnalysisTypes.Comprehend.Entity,
       AnalysisTypes.Comprehend.CustomEntity,
-    ], results, Localization.Messages.TranscriptPhrasesEntities);
+    ], fields, MSG_TRANSCRIPT_PHRASE_ENTITIES);
     tbody.append(phrases);
+
     /* visual text */
     const texts = this.makeTableRowItem([
-      AnalysisTypes.Rekognition.Text,
-    ], results, Localization.Messages.VisualText);
+      Text,
+    ], fields, MSG_VISUAL_TEXT);
     tbody.append(texts);
+
     /* textract */
     const textract = this.makeTableRowItemTextract(
-      results[AnalysisTypes.Textract],
-      Localization.Messages.VisualText
+      fields[Textract],
+      MSG_VISUAL_TEXT
     );
     tbody.append(textract);
+
     /* content attribute */
-    if (searchResults.indices.indexOf(INDEX_INGEST) >= 0) {
+    const metadataFields = Object.keys(fields)
+      .filter((x) =>
+        !ANALYSIS_FIELDS.includes(x));
+
+    if (metadataFields.length > 0) {
+      const metadata = this.makeTableRowItemContentMetadata(
+        metadataFields,
+        fields,
+        MSG_CONTENT_ATTRIBUTES
+      );
+
+      tbody.append(metadata);
+    }
+    /*
+    if (indices.indexOf(INDEX_INGEST) >= 0) {
       const data = {
         basename: this.previewComponent.media.basename,
         ...this.previewComponent.media.attributes,
       };
       const attributes = this.makeTableRowItemContentMetadata(
         data,
-        Localization.Messages.ContentAttributes
+        MSG_CONTENT_ATTRIBUTES
       );
       tbody.append(attributes);
     }
+    */
 
-    container.append(table);
     return container;
   }
 
-  makeTableRowItem(categories, searchResults, title) {
-    const merged = this.mergeResults(categories, searchResults);
+  makeTableRowItem(categories, fields, title) {
+    const merged = this.mergeResults(categories, fields);
     if (!merged.results.length) {
       return undefined;
     }
@@ -124,10 +184,10 @@ export default class SearchResultTab extends BaseAnalysisTab {
       return this.makeTableRowItemNoTimecode(merged, title);
     }
     const content = merged.results.map((x) => {
-      const track = this.registerTimecodeTrack(x);
       const section = $('<section/>')
         .addClass('mb-2');
-      const toggle = this.makeTrackToggle(track.label);
+
+      const toggle = this.makeTrackToggle(x);
       const btns = x.timecodes.map((timecode) =>
         this.makeTimecodeBtn(timecode));
       return section.append(toggle)
@@ -141,20 +201,25 @@ export default class SearchResultTab extends BaseAnalysisTab {
     return tr;
   }
 
-  makeTrackToggle(name) {
+  makeTrackToggle(item) {
     const id = `toggle-${AppUtils.randomHexstring()}`;
     const input = $('<input/>').addClass('custom-control-input')
       .attr('type', 'checkbox')
-      .attr('id', id);
+      .attr('id', id)
+      .data('registered', false);
     const label = $('<label/>').addClass('custom-control-label lead-xs b-300')
       .attr('for', id)
-      .append(name);
+      .append(item.name);
     const toggle = $('<div/>').addClass('custom-control custom-switch mr-2 mb-2')
       .append(input)
       .append(label);
     input.off('click').on('click', async () => {
       const checked = input.prop('checked');
-      this.previewComponent.trackToggle(name, checked);
+      const registered = input.data('registered');
+      if (!registered && checked) {
+        this.registerTimecodeTrack(item);
+      }
+      this.previewComponent.trackToggle(item.name, checked);
     });
     return toggle;
   }
@@ -168,6 +233,7 @@ export default class SearchResultTab extends BaseAnalysisTab {
       cue.size = 50;
       return cue;
     });
+
     return this.previewComponent.createTrackFromCues(result.name, cues);
   }
 
@@ -194,37 +260,47 @@ export default class SearchResultTab extends BaseAnalysisTab {
     return btn;
   }
 
-  mergeResults(categories, searchResults) {
+  mergeResults(types, fields) {
     const matched = {};
-    let containTimecodes = false;
-    for (let category of categories) {
-      const keys = Object.keys(searchResults[category] || {});
-      while (keys.length) {
-        const key = keys.shift();
-        if (!matched[key]) {
-          matched[key] = {};
-        }
-        const timecodes = searchResults[category][key].timecodes;
-        if (timecodes) {
-          matched[key].timecodes = [
-            ...(matched[key].timecodes || []),
-            ...timecodes,
-          ];
-          containTimecodes = true;
-        }
+    let timecodeBased = false;
+
+    types.forEach((type) => {
+      const hits = (fields[type] || {}).hits;
+      if (hits === undefined || hits.length === 0) {
+        return;
       }
-    }
+
+      /* timecode based */
+      if (hits[0].timecodes) {
+        timecodeBased = true;
+      }
+
+      hits.forEach((hit) => {
+        if (matched[hit.name] === undefined) {
+          matched[hit.name] = {};
+          if (timecodeBased) {
+            matched[hit.name].timecodes = [];
+          }
+        }
+        if (hit.timecodes !== undefined) {
+          matched[hit.name].timecodes = matched[hit.name].timecodes
+            .concat(hit.timecodes);
+        }
+      });
+    });
+
     return {
-      timecodeBased: containTimecodes,
-      results: Object.keys(matched).map((x) => ({
-        name: x,
-        timecodes: this.mergeTimecodes(matched[x].timecodes),
-      })),
+      timecodeBased,
+      results: Object.keys(matched)
+        .map((x) => ({
+          name: x,
+          timecodes: this.mergeTimecodes(matched[x].timecodes),
+        })),
     };
   }
 
   mergeTimecodes(timecodes) {
-    if (!timecodes) {
+    if (!timecodes || timecodes.length === 0) {
       return undefined;
     }
     const sorted = timecodes.map((x) => ({
@@ -325,52 +401,102 @@ export default class SearchResultTab extends BaseAnalysisTab {
     return tr;
   }
 
-  makeTableRowItemContentMetadata(data, title) {
-    const table = $('<table/>').addClass('lead-xs')
+  makeTableRowItemContentMetadata(types, fields, title) {
+    const container = $('<tr/>');
+
+    const tdTitle = $('<td/>')
+      .addClass('h-100 align-center text-left lead-s')
+      .append(title);
+    container.append(tdTitle);
+
+    const tdTable = $('<td/>')
+      .addClass('h-100 align-middle text-left');
+    container.append(tdTable);
+
+    const innerTable = $('<table/>')
+      .addClass('lead-xs')
       .attr('cellspacing', 0)
       .attr('cellpadding', 0);
+    tdTable.append(innerTable);
+
     const tbody = $('<tbody/>');
-    table.append(tbody);
-    const attrs = Object.keys(data).map((x) => {
-      const name = AppUtils.capitalize(x);
-      const text = data[x];
-      return $('<tr/>')
-        .append($('<td/>').addClass('h-100 align-center text-left b-300 no-border')
-          .append(name))
-        .append($('<td/>').addClass('h-100 align-middle text-left no-border')
-          .append(text));
+    innerTable.append(tbody);
+
+    types.forEach((type) => {
+      if (((fields[type] || {}).hits || []).length > 0) {
+        if (typeof fields[type].hits[0] === 'string') {
+          /* fields such as basename, md5, uuid */
+          const tr = $('<tr/>');
+          tbody.append(tr);
+
+          const key = $('<td/>')
+            .addClass('h-100 align-center text-left b-300 no-border')
+            .append(type);
+          tr.append(key);
+
+          const value = $('<td/>')
+            .addClass('h-100 align-middle text-left no-border')
+            .append(fields[type].hits.join(', '));
+
+          tr.append(value);
+        } else if (typeof fields[type].hits[0] === 'object') {
+          /* nested fields such as attributes */
+          const attrs = fields[type].hits.reduce((a0, c0) => ({
+            ...a0,
+            ...c0,
+          }), {});
+
+          Object.keys(attrs)
+            .forEach((attr) => {
+              const tr = $('<tr/>');
+              tbody.append(tr);
+
+              const key = $('<td/>')
+                .addClass('h-100 align-center text-left b-300 no-border')
+                .append(`${type}.${attr}`);
+              tr.append(key);
+
+              const value = $('<td/>')
+                .addClass('h-100 align-middle text-left no-border')
+                .append(attrs[attr]);
+
+              tr.append(value);
+            });
+        }
+      }
     });
-    tbody.append(attrs);
-    const tr = $('<tr/>')
-      .append($('<td/>').addClass('h-100 align-center text-left lead-s')
-        .append(title))
-      .append($('<td/>').addClass('h-100 align-middle text-left')
-        .append(table));
-    return tr;
+
+    return container;
   }
 
   makeTableRowItemTextract(data, title) {
-    if (!data) {
+    if (!data || !data.hits || data.hits.length === 0) {
       return undefined;
     }
-    const keys = Object.keys(data);
-    let merged = [];
-    while (keys.length) {
-      const key = keys.shift();
-      while (data[key].pages.length) {
-        const page = data[key].pages.shift();
-        merged.push({
-          name: key,
-          page,
-        });
-      }
+
+    const hits = data.hits;
+    if (hits.length > 1) {
+      hits.sort((a, b) =>
+        a.page - b.page);
     }
-    merged = merged.sort((a, b) =>
-      a.page - b.page);
-    const btns = merged.map((x) => {
+
+    const container = $('<tr/>');
+
+    const tdTitle = $('<td/>')
+      .addClass('h-100 align-center text-left lead-s')
+      .append(title);
+    container.append(tdTitle);
+
+    const tdPages = $('<td/>')
+      .addClass('h-100 align-middle text-left');
+    container.append(tdPages);
+
+    const pages = hits.map((x) => {
       const pageNum = x.page;
       const name = `${x.name} (Pg. ${pageNum})`;
-      const btn = $('<button/>').addClass('btn btn-sm btn-primary mb-1 ml-1')
+
+      const page = $('<button/>')
+        .addClass('btn btn-sm btn-primary mb-1 ml-1')
         .attr('type', 'button')
         .attr('data-toggle', 'button')
         .attr('aria-pressed', false)
@@ -379,17 +505,16 @@ export default class SearchResultTab extends BaseAnalysisTab {
         .tooltip({
           trigger: 'hover',
         });
-      btn.off('click').on('click', async (event) => {
+
+      page.on('click', async (event) => {
         event.stopPropagation();
         await this.previewComponent.slideTo(pageNum);
       });
-      return btn;
+
+      return page;
     });
-    const tr = $('<tr/>')
-      .append($('<td/>').addClass('h-100 align-center text-left lead-s')
-        .append(title))
-      .append($('<td/>').addClass('h-100 align-middle text-left')
-        .append(btns));
-    return tr;
+    tdPages.append(pages);
+
+    return container;
   }
 }

@@ -1,0 +1,1479 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Media2Cloud Shoppable Stack - create Amazon OpenSearch w/ KNN enabled, Amazon API Gateway to connect to eCommerce APIs, Shoppable state machine. Version %%VERSION%%
+
+Mappings:
+    Workflow:
+        ShoppableCustomResources:
+            Package: "%%PKG_CUSTOM_RESOURCES%%"
+            Name: customresources-shoppable
+        # Shoppable State Machine
+        Shoppable:
+            Name: shoppable
+        DetectShoppableItems:
+            Name: detect-shoppable-items
+        AnalysisShoppable:
+            Package: "%%PKG_ANALYSIS_SHOPPABLE%%"
+            Name: analysis-shoppable
+        # API Connector to eCommerce site
+        ShoppableApi:
+            Package: "%%PKG_SHOPPABLE_API%%"
+            Name: shoppable-api
+        # Handle events from the following state machines
+        StateMachine:
+            DynamicFrameSegmentation: dynamic-frame-segmentation
+            AssetRemoval: asset-removal
+    DynamoDB:
+        Shoppable:
+            Suffix: shoppable
+            PartitionKey: uuid
+    OpenSearch:
+        Engine:
+            Version: OpenSearch_2.11
+        Domain:
+            Name: embed2id
+        EBSOptions:
+            VolumeType: gp3
+            VolumeSize: 10
+            Iops: 3000
+            Throughput: 125
+        ClusterConfig:
+            InstanceCount: 1
+            InstanceType: m5.large.search
+    APIGW:
+        Stage:
+            Name: demo
+        Build:
+            Version: "%%VERSION%%"
+    SecretsManager:
+        ECommerceConfig:
+            Suffix: shoppable/ecommerce/config
+    Node:
+        Runtime:
+            Version: nodejs20.x
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: S3Bucket
+    KeyPrefix:
+        Type: String
+        Description: KeyPrefix
+    SolutionId:
+        Type: String
+        Description: SolutionId
+    SolutionLowerCaseId:
+        Type: String
+        Description: SolutionLowerCaseId
+    SolutionUuid:
+        Type: String
+        Description: SolutionLowerCaseId
+    ResourcePrefix:
+        Type: String
+        Description: ResourcePrefix
+    CustomUserAgent:
+        Type: String
+        Description: CustomUserAgent
+    AwsSdkLayer:
+        Type: String
+        Description: AwsSdkLayer
+    CoreLibLayer:
+        Type: String
+        Description: CoreLibLayer
+    ProxyBucket:
+        Type: String
+        Description: ProxyBucket
+    ShoppableImageUri:
+        Type: String
+        Description: ShoppableImageUri
+    UnifiedStateMachineStatusBusName:
+        Type: String
+        Description: UnifiedStateMachineStatusBusName
+
+Resources:
+    ################################################################################
+    #
+    # Amazon OpenSearch cluster (KNN Similarity search)
+    #
+    ################################################################################
+    OpenSearchApplicationLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/opensearch/domains/${ResourcePrefix}-${name}/opensearch-application-logs
+                - name: !FindInMap
+                    - OpenSearch
+                    - Domain
+                    - Name
+            RetentionInDays: 7
+
+    OpenSearchSlowLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/opensearch/domains/${ResourcePrefix}-${name}/opensearch-slow-logs
+                - name: !FindInMap
+                    - OpenSearch
+                    - Domain
+                    - Name
+            RetentionInDays: 7
+
+    OpenSearchIndexSlowLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/opensearch/domains/${ResourcePrefix}-${name}/opensearch-index-slow-logs
+                - name: !FindInMap
+                    - OpenSearch
+                    - Domain
+                    - Name
+            RetentionInDays: 7
+
+    OpenSearchLogGroupPolicy:
+        Type: AWS::Logs::ResourcePolicy
+        DependsOn:
+            - OpenSearchApplicationLogGroup
+            - OpenSearchSlowLogGroup
+            - OpenSearchIndexSlowLogGroup
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-OpenSearchLogGroup
+            PolicyDocument: !Sub |-
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "OpenSearchLogGroupPolicy",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "es.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "logs:CreateLogStream",
+                                "logs:PutLogEventsBatch",
+                                "logs:PutLogEvents"
+                            ],
+                            "Resource": [
+                                "${OpenSearchApplicationLogGroup.Arn}",
+                                "${OpenSearchSlowLogGroup.Arn}",
+                                "${OpenSearchIndexSlowLogGroup.Arn}"
+                            ]
+                        }
+                    ]
+                }
+
+    OpenSearchCluster:
+        Type: AWS::OpenSearchService::Domain
+        DependsOn:
+            - OpenSearchLogGroupPolicy
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Explicitly assign predefined domain name to OpenSearch cluster
+        UpdatePolicy:
+            EnableVersionUpgrade: true
+        Properties:
+            AccessPolicies:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal:
+                            AWS: !Ref AWS::AccountId
+                        Action:
+                            - es:ESHttpGet
+                            - es:ESHttpHead
+                            - es:ESHttpPost
+                            - es:ESHttpPut
+                            - es:ESHttpDelete
+                        Resource:
+                            - !Sub
+                                - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}
+                                - name: !FindInMap
+                                    - OpenSearch
+                                    - Domain
+                                    - Name
+                            - !Sub
+                                - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}/*
+                                - name: !FindInMap
+                                    - OpenSearch
+                                    - Domain
+                                    - Name
+            LogPublishingOptions:
+                ES_APPLICATION_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchApplicationLogGroup.Arn
+                    Enabled: true
+                SEARCH_SLOW_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchSlowLogGroup.Arn
+                    Enabled: true
+                INDEX_SLOW_LOGS:
+                    CloudWatchLogsLogGroupArn: !GetAtt OpenSearchIndexSlowLogGroup.Arn
+                    Enabled: true
+            DomainEndpointOptions:
+                EnforceHTTPS: true
+                TLSSecurityPolicy: Policy-Min-TLS-1-2-2019-07
+            DomainName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - OpenSearch
+                    - Domain
+                    - Name
+            EBSOptions:
+                EBSEnabled: true
+                VolumeType: !FindInMap
+                    - OpenSearch
+                    - EBSOptions
+                    - VolumeType
+                VolumeSize: !FindInMap
+                    - OpenSearch
+                    - EBSOptions
+                    - VolumeSize
+                Iops: !FindInMap
+                    - OpenSearch
+                    - EBSOptions
+                    - Iops
+                Throughput: !FindInMap
+                    - OpenSearch
+                    - EBSOptions
+                    - Throughput
+            ClusterConfig:
+                DedicatedMasterEnabled: false
+                DedicatedMasterCount: !Ref AWS::NoValue
+                DedicatedMasterType: !Ref AWS::NoValue
+                InstanceCount: !FindInMap
+                    - OpenSearch
+                    - ClusterConfig
+                    - InstanceCount
+                InstanceType: !FindInMap
+                    - OpenSearch
+                    - ClusterConfig
+                    - InstanceType
+                ZoneAwarenessEnabled: false
+                ZoneAwarenessConfig: !Ref AWS::NoValue
+            EngineVersion: !FindInMap
+                - OpenSearch
+                - Engine
+                - Version
+            EncryptionAtRestOptions:
+                Enabled: true
+            NodeToNodeEncryptionOptions:
+                Enabled: true
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+
+    ################################################################################
+    #
+    # Custom Resources to generate random apikey and create KNN index
+    #
+    ################################################################################
+    ShoppableCustomResourcesLogGroup:
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - ShoppableCustomResources
+                    - Name
+            RetentionInDays: 7
+
+    ShoppableCustomResourcesRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+                - arn:aws:iam::aws:policy/NeptuneFullAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-Shoppable
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt ShoppableCustomResourcesLogGroup.Arn
+                            # OpenSearch - create KNN indices
+                            -
+                                Effect: Allow
+                                Action:
+                                    - es:ESHttpGet
+                                    - es:ESHttpHead
+                                    - es:ESHttpPost
+                                    - es:ESHttpPut
+                                    - es:ESHttpDelete
+                                Resource:
+                                    - !Sub
+                                        - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}
+                                        - name: !FindInMap
+                                            - OpenSearch
+                                            - Domain
+                                            - Name
+                                    - !Sub
+                                        - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}/*
+                                        - name: !FindInMap
+                                            - OpenSearch
+                                            - Domain
+                                            - Name
+
+    ShoppableCustomResourcesLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - ShoppableCustomResources
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Custom resource to create KNN index in OpenSearch
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 128
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt ShoppableCustomResourcesRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - ShoppableCustomResources
+                        - Package
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    # Create knn index
+    CreateIndex:
+        Type: Custom::CreateIndex
+        DependsOn:
+            - OpenSearchCluster
+        Properties:
+            ServiceToken: !GetAtt ShoppableCustomResourcesLambda.Arn
+            Data:
+                DomainEndpoint: !Sub https://${OpenSearchCluster.DomainEndpoint}
+                UseOpenSearchServerless: 0
+                IndexName: !FindInMap
+                    - OpenSearch
+                    - Domain
+                    - Name
+                Mappings: |-
+                    {
+                        "settings": {
+                            "index": {
+                                "knn": true,
+                                "knn.space_type": "cosinesimil"
+                            }
+                        },
+                        "mappings": {
+                            "properties": {
+                                "embeddings": {
+                                    "type": "knn_vector",
+                                    "dimension": 768
+                                },
+                                "asin": {
+                                    "type": "keyword"
+                                },
+                                "label": {
+                                    "type": "keyword"
+                                },
+                                "file": {
+                                    "type": "text"
+                                },
+                                "score": {
+                                    "type": "float"
+                                }
+                            }
+                        }
+                    }
+
+    ################################################################################
+    #
+    # AWS Secrets Manager
+    #  * Store ECommerce configuration
+    #
+    ################################################################################
+    ECommerceConfigSecret:
+        Type: AWS::SecretsManager::Secret
+        Properties:
+            Name: !Sub
+                - ${ResourcePrefix}/${suffix}
+                - suffix: !FindInMap
+                    - SecretsManager
+                    - ECommerceConfig
+                    - Suffix
+            Description: !Sub (${ResourcePrefix}) eCommerce configuration
+            SecretString: !Sub |-
+                {
+                    "url": "https://PLACEHOLDER",
+                    "apikey": "${ResourcePrefix}"
+                }
+            KmsKeyId: alias/aws/secretsmanager
+            Tags:
+                -
+                    Key: Name
+                    Value: !Ref ResourcePrefix
+
+    ################################################################################
+    #
+    # APIGW: a connector to communicate with eCommerce APIs
+    # * API Lambda
+    # * Rest API
+    # * Deployment
+    # * Api Key (usage tracker)
+    # * Usage Plan
+    #
+    ################################################################################
+    ShoppableApiLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - ShoppableApi
+                    - Name
+            RetentionInDays: 7
+
+    ShoppableApiRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: /
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: ShoppableApiPolicy
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt ShoppableApiLogGroup.Arn
+                            # Secrets Manager
+                            -
+                                Effect: Allow
+                                Action: secretsmanager:GetSecretValue
+                                Resource: !Ref ECommerceConfigSecret
+
+    ShoppableApiLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - ShoppableApi
+                    - Name
+            Description: !Sub (${ResourcePrefix}) /shoppable api endpoint lambda
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 256
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt ShoppableApiRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - ShoppableApi
+                        - Package
+            Layers:
+                - !Ref CoreLibLayer
+                - !Ref AwsSdkLayer
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
+                    ENV_ECOMMERCE_CONFIG_SECRETS: !Ref ECommerceConfigSecret
+
+    ApiRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: apigateway.amazonaws.com
+            Path: /
+            Policies:
+                -
+                    PolicyName: ShopplabeApiPolicy
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: lambda:InvokeFunction
+                                Resource: !GetAtt ShoppableApiLambda.Arn
+
+    RestApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable api endpoint
+            DisableExecuteApiEndpoint: false
+            EndpointConfiguration:
+                Types:
+                    - REGIONAL
+            Body:
+                openapi: 3.0.1
+                info:
+                    title: !Sub ${ResourcePrefix}-shoppable-api
+                    description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable api endpoint
+                    version: !FindInMap
+                        - APIGW
+                        - Build
+                        - Version
+                paths:
+                    /shoppable:
+                        post:
+                            parameters:
+                                # x-api-key (track usage)
+                                -
+                                    name: x-api-key
+                                    in: header
+                                    required: true
+                                    schema:
+                                        type: string
+                            responses:
+                                "200":
+                                    description: 200 response
+                                    content:
+                                        application/json:
+                                            schema:
+                                                $ref: "#/components/schemas/Empty"
+                            security:
+                                - sigv4: []
+                                - api_key: []
+                            x-amazon-apigateway-integration:
+                                credentials: !GetAtt ApiRole.Arn
+                                httpMethod: POST
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ShoppableApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_templates
+                                timeoutInMillis: 29000
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        get:
+                            parameters:
+                                # x-api-key (track usage)
+                                -
+                                    name: x-api-key
+                                    in: header
+                                    required: true
+                                    schema:
+                                        type: string
+                            responses:
+                                "200":
+                                    description: 200 response
+                                    content:
+                                        application/json:
+                                            schema:
+                                                $ref: "#/components/schemas/Empty"
+                            security:
+                                - sigv4: []
+                                - api_key: []
+                            x-amazon-apigateway-integration:
+                                credentials: !GetAtt ApiRole.Arn
+                                httpMethod: POST
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ShoppableApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_templates
+                                timeoutInMillis: 29000
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        options:
+                            responses:
+                                "200":
+                                    description: 200 response
+                                    content:
+                                        application/json:
+                                            schema:
+                                                $ref: "#/components/schemas/Empty"
+                            x-amazon-apigateway-integration:
+                                credentials: !GetAtt ApiRole.Arn
+                                httpMethod: POST
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ShoppableApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_templates
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                components:
+                    schemas:
+                        Empty:
+                            title: Empty Schema
+                            type: object
+                    securitySchemes:
+                        sigv4:
+                            type: apiKey
+                            name: Authorization
+                            in: header
+                            x-amazon-apigateway-authtype: awsSigv4
+                        api_key:
+                            type: apiKey
+                            name: x-api-key
+                            in: header
+                x-amazon-apigateway-policy:
+                    Version: "2012-10-17"
+                    Statement:
+                        -
+                            Effect: Allow
+                            Principal: "*"
+                            Action: execute-api:Invoke
+                            Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+
+    APIGWLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /apigateway/media2cloud/${ResourcePrefix}-shoppable-api
+            RetentionInDays: 7
+
+    Deployment:
+        Type: AWS::ApiGateway::Deployment
+        Properties:
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable deployment
+            RestApiId: !Ref RestApi
+            StageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+            StageDescription:
+                Description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable stage
+                LoggingLevel: ERROR
+                AccessLogSetting:
+                    DestinationArn: !GetAtt APIGWLogGroup.Arn
+                    Format: $context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId
+                MethodSettings:
+                    -
+                        ResourcePath: /~1shoppable
+                        HttpMethod: OPTIONS
+                    -
+                        ResourcePath: /~1shoppable
+                        HttpMethod: GET
+                    -
+                        ResourcePath: /~1shoppable
+                        HttpMethod: POST
+
+    OPTIONSOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ShoppableApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/OPTIONS/shoppable
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    GETOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ShoppableApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/GET/shoppable
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    POSTOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt ShoppableApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/POST/shoppable
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    ApiKey:
+        Type: AWS::ApiGateway::ApiKey
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Explicitly assigned with predefined name to track
+        Properties:
+            Name: !Sub ${ResourcePrefix}-shoppable-apikey
+            Value: !Sub ${SolutionUuid}-shoppable
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable API Key
+            Enabled: true
+
+    UsagePlan:
+        DependsOn: Deployment
+        Type: AWS::ApiGateway::UsagePlan
+        Properties:
+            UsagePlanName: !Sub ${ResourcePrefix}-shoppable-usage-plan
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Shoppable Usage Plan
+            ApiStages:
+                -
+                    ApiId: !Ref RestApi
+                    Stage: !FindInMap
+                        - APIGW
+                        - Stage
+                        - Name
+            Quota:
+                Limit: 50000
+                Offset: 0
+                Period: DAY
+            Throttle:
+                BurstLimit: 1000
+                RateLimit: 3000.0
+
+    UsagePlanKey:
+        Type: AWS::ApiGateway::UsagePlanKey
+        Properties:
+            KeyType: API_KEY
+            KeyId: !Ref ApiKey
+            UsagePlanId: !Ref UsagePlan
+
+    ################################################################################
+    #
+    # Amazon DynamoDB tables
+    # * ShoppableTable: Store shoppable metadata
+    #
+    ################################################################################
+    ShoppableTable:
+        Type: AWS::DynamoDB::Table
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Tables are explicitly assigned with predefined names
+        Properties:
+            TableName: !Sub
+                - ${ResourcePrefix}-${suffix}
+                - suffix: !FindInMap
+                    - DynamoDB
+                    - Shoppable
+                    - Suffix
+            BillingMode: PAY_PER_REQUEST
+            AttributeDefinitions:
+                -
+                    AttributeName: !FindInMap
+                        - DynamoDB
+                        - Shoppable
+                        - PartitionKey
+                    AttributeType: S
+            KeySchema:
+                -
+                    AttributeName: !FindInMap
+                        - DynamoDB
+                        - Shoppable
+                        - PartitionKey
+                    KeyType: HASH
+            SSESpecification:
+                SSEEnabled: true
+            PointInTimeRecoverySpecification:
+                PointInTimeRecoveryEnabled: true
+
+    ################################################################################
+    #
+    # Shoppable State Machine
+    # * Detect shoppable items
+    # * Search similar items
+    # * Update DynamoDB table
+    #
+    ################################################################################
+    # Shoppable lambda function role
+    AnalysisShoppableRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Wildcard character is prefixed and scoped with the ResourcePrefix
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: ShoppableAnalysisAccess
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource:
+                                    - !GetAtt DetectShoppableItemsLogGroup.Arn
+                                    - !GetAtt AnalysisShoppableLogGroup.Arn
+                            # S3 - proxy bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                            -
+                                Effect: Allow
+                                Action:
+                                    - s3:GetObject
+                                    - s3:PutObject
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+                            # DynamoDB
+                            -
+                                Effect: Allow
+                                Action:
+                                    - dynamodb:PutItem
+                                    - dynamodb:UpdateItem
+                                    - dynamodb:DeleteItem
+                                Resource: !GetAtt ShoppableTable.Arn
+                            # Amazon OpenSearch
+                            -
+                                Effect: Allow
+                                Action:
+                                    - es:ESHttpGet
+                                    - es:ESHttpHead
+                                    - es:ESHttpPost
+                                    - es:ESHttpPut
+                                    - es:ESHttpDelete
+                                Resource:
+                                    - !Sub
+                                        - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}
+                                        - name: !FindInMap
+                                            - OpenSearch
+                                            - Domain
+                                            - Name
+                                    - !Sub
+                                        - arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${ResourcePrefix}-${name}/*
+                                        - name: !FindInMap
+                                            - OpenSearch
+                                            - Domain
+                                            - Name
+
+    # Detect shoppable items from media content
+    DetectShoppableItemsLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - DetectShoppableItems
+                    - Name
+            RetentionInDays: 7
+
+    DetectShoppableItemsLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - DetectShoppableItems
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Detect shoppable items
+            MemorySize: 9216
+            Timeout: 900
+            PackageType: Image
+            Role: !GetAtt AnalysisShoppableRole.Arn
+            Code:
+                ImageUri: !Ref ShoppableImageUri
+            Architectures:
+                - x86_64
+            TracingConfig:
+                Mode: Active
+
+    # Similarity search on OpenSearch
+    AnalysisShoppableLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisShoppable
+                    - Name
+            RetentionInDays: 7
+
+    AnalysisShoppableLambda:
+        Type: AWS::Lambda::Function
+        DependsOn:
+            - OpenSearchCluster
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisShoppable
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Search similar items from OpenSearch KNN
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 256
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt AnalysisShoppableRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - AnalysisShoppable
+                        - Package
+            Layers:
+                - !Ref CoreLibLayer
+                - !Ref AwsSdkLayer
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
+                    ENV_ES_DOMAIN_ENDPOINT: !Sub https://${OpenSearchCluster.DomainEndpoint}
+                    ENV_USE_OPENSEARCH_SERVERLESS: 0
+                    ENV_SHOPPABLE_DDB: !Ref ShoppableTable
+                    ENV_OPENSEARCH_INDEX: !FindInMap
+                        - OpenSearch
+                        - Domain
+                        - Name
+
+    ShoppableStateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: !Sub states.${AWS::Region}.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}ShoppableStateMachine
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: lambda:InvokeFunction
+                                Resource:
+                                    - !GetAtt DetectShoppableItemsLambda.Arn
+                                    - !GetAtt AnalysisShoppableLambda.Arn
+
+    ShoppableStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - Shoppable
+                    - Name
+            StateMachineType: STANDARD
+            RoleArn: !GetAtt ShoppableStateMachineServiceRole.Arn
+            TracingConfiguration:
+                Enabled: true
+            DefinitionString:
+                !Sub
+                    - |-
+                        {
+                            "Comment": "Detect shoppable items returns embeddings of the products that can then be used to search similar items on OpenSearch to match the product Ids",
+                            "StartAt": "Asset removed?",
+                            "States": {
+                                "Asset removed?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "And": [
+                                                {
+                                                    "Variable": "$.detail",
+                                                    "IsPresent": true
+                                                },
+                                                {
+                                                    "Variable": "$.detail.stateMachineArn",
+                                                    "IsPresent": true
+                                                },
+                                                {
+                                                    "Variable": "$.detail.stateMachineArn",
+                                                    "StringMatches": "*${AssetRemoval}"
+                                                }
+                                            ],
+                                            "Next": "Delete record"
+                                        }
+                                    ],
+                                    "Default": "Prepare analysis"
+                                },
+                                "Delete record": {
+                                    "Type": "Task",
+                                    "Resource": "${AnalysisShoppableLambda.Arn}",
+                                    "End": true,
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.5
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                },
+                                "Prepare analysis": {
+                                    "Type": "Task",
+                                    "Resource": "${AnalysisShoppableLambda.Arn}",
+                                    "Next": "Detect shoppable items",
+                                    "Catch": [
+                                        {
+                                            "ErrorEquals": [
+                                                "FeatureNotEnabledException"
+                                            ],
+                                            "Next": "Feature not enabled"
+                                        }
+                                    ],
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.5
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                },
+                                "Detect shoppable items": {
+                                    "Type": "Task",
+                                    "Resource": "${DetectShoppableItemsLambda.Arn}",
+                                    "InputPath": "$.data.shoppable",
+                                    "ResultPath": "$.data.shoppable",
+                                    "Next": "More items?",
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.ClientExecutionTimeoutException",
+                                                "Lambda.ServiceException",
+                                                "Lambda.AWSLambdaException",
+                                                "Lambda.SdkClientException"
+                                            ],
+                                            "IntervalSeconds": 6,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 2
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.5
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                },
+                                "More items?": {
+                                    "Type": "Choice",
+                                    "Choices": [
+                                        {
+                                            "And": [
+                                                {
+                                                    "Variable": "$.data.shoppable.names",
+                                                    "IsPresent": true
+                                                },
+                                                {
+                                                    "Variable": "$.data.shoppable.names[0]",
+                                                    "IsPresent": true
+                                                }
+                                            ],
+                                            "Next": "Detect shoppable items"
+                                        }
+                                    ],
+                                    "Default": "Run similarity search"
+                                },
+                                "Run similarity search": {
+                                    "Type": "Task",
+                                    "Resource": "${AnalysisShoppableLambda.Arn}",
+                                    "End": true,
+                                    "Parameters": {
+                                        "operation": "StateSimilaritySearch",
+                                        "uuid.$": "$.uuid",
+                                        "input.$": "$.input",
+                                        "data.$": "$.data"
+                                    },
+                                    "Retry": [
+                                        {
+                                            "ErrorEquals": [
+                                                "Lambda.TooManyRequestsException"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 6,
+                                            "BackoffRate": 1.5
+                                        },
+                                        {
+                                            "ErrorEquals": [
+                                                "States.ALL"
+                                            ],
+                                            "IntervalSeconds": 1,
+                                            "MaxAttempts": 4,
+                                            "BackoffRate": 1.1
+                                        }
+                                    ]
+                                },
+                                "Feature not enabled": {
+                                    "Type": "Succeed"
+                                }
+                            }
+                        }
+                    - AssetRemoval: !FindInMap
+                        - Workflow
+                        - StateMachine
+                        - AssetRemoval
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Shoppable Experience
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    ################################################################################
+    #
+    # EventBridge: Integrate to workflow events to run Shoppable state machine
+    #
+    ################################################################################
+    RunShoppableStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /aws/events/${ShoppableStateMachine.Name}
+            RetentionInDays: 7
+
+    RunShoppableStateMachineRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: events.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-RunShoppableStateMachine
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: states:StartExecution
+                                Resource: !GetAtt ShoppableStateMachine.Arn
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt RunShoppableStateMachineLogGroup.Arn
+
+    RunShoppableStateMachineEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-RunShoppableStateMachine
+            Description: Run Shoppable State Machine when Dynamic Frame Segmentation state machine is completed
+            EventBusName: !Ref UnifiedStateMachineStatusBusName
+            EventPattern:
+                source:
+                    - aws.states
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - Step Functions Execution Status Change
+                detail:
+                    status:
+                        - SUCCEEDED
+                    stateMachineArn:
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - DynamicFrameSegmentation
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - AssetRemoval
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub ${ResourcePrefix}-LogEvents
+                    Arn: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${RunShoppableStateMachineLogGroup}
+                -
+                    Id: !Sub Id-${ShoppableStateMachine.Name}
+                    Arn: !GetAtt ShoppableStateMachine.Arn
+                    RoleArn: !GetAtt RunShoppableStateMachineRole.Arn
+
+Outputs:
+    # Shoppable state machine
+    ShoppableStateMachineName:
+        Value: !GetAtt ShoppableStateMachine.Name
+        Description: ShoppableStateMachineName
+    ShoppableStateMachineArn:
+        Value: !GetAtt ShoppableStateMachine.Arn
+        Description: ShoppableStateMachineArn
+    # OpenSearch
+    OpenSearchDomainName:
+        Value: !Ref OpenSearchCluster
+        Description: OpenSearchDomainName
+    OpenSearchDomainEndpoint:
+        Value: !Sub https://${OpenSearchCluster.DomainEndpoint}
+        Description: OpenSearchDomainEndpoint
+    OpenSearchEngineVersion:
+        Value: !FindInMap
+            - OpenSearch
+            - Engine
+            - Version
+        Description: OpenSearchEngineVersion
+    # APIGW
+    ShoppableApiLambdaArn:
+        Value: !GetAtt ShoppableApiLambda.Arn
+        Description: ShoppableApiLambdaArn
+    ApiId:
+        Value: !Ref RestApi
+        Description: ApiId
+    ApiEndpoint:
+        Value: !Sub
+            - https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${stageName}
+            - stageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+        Description: ApiEndpoint
+    DeploymentId:
+        Value: !Ref Deployment
+        Description: DeploymentId
+    StageName:
+        Value: !FindInMap
+            - APIGW
+            - Stage
+            - Name
+        Description: StageName
+    ApiKey:
+        Value: !Sub ${SolutionUuid}-shoppable
+        Description: ApiKey
+    ApiKeyId:
+        Value: !Ref ApiKey
+        Description: ApiKeyId
+    UsagePlanId:
+        Value: !Ref UsagePlan
+        Description: UsagePlanId
+    # DDB
+    ShoppableTable:
+        Value: !Ref ShoppableTable
+        Description: ShoppableTable
+    ShoppableTableArn:
+        Value: !GetAtt ShoppableTable.Arn
+        Description: ShoppableTableArn

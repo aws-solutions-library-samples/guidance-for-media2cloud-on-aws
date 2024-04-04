@@ -1,34 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import S3Utils from '../s3utils.js';
+import {
+  GetS3Utils,
+} from '../s3utils.js';
 import StoreDefinitions from './storeDefs.js';
 import BaseStore from './baseStore.js';
 
-export default class ImageStore extends BaseStore {
+/* singleton implementation */
+let _singleton;
+
+class ImageStore extends BaseStore {
   constructor() {
     super(StoreDefinitions.Stores.Images);
-  }
-
-  static getSingleton() {
-    if (!(window.AWSomeNamespace || {}).ImageStoreSingleton) {
-      window.AWSomeNamespace = {
-        ...window.AWSomeNamespace,
-        ImageStoreSingleton: new ImageStore(),
-      };
-    }
-    return window.AWSomeNamespace.ImageStoreSingleton;
+    _singleton = this;
   }
 
   async getImageURL(id, bucket, key) {
     let blob = await this.getItem(id);
     if (!blob) {
-      const response = await S3Utils.getObject(bucket, key);
-      blob = new Blob([response.Body.buffer], {
-        type: response.ContentType,
-      });
+      const s3utils = GetS3Utils();
+      const response = await s3utils.getObject(bucket, key);
+
+      blob = await response.Body.transformToByteArray()
+        .then((res) =>
+          new Blob([res.buffer], {
+            type: response.ContentType,
+          }));
       await this.putItem(id, blob);
     }
+
     return URL.createObjectURL(blob);
   }
 
@@ -44,7 +45,7 @@ export default class ImageStore extends BaseStore {
           const type = (res.headers.get('Content-Type') || '')
             .split('/')
             .shift();
-          if (!type || type.toLowerCase() !== 'image') {
+          if (!type || !['image', 'video'].includes(type.toLowerCase())) {
             return undefined;
           }
           return res.blob();
@@ -57,3 +58,16 @@ export default class ImageStore extends BaseStore {
     return URL.createObjectURL(blob);
   }
 }
+
+const GetImageStore = () => {
+  if (_singleton === undefined) {
+    const notused_ = new ImageStore();
+  }
+
+  return _singleton;
+};
+
+export {
+  ImageStore,
+  GetImageStore,
+};

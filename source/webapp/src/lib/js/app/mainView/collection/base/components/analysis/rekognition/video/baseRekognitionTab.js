@@ -2,20 +2,53 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../../../../../shared/localization.js';
-import DatasetStore from '../../../../../../../shared/localCache/datasetStore.js';
+import {
+  GetDatasetStore,
+} from '../../../../../../../shared/localCache/index.js';
+import MapData from '../../../../../../../shared/analysis/mapData.js';
 import ScatterGraph from '../../base/scatterGraph.js';
 import BaseRekognitionImageTab from '../image/baseRekognitionImageTab.js';
 import AppUtils from '../../../../../../../shared/appUtils.js';
+import {
+  GetS3Utils,
+} from '../../../../../../../shared/s3utils.js';
 
-const COL_TAB = 'col-11';
-const TOGGLE_ALL = Localization.Messages.ToggleAll;
-const SEARCH_SPECIFIC_LABEL = Localization.Messages.SearchSpecificLabel;
+const {
+  Events: {
+    Data: {
+      Selected: EVENT_DATA_SELECTED,
+    },
+    Legend: {
+      Changed: EVENT_LEGEND_CHANGED,
+    },
+  },
+} = ScatterGraph;
+
+const {
+  Messages: {
+    SearchSpecificLabel: MSG_SEARCH_SPECIFIC_LABEL,
+    ToggleAll: MSG_TOGGLE_ALL,
+    ToggleTextOverlay: MSG_TEXT_OVERLAY,
+    NoData: MSG_NO_DATA,
+    ScatterGraphDesc: MSG_SCATTERGRAPH_DESC,
+  },
+  Tooltips: {
+    ToggleAll: TOOLTIP_ALL_LABELS,
+    ToggleTextOverlay: TOOLTIP_TEXT_OVERLAY,
+  },
+} = Localization;
 
 export default class BaseRekognitionTab extends BaseRekognitionImageTab {
-  constructor(category, previewComponent, data, defaultTab = false) {
-    super(category, previewComponent, data, defaultTab);
+  constructor(category, previewComponent, data) {
+    super(category, previewComponent, data);
     this.$scatterGraph = undefined;
-    this.$datasetStore = DatasetStore.getSingleton();
+    this.$datasetStore = GetDatasetStore();
+    this.$mapData = undefined;
+    this.onRender(this.tabContent);
+  }
+
+  get shouldCache() {
+    return true;
   }
 
   get scatterGraph() {
@@ -33,84 +66,244 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
     return this.$datasetStore;
   }
 
-  async createContent() {
-    const col = $('<div/>').addClass('col-9 my-4 max-h36r');
-    this.delayContentLoad(col);
-    return col;
+  get mapData() {
+    return this.$mapData;
   }
 
-  delayContentLoad(col) {
-    setTimeout(async () => {
-      this.loading(true);
-      const scatterGraph = await this.createScatterGraph(this.category);
-      if (!scatterGraph) {
-        col.html(Localization.Messages.NoData);
-      } else {
-        await this.registerVttTracks(this.category);
-        const desc = $('<p/>').addClass('lead-sm')
-          .append(Localization.Messages.ScatterGraphDesc);
-        col.append(desc)
-          .append(this.createToggleAll())
-          .append(scatterGraph);
-      }
-      this.loading(false);
-    }, 100);
+  set mapData(val) {
+    this.$mapData = val;
+  }
+
+  get trackBasenames() {
+    return (this.mapData || {}).basenames || [];
+  }
+
+  get canPreloadContent() {
+    return true;
+  }
+
+  get canRenderVtt() {
+    return true;
+  }
+
+  async createContent() {
+    let container = this.tabContent.find('.rekog-tab');
+    if (container.length > 0) {
+      return container;
+    }
+    container = this.loadContent();
+    return container;
+  }
+
+  async delayContentLoad(col) {
+    this.loading(true);
+
+    const scatterGraph = await this.createScatterGraph(this.category);
+    if (!scatterGraph) {
+      col.html(MSG_NO_DATA);
+    } else {
+      const desc = $('<p/>')
+        .addClass('lead-sm')
+        .append(MSG_SCATTERGRAPH_DESC);
+      col.append(desc);
+
+      const toggleAll = this.createToggleAll();
+      col.append(toggleAll);
+
+      col.append(scatterGraph);
+    }
+    this.loading(false);
   }
 
   async registerVttTracks(type) {
     const category = this.data || {};
-    const prefix = category.vtt;
-    const names = (category.trackBasenames || {}).vtt || [];
-    if (!prefix || !names.length) {
+    if (!category.vtt) {
       return undefined;
     }
-    return names.map(name =>
-      this.previewComponent.trackRegister(name, `${prefix}${name}.vtt`));
+
+    /* using single json file for all vtts */
+    if (/json$/.test(category.vtt)) {
+      const bucket = this.media.getProxyBucket();
+      return this.registerVttTracksFromJson(
+        type,
+        bucket,
+        category.vtt
+      );
+    }
+
+    if (!this.trackBasenames.length) {
+      return undefined;
+    }
+
+    return this.trackBasenames
+      .map(name =>
+        this.previewComponent.trackRegister(name, `${category.vtt}${name}.vtt`));
+  }
+
+  unregisterVttTracks() {
+    const labels = this.scatterGraph.datasets
+      .map((x) =>
+        x.basename);
+
+    labels.forEach((label) => {
+      this.previewComponent.trackToggle(label, false);
+      this.previewComponent.trackUnregister(label);
+    });
   }
 
   async createTrackButtons(type, namePrefix) {
     const category = this.data || {};
-    const prefix = category.vtt;
-    const names = (category.trackBasenames || {}).vtt || [];
-    if (!prefix || !names.length) {
+    if (!category.vtt) {
       return undefined;
     }
-    return names.map((name) => {
-      this.previewComponent.trackRegister(name, `${prefix}${name}.vtt`);
-      return this.createButton(name, namePrefix);
-    });
+
+    /* using single json file for all vtts */
+    if (/json$/.test(category.vtt)) {
+      const bucket = this.media.getProxyBucket();
+      return this.createTrackButtonsFromJson(
+        type,
+        namePrefix,
+        bucket,
+        category.vtt
+      );
+    }
+
+    if (!this.trackBasenames.length) {
+      return undefined;
+    }
+
+    return this.trackBasenames
+      .map((name) => {
+        this.previewComponent.trackRegister(name, `${category.vtt}${name}.vtt`);
+        return this.createButton(name, namePrefix);
+      });
   }
 
   async createScatterGraph(type, namePrefix) {
     const category = this.data || {};
-    const prefix = category.timeseries;
-    const names = (category.trackBasenames || {}).timeseries || [];
-    if (!prefix || !names.length) {
+    if (!category.timeseries) {
       return undefined;
     }
-    const datasets = await this.downloadDatasets(prefix, names);
+
+    let datasets;
+    if (this.mapData && this.mapData.version > 0) {
+      datasets = await this.downloadAllMergedDataset(
+        category.timeseries
+      );
+    } else {
+      if (!this.trackBasenames.length) {
+        return undefined;
+      }
+      datasets = await this.downloadDatasets(
+        category.timeseries,
+        this.trackBasenames
+      );
+    }
+
     if (!datasets || !datasets.length) {
       return undefined;
     }
+
+    const container = $('<div/>')
+      .addClass('col-12')
+      .addClass('p-0 m-4 mx-auto');
+
     this.scatterGraph = new ScatterGraph(datasets);
-    this.scatterGraph.on(ScatterGraph.Events.Data.Selected, async (event, datapoint) =>
+
+    this.scatterGraph.on(EVENT_DATA_SELECTED, async (event, datapoint) =>
       this.onDataPointSelected(datapoint));
-    this.scatterGraph.on(ScatterGraph.Events.Legend.Changed, async (event, legends) =>
+
+    this.scatterGraph.on(EVENT_LEGEND_CHANGED, async (event, legends) =>
       this.onLegendChanged(legends));
-    const col = $('<div/>').addClass('col-9 p-0 m-4 mx-auto');
-    return col.append(this.scatterGraph.getGraphContainer());
+
+    const graphContainer = this.scatterGraph.getGraphContainer();
+    container.append(graphContainer);
+
+    return container;
+  }
+
+  async downloadAllMergedDataset(key) {
+    let datasets = await this.datasetStore
+      .getItem(key)
+      .catch(() =>
+        undefined);
+
+    if (!datasets || !datasets[0] || datasets[0].duration === undefined) {
+      datasets = await this.download(key)
+        .catch((e) => {
+          console.log(
+            'ERR:',
+            'fail to download rekognition dataset',
+            key,
+            e.message
+          );
+          return undefined;
+        });
+
+      if (datasets) {
+        datasets = await datasets.Body.transformToString()
+          .then((res) =>
+            JSON.parse(res));
+
+        // for facematch, don't cache
+        if (this.shouldCache) {
+          await this.datasetStore
+            .putItem(key, datasets)
+            .catch(() =>
+              undefined);
+        }
+      }
+    }
+
+    datasets = await this.transformDataset(datasets);
+
+    return datasets;
+  }
+
+  async transformDataset(data) {
+    return Object.values(data)
+      .map((x) => ({
+        ...x,
+        basename: x.label.toLowerCase()
+          .replace(/\s/g, '_')
+          .replace(/\//g, '-'),
+      }));
   }
 
   async downloadDatasets(prefix, names) {
     let datasets = await this.datasetStore.getItem(prefix)
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
     if (datasets && datasets[0].duration !== undefined) {
       return datasets;
     }
-    const responses = await Promise.all(names.map(name =>
-      this.download(`${prefix}${name}.json`)
-        .then(data => JSON.parse(data.Body.toString()))
-        .catch(() => undefined)));
+
+    let responses = await Promise.all(names
+      .map((name) => {
+        const key = `${prefix}${name}.json`;
+        return this.download(key)
+          .catch((e) => {
+            console.log(
+              'ERR:',
+              'fail to download rekognition dataset',
+              key,
+              e.message
+            );
+
+            return undefined;
+          });
+      }));
+
+    responses = responses
+      .filter((x) =>
+        x !== undefined);
+
+    responses = await Promise.all(responses
+      .map((x) =>
+        x.Body.transformToString()
+          .then((res) =>
+            JSON.parse(res))));
+
     datasets = [];
     for (let i = 0; i < responses.length; i++) {
       if (responses[i] !== undefined) {
@@ -120,8 +313,11 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
         });
       }
     }
+
     await this.datasetStore.putItem(prefix, datasets)
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
+
     return datasets;
   }
 
@@ -193,8 +389,12 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
   async onLegendChanged(legends) {
     const canvasView = this.previewComponent.getCanvasView();
     canvasView.children().remove();
-    return legends.filter(x => x.basename).map(x =>
-      this.previewComponent.trackToggle(x.basename, x.enabled));
+
+    return legends
+      .filter((x) =>
+        x.basename)
+      .map((x) =>
+        this.previewComponent.trackToggle(x.basename, x.enabled));
   }
 
   computeCoordinate(box, imageW, imageH) {
@@ -263,26 +463,13 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
     formGroup.append(inputGroup);
 
     /* toggle button */
-    const toggle = $('<input/>')
-      .attr('type', 'checkbox');
+    const toggleAllLabels = this.createAllLabelToggle();
+    inputGroup.append(toggleAllLabels);
+    const checkboxAll = toggleAllLabels[0].find('input').first();
 
-    const slider = $('<span/>')
-      .addClass('xs-slider round');
-
-    const xswitch = $('<label/>')
-      .addClass('xs-switch');
-
-    xswitch.append(toggle)
-      .append(slider);
-    inputGroup.append(xswitch);
-
-    const desc = $('<span/>')
-      .addClass('lead ml-2')
-      .append(TOGGLE_ALL);
-    inputGroup.append(desc);
-
-    toggle.off('click').on('click', async (event) =>
-      this.scatterGraph.toggleAllLegends(toggle.prop('checked')));
+    /* show text overlay */
+    const toggleTextOverlay = this.createTextOverlayToggle();
+    inputGroup.append(toggleTextOverlay);
 
     /* search */
     const dropdown = $('<div/>')
@@ -298,39 +485,45 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
       .attr('data-toggle', 'dropdown')
       .attr('aria-haspopup', true)
       .attr('aria-expanded', false)
-      .attr('placeholder', SEARCH_SPECIFIC_LABEL);
+      .attr('placeholder', MSG_SEARCH_SPECIFIC_LABEL);
     dropdown.append(searchField);
 
     const menu = $('<div/>')
       .addClass('dropdown-menu col-12 lead-xs')
       .attr('aria-labelledby', id);
     dropdown.append(menu);
-    /* initial terms */
-    const all = this.scatterGraph.labels.map((x) =>
-      this.createDropdownItem(x, dropdown, searchField, toggle));
-    menu.append(all);
-
-    searchField.on('keyup', () => {
-      const val = searchField.val();
-      let matched = this.scatterGraph.labels;
-      if (val.length > 0) {
-        const regex = new RegExp(val, 'gi');
-        matched = this.scatterGraph.labels
-          .filter((x) =>
-            x.match(regex));
-      }
-      matched = matched.map((x) =>
-        this.createDropdownItem(x, dropdown, searchField, toggle));
-      menu.children().remove();
-      menu.append(matched);
-      dropdown.dropdown('show');
-    });
 
     /* clear search result */
     const clear = $('<button/>')
       .addClass('btn btn-sm btn-secondary')
       .append($('<i/>').addClass('far fa-times-circle'));
     inputGroup.append(clear);
+
+    // event handling
+    ['focus', 'keyup'].forEach((event) => {
+      searchField.on(event, () => {
+        console.log(`searchField.on.${event}`);
+
+        let matched = this.scatterGraph.labels;
+
+        const val = searchField.val();
+        if (val.length > 0) {
+          const regex = new RegExp(val, 'gi');
+          matched = this.scatterGraph.labels
+            .filter((x) =>
+              x.match(regex));
+        }
+
+        matched = matched
+          .map((x) =>
+            this.createDropdownItem(x, dropdown, searchField, checkboxAll));
+
+        menu.children().remove();
+        menu.append(matched);
+
+        dropdown.dropdown('show');
+      });
+    });
 
     clear.on('click', (event) => {
       event.preventDefault();
@@ -346,16 +539,94 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
         this.scatterGraph.updateLegends(legends);
         /* reset search results */
         legends = legends.map((x) =>
-          this.createDropdownItem(x, dropdown, searchField, toggle));
+          this.createDropdownItem(x, dropdown, searchField, checkboxAll));
         menu.children().remove();
         menu.append(legends);
         dropdown.dropdown('hide');
         /* uncheck toggle */
-        toggle.prop('checked', false);
+        checkboxAll.prop('checked', false);
       }
     });
 
     return formGroup;
+  }
+
+  createAllLabelToggle() {
+    const xswitch = $('<label/>')
+      .addClass('xs-switch');
+
+    const toggle = $('<input/>')
+      .attr('type', 'checkbox');
+    xswitch.append(toggle);
+
+    const slider = $('<span/>')
+      .addClass('xs-slider round');
+    xswitch.append(slider);
+
+    const desc = $('<span/>')
+      .addClass('lead ml-2')
+      .append(MSG_TOGGLE_ALL)
+      .attr('data-toggle', 'tooltip')
+      .attr('data-placement', 'bottom')
+      .attr('title', TOOLTIP_ALL_LABELS)
+      .tooltip({
+        trigger: 'hover',
+      });
+
+    toggle.on('click', async (event) =>
+      this.scatterGraph.toggleAllLegends(toggle.prop('checked')));
+
+    return [
+      xswitch,
+      desc,
+    ];
+  }
+
+  createTextOverlayToggle() {
+    if (!this.canRenderVtt) {
+      return undefined;
+    }
+
+    const xswitch = $('<label/>')
+      .addClass('xs-switch ml-4');
+
+    const toggle = $('<input/>')
+      .attr('type', 'checkbox');
+    xswitch.append(toggle);
+
+    const slider = $('<span/>')
+      .addClass('xs-slider round');
+    xswitch.append(slider);
+
+    const desc = $('<span/>')
+      .addClass('lead ml-2')
+      .append(MSG_TEXT_OVERLAY)
+      .attr('data-toggle', 'tooltip')
+      .attr('data-placement', 'bottom')
+      .attr('title', TOOLTIP_TEXT_OVERLAY)
+      .tooltip({
+        trigger: 'hover',
+      });
+
+    toggle.on('click', async (event) => {
+      const checked = toggle.prop('checked');
+      if (checked) {
+        await this.registerVttTracks(this.category);
+        const legends = this.scatterGraph.getLegendsState();
+        legends.forEach((legend) => {
+          if (legend.enabled) {
+            this.previewComponent.trackToggle(legend.basename, true);
+          }
+        });
+      } else {
+        this.unregisterVttTracks();
+      }
+    });
+
+    return [
+      xswitch,
+      desc,
+    ];
   }
 
   createDropdownItem(item, dropdown, searchField, toggle) {
@@ -380,5 +651,129 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
       toggle.prop('checked', false);
     });
     return anchor;
+  }
+
+  onRender(tabContent) {
+    tabContent.ready(async () => {
+      console.log('BaseRekognitionTab.onReady');
+
+      const bucket = this.media.getProxyBucket();
+      const mapFile = this.data.output;
+      if (/json$/.test(mapFile)) {
+        this.mapData = await MapData.loadFromKey(
+          bucket,
+          mapFile
+        );
+      }
+
+      if (this.canPreloadContent) {
+        this.loadContent(tabContent);
+      }
+    });
+  }
+
+  loadContent(tabContent) {
+    const container = $('<div/>')
+      .addClass('col-9 my-4 max-h36r')
+      .addClass('rekog-tab');
+
+    container.ready(async () => {
+      await this.delayContentLoad(container);
+    });
+
+    if (tabContent) {
+      tabContent.append(container);
+    }
+
+    return container;
+  }
+
+  async registerVttTracksFromJson(
+    type,
+    bucket,
+    jsonKey
+  ) {
+    let vtts = await this.datasetStore
+      .getItem(jsonKey)
+      .catch(() =>
+        undefined);
+
+    if (vtts === undefined) {
+      const s3utils = GetS3Utils();
+      vtts = await s3utils.getObject(
+        bucket,
+        jsonKey
+      ).catch((e) => {
+        console.error(
+          'ERR:',
+          'fail to download',
+          jsonKey
+        );
+        return undefined;
+      });
+
+      if (vtts) {
+        vtts = await vtts.Body.transformToString()
+          .then((res) =>
+            JSON.parse(res));
+
+        await this.datasetStore
+          .putItem(jsonKey, vtts)
+          .catch(() =>
+            undefined);
+      }
+    }
+
+    return Object.keys(vtts || {})
+      .map((x) => {
+        const blob = new Blob([vtts[x]], {
+          type: 'text/vtt',
+        });
+        const id = x.toLowerCase()
+          .replace(/\s/g, '_')
+          .replace(/\//g, '-');
+        return this.previewComponent.trackRegister(
+          id,
+          URL.createObjectURL(blob)
+        );
+      });
+  }
+
+  async createTrackButtonsFromJson(
+    type,
+    namePrefix,
+    bucket,
+    jsonKey
+  ) {
+    const s3utils = GetS3Utils();
+    let vtts = await s3utils.getObject(
+      bucket,
+      jsonKey
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'fail to download',
+        jsonKey
+      );
+      return undefined;
+    });
+
+    if (vtts) {
+      vtts = await vtts.Body.transformToString()
+        .then((res) =>
+          JSON.parse(res));
+    }
+
+    return Object.keys(vtts || {})
+      .map((x) => {
+        const blob = new Blob([vtts[x]], {
+          type: 'text/vtt',
+        });
+        this.previewComponent.trackRegister(
+          x,
+          URL.createObjectURL(blob)
+        );
+        return this.createButton(x, namePrefix);
+      });
   }
 }

@@ -82,6 +82,8 @@ class StateRunImageInfo {
   }
 
   makeOutputPrefix(prefix, keyword = '') {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     return PATH.join(prefix, CATEGORY, keyword, '');
   }
 }

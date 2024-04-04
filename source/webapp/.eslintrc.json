@@ -38,7 +38,13 @@
     "import/no-absolute-path": 0,
     "import/no-unresolved": 0,
     "no-underscore-dangle": 0,
-    "no-return-assign": 0
+    "no-return-assign": 0,
+    "no-restricted-syntax": [
+      "error",
+      "ForInStatement",
+      "LabeledStatement",
+      "WithStatement"
+    ]
   },
   "env": {
     "es6": true,

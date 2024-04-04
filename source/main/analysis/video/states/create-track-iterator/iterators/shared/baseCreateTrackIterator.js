@@ -11,11 +11,11 @@ const {
 } = require('core-lib');
 
 const CATEGORY = 'rekognition';
-const MAP_FILENAME = 'mapFile.json';
 const TIMESERIES = 'timeseries';
 const METADATA = 'metadata';
 const VTT = 'vtt';
 const EDL = 'edl';
+const FRAME_SEGMENTATION = 'framesegmentation';
 
 class BaseCreateTrackIterator {
   constructor(stateData, subCategory) {
@@ -67,9 +67,22 @@ class BaseCreateTrackIterator {
     return false;
   }
 
+  async downloadJson(bucket, key, name) {
+    return CommonUtils.download(bucket, key)
+      .then((res) =>
+        this.filterBy(
+          name,
+          JSON.parse(res)
+        ))
+      .catch((e) => {
+        console.error(e);
+        return [];
+      });
+  }
+
   /* derived class to implement */
-  async downloadSelected(bucket, key, name) {
-    throw new AnalysisError('subclass to implement');
+  filterBy(name, data) {
+    return [];
   }
 
   /* derived class to implement */
@@ -77,106 +90,166 @@ class BaseCreateTrackIterator {
     return undefined;
   }
 
+  async getMapData(bucket, key) {
+    return CommonUtils.download(
+      bucket,
+      key
+    ).then((res) =>
+      JSON.parse(res))
+      .catch((e) => {
+        console.error(e);
+        return undefined;
+      });
+  }
+
+  async getDataFile(bucket, key) {
+    return CommonUtils.download(
+      bucket,
+      key
+    ).then((res) =>
+      JSON.parse(res))
+      .catch((e) => {
+        console.error(e);
+        return undefined;
+      });
+  }
+
   async process() {
     const data = this.stateData.data[this.subCategory];
-    this.mapData = await this.getMapData();
-    if (!this.mapData) {
-      this.setCompleted();
-      return this.stateData.toJSON();
+    const bucket = data.bucket;
+    const key = data.output;
+    const prefix = PATH.parse(key).dir;
+
+    const mapData = await this.getMapData(
+      bucket,
+      key
+    );
+    if (!mapData || !mapData.data || !mapData.data.length) {
+      return this.setCompleted();
     }
-    const uniqueNames = Object.keys(this.mapData).splice(data.cursor);
-    while (uniqueNames.length) {
-      const t0 = new Date();
-      const name = uniqueNames.shift();
-      await this.processTrack(name);
-      data.cursor++;
+
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const _key = PATH.join(prefix, mapData.file);
+    const dataset = await this.getDataFile(bucket, _key);
+    if (!dataset) {
+      return this.setCompleted();
+    }
+
+    let lambdaTimeout = false;
+    const uniques = mapData.data
+      .splice(data.cursor);
+
+    let count = 0;
+    const t0 = new Date();
+    while (!lambdaTimeout && uniques.length > 0) {
+      const name = uniques.shift();
+      await this.processTrack(
+        name,
+        dataset
+      );
+      data.cursor += 1;
+      count += 1;
       /* make sure we allocate enough time for the next iteration */
-      const remained = this.stateData.getRemainingTime();
-      const consumed = new Date() - t0;
-      console.log(`COMPLETED: name: '${name}' [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
-      if (this.stateData.quitNow() || (remained - (consumed * 1.2) <= 0)) {
-        break;
-      }
+      lambdaTimeout = this.stateData.quitNow();
     }
-    if (uniqueNames.length > 0) {
-      const total = data.cursor + uniqueNames.length;
+
+    const remained = this.stateData.getRemainingTime();
+    const consumed = new Date() - t0;
+    console.log(`COMPLETED: ${count} names [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
+
+    if (uniques.length > 0) {
+      const total = data.cursor + uniques.length;
       return this.setProgress(Math.round((data.cursor / total) * 100));
     }
     return this.setCompleted();
   }
 
-  async getMapData() {
-    const data = this.stateData.data[this.subCategory];
-    const prefix = this.makeRawDataPrefix(this.subCategory);
-    const name = MAP_FILENAME;
-    /* download and merge mapData */
-    return CommonUtils.download(data.bucket, PATH.join(prefix, name), false)
-      .then(x => JSON.parse(x.Body.toString()))
-      .catch(() => undefined);
-  }
-
-  async processTrack(name) {
+  async processTrack(name, dataset) {
     const promises = [];
-    const data = this.stateData.data[this.subCategory];
-    const prefix = this.makeRawDataPrefix(this.subCategory);
-    /* #1: download selected content */
-    let appearances = await Promise.all(this.mapData[name].map(x =>
-      this.downloadSelected(data.bucket, PATH.join(prefix, x), name)));
-    appearances = appearances.reduce((a0, c0) => a0.concat(c0), []);
+    const stateData = this.stateData.data[this.subCategory];
+    const bucket = stateData.bucket;
+
+    const appearances = this.filterBy(name, dataset);
     /* #1.1: create timelines */
     const timelines = this.createTimelines(name, appearances);
     /* #2: create and upload timeseries data */
     let oPrefix;
-    let oName;
-    const basename = name.toLowerCase().replace(/\s/g, '_').replace(/\//g, '-');
+
     if (this.enableTimeseries) {
       const timeseries = this.createTimeseriesData(name, appearances);
       if (timeseries) {
         /* compute show rate, duration and appearance */
-        timeseries.duration = data.duration || 1;
-        const appearance = (!timelines)
-          ? 0
-          : timelines.reduce((a0, c0) =>
-            a0 + (c0.end - c0.begin), 0);
+        timeseries.duration = stateData.duration || 1;
+        let appearance = 0;
+        if (timelines) {
+          appearance = timelines
+            .reduce((a0, c0) =>
+              a0 + (c0.end - c0.begin), 0);
+        }
         timeseries.appearance = Math.round(appearance);
         oPrefix = this.makeTimeseriesPrefix();
-        oName = `${basename}.json`;
-        promises.push(CommonUtils.uploadFile(data.bucket, oPrefix, oName, timeseries));
+        promises.push(this.mergeAndUploadFile(
+          bucket,
+          oPrefix,
+          `${this.subCategory}.json`,
+          {
+            [name]: timeseries,
+          }
+        ));
+        stateData.timeseries = PATH.join(oPrefix, `${this.subCategory}.json`);
       }
     }
+
     /* #3: create metadata and vtt data */
-    if (!this.enableMetadata && !this.enableVtt) {
-      return Promise.all(promises);
+    if (timelines) {
+      if (this.enableMetadata) {
+        oPrefix = this.makeMetadataPrefix();
+        const metadata = timelines
+          .map((x) =>
+            x.toJSON());
+        promises.push(this.mergeAndUploadFile(
+          bucket,
+          oPrefix,
+          `${this.subCategory}.json`,
+          {
+            [name]: metadata,
+          }
+        ));
+        stateData.metadata = PATH.join(oPrefix, `${this.subCategory}.json`);
+      }
+
+      if (this.enableVtt) {
+        oPrefix = this.makeVttPrefix();
+        const vtt = this.createWebVtt(name, timelines);
+        promises.push(this.mergeAndUploadFile(
+          bucket,
+          oPrefix,
+          `${this.subCategory}.json`,
+          {
+            [name]: vtt.toString(),
+          }
+        ));
+        stateData.vtt = PATH.join(oPrefix, `${this.subCategory}.json`);
+      }
     }
-    if (!timelines) {
-      return Promise.all(promises);
-    }
-    if (this.enableMetadata) {
-      oName = `${basename}.json`;
-      oPrefix = this.makeMetadataPrefix();
-      const metadata = JSON.stringify(timelines.map(x => x.toJSON()));
-      promises.push(CommonUtils.uploadFile(data.bucket, oPrefix, oName, metadata));
-    }
-    if (this.enableVtt) {
-      oName = `${basename}.vtt`;
-      oPrefix = this.makeVttPrefix();
-      const vtt = this.createWebVtt(name, timelines);
-      promises.push(CommonUtils.uploadFile(data.bucket, oPrefix, oName, vtt.toString()));
-    }
+
     return Promise.all(promises);
   }
 
   createTimelines(name, dataset) {
     const data = this.stateData.data[this.subCategory];
-    const options = (data.sampling)
-      ? {
-        timeDriftExceedThreshold: Math.round(data.sampling * 1.2),
-      }
-      : undefined;
+    const options = {
+      name,
+    };
+
+    if (data.sampling) {
+      options.timeDriftExceedThreshold = Math.round(data.sampling * 1.2);
+    }
     const timelines = [];
     const queue = new TimelineQ();
-    for (let data of dataset) {
-      const item = TimelineQ.createTypedItem(data, options);
+    for (let i = 0; i < dataset.length; i++) {
+      const item = TimelineQ.createTypedItem(dataset[i], options);
       if (!item.canUse()) {
         continue;
       }
@@ -193,6 +266,17 @@ class BaseCreateTrackIterator {
     if (queue.length) {
       timelines.push(queue.reduceAll());
     }
+
+    timelines.sort((a, b) =>
+      a.begin - b.begin);
+
+    // pad end time to have at least 1s
+    timelines.forEach((x) => {
+      if ((x.end - x.begin) <= 0) {
+        x.end = x.begin + 900;
+      }
+    });
+
     return timelines;
   }
 
@@ -205,36 +289,22 @@ class BaseCreateTrackIterator {
 
   setCompleted(params) {
     const data = this.stateData.data[this.subCategory];
-    const metadata = (this.enableMetadata)
-      ? this.makeMetadataPrefix()
-      : undefined;
-    const vtt = (this.enableVtt)
-      ? this.makeVttPrefix()
-      : undefined;
-    const timeseries = (this.enableTimeseries)
-      ? this.makeTimeseriesPrefix()
-      : undefined;
-    const edl = (this.enableEdl)
-      ? this.makeEdlPrefix()
-      : undefined;
-    const output = (this.mapData)
-      ? PATH.join(this.makeRawDataPrefix(this.subCategory), MAP_FILENAME)
-      : this.makeRawDataPrefix(this.subCategory);
-    const responseData = {
+    const merged = {
       startTime: data.startTime,
       endTime: data.endTime || Date.now(),
       backlogId: data.backlogId,
       jobId: data.jobId,
       numOutputs: data.numOutputs,
       bucket: data.bucket,
-      output,
-      metadata,
-      timeseries,
-      vtt,
-      edl,
+      output: data.output,
+      timeseries: data.timeseries,
+      metadata: data.metadata,
+      vtt: data.vtt,
+      edl: data.edl,
+      apiCount: data.apiCount,
       ...params,
     };
-    this.stateData.data[this.subCategory] = responseData;
+    this.stateData.data[this.subCategory] = merged;
     this.stateData.setCompleted();
     return this.stateData.toJSON();
   }
@@ -247,14 +317,9 @@ class BaseCreateTrackIterator {
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory || this.subCategory];
     const timestamp = CommonUtils.toISODateTime(data.requestTime);
-    return PATH.join(
-      data.prefix,
-      'raw',
-      timestamp,
-      CATEGORY,
-      subCategory || this.subCategory,
-      '/'
-    );
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return PATH.join(data.prefix, 'raw', timestamp, CATEGORY, subCategory || this.subCategory, '/');
   }
 
   makeMetadataPrefix() {
@@ -275,11 +340,36 @@ class BaseCreateTrackIterator {
 
   makeNamedPrefix(subCategory, name) {
     const data = this.stateData.data[subCategory];
-    return PATH.join(
-      data.prefix,
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return PATH.join(data.prefix, name, subCategory, '/');
+  }
+
+  async mergeAndUploadFile(
+    bucket,
+    prefix,
+    name,
+    data
+  ) {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const key = PATH.join(prefix, name);
+    const merged = await CommonUtils.download(
+      bucket,
+      key
+    ).then((res) => {
+      const json = JSON.parse(res);
+      return {
+        ...json,
+        ...data,
+      };
+    }).catch(() =>
+      data);
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
       name,
-      subCategory,
-      '/'
+      merged
     );
   }
 }

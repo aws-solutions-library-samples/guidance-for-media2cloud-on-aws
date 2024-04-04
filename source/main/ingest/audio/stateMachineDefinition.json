@@ -4,7 +4,7 @@
     "States": {
         "Run mediainfo": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestAudioLambda.Arn}",
             "Parameters": {
                 "operation": "run-mediainfo",
                 "uuid.$": "$.uuid",
@@ -29,7 +29,7 @@
             "Type": "Task",
             "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "FunctionName": "${a0}",
+                "FunctionName": "${IngestAudioLambda}",
                 "Payload": {
                     "token.$":"$$.Task.Token",
                     "operation": "start-transcode",

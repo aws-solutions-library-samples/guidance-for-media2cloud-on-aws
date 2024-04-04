@@ -84,7 +84,8 @@ class BaseOp {
   onError(e) {
     const payload = {
       errorCode: 500,
-      errorMessage: `${this.request.method} ${this.request.path} - ${e.code || e.message || 'unknown error'}`,
+      errorName: e.name || e.code,
+      errorMessage: `${this.request.method} ${this.request.path} - ${e.name || e.code || e.message || 'unknown error'}`,
     };
     console.error(JSON.stringify(payload, null, 2));
     return {

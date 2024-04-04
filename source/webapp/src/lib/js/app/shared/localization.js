@@ -1,12 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* avoid fortify false positive */
+const COPYRIGHT = 'copyright &copy; 2024';
+// avoid fortify false positive
 const FIELD_PWD = ['P', 'a', 's', 's', 'w', 'o', 'r', 'd'].join('');
 
 export default class Localization {
   static get isoCode() {
     return 'en-US';
+  }
+
+  static get Copyright() {
+    return COPYRIGHT;
   }
 
   static get Messages() {
@@ -29,20 +34,32 @@ export default class Localization {
     return Localization.Languages[Localization.isoCode].Statuses;
   }
 
+  static get RegularExpressions() {
+    return {
+      // letter, number, punctunation, currency, and space
+      // \p{scx=Cyrl} - Cyrillic or Hindi
+      CharacterSetForSearch: '[\\p{L}\\p{P}\\p{N}\\p{Sc}\\s]+',
+      CharacterSet128: '^[\\p{L}\\p{P}\\p{N}\\p{Sc}\\s_.\\-]{0,128}$',
+      CharacterSet255: '^[\\p{L}\\p{P}\\p{N}\\p{Sc}\\s_.\\-]{0,255}$',
+      // Username
+      Username: '[a-zA-Z0-9._+\\-]{1,128}',
+    };
+  }
+
   static get Languages() {
     return {
       'en-US': {
         Messages: {
           /* signin flow */
-          Title: 'Media2Cloud Demo Portal <span style="font-size:0.85rem">by AWS Solutions Team</span>',
+          Title: 'Media2Cloud Demo Portal <span style="font-size:0.85rem">by AWS Industry Specialist Team</span>',
           PwdRequirement: `${FIELD_PWD} must be at least <abbr title="eight characters">eight</abbr> characters long and contain <abbr title="one uppercase character">one</abbr> uppercase, <abbr title="one lowercase character">one</abbr> lowercase, <abbr title="one numeric character">one</abbr> number, and <abbr title="one special character">one</abbr> special character.`,
           ResetSendCode: `Please enter the username and press <strong>Send code</strong>. You should receive a 6-digits code in mail in a few minutes. You will need the code to reset the ${FIELD_PWD}.`,
           ResetPwd: `Please enter the verification code that has sent to your email address and your new ${FIELD_PWD}.`,
           /* main view */
-          SolutionName: 'AWS Media2Cloud Solution',
+          SolutionName: 'Guidance for Media2Cloud on AWS',
           /* about tab panel */
           AboutTab: 'About',
-          Mission: 'AWS Media2Cloud Solution is designed to help customers to blah...',
+          Mission: 'Guidance for Media2Cloud on AWS is designed to help customers to blah...',
           Design: 'Architecture Design goes here...',
           Team: 'Team member goes here...',
           /* stats tab panel */
@@ -54,6 +71,7 @@ export default class Localization {
           SettingsDesc: 'This setting page allows you to configure and fine tune AI/ML settings for each of the Amazon AI services. (Admin privileges required)',
           DatastoreFeature: 'Local Data Store (IndexedDB)',
           DatastoreFeatureDesc: 'Media2Cloud uses <a href="https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API" target="_blank">IndexedDB</a> to cache thumbnail images, datasets, and other settings locally. Click <strong/>Clean up data store</strong> to delete the local data.',
+          TranscodeFeatures: 'AWS Elemental MediaConvert Settings',
           RekognitionFeatures: 'Amazon Rekognition Settings',
           RekognitionFeaturesDesc: '<a href="https://aws.amazon.com/rekognition" target="_blank">Amazon Rekognition</a> allows you to detect celebrities, faces, labels, objects or create your own <a href="https://docs.aws.amazon.com/rekognition/latest/dg/collections.html" target="_blank">Face Collection</a> to match faces in your collection.',
           ComprehendFeatures: 'Amazon Comprehend Settings',
@@ -61,7 +79,7 @@ export default class Localization {
           TranscribeFeatures: 'Amazon Transcribe Settings',
           TranscribeFeaturesDesc: '<a href="https://aws.amazon.com/transcribe/" target="_blank">Amazon Transcribe</a> is a automatic speech recognition (ASR) service. Media2Cloud extracts audio stream from your asset and autmatically create subtitle track using <a href="https://aws.amazon.com/blogs/aws/amazon-transcribe-now-supports-automatic-language-identification/" target="_blank">Amazon Transcribe Automatic Language Identification feature</a>. You can also train a custom language model to improve the ASR result. Check out this blog post, <a href="https://aws.amazon.com/blogs/machine-learning/building-custom-language-models-to-supercharge-speech-to-text-performance-for-amazon-transcribe/" target="_blank">Building custom language models to supercharge speech-to-text performance for Amazon Transcribe</a>. (Note that Custom Language Model currently supports English only.)',
           TextractFeatures: 'Amazon Textract Settings',
-          TextractFeaturesDesc: '<a href="https://aws.amazon.com/textract/">Amazon Textract</a> is an optical character recognition (OCR) service that allows you to extract text and relationship of a document such as PDF file.',
+          TextractFeaturesDesc: '<a href="https://aws.amazon.com/textract/" target="_blank">Amazon Textract</a> is an optical character recognition (OCR) service that allows you to extract text and relationship of a document such as PDF file.',
           AIMLSetting: 'AI/ML Settings',
           AdvanceFeatures: 'Advanced Features',
           /* collection tab panel */
@@ -75,15 +93,26 @@ export default class Localization {
           /* search component */
           Search: 'Search',
           Submit: 'Submit',
-          SearchDesc: 'Fine tune search results by selecting media type(s) such as <strong>Video</strong> or <strong>Photo</strong>, type(s) of categories such as <strong>Known faces</strong> to search Celebrities and Faces found in Face Collection, <strong>Labels</strong> to search Rekognition labels, <strong>Transcript</strong> to search speech to text results, and/or <strong>Content attributes</strong> to search group name and attributes associated with uploaded content. Select <strong>Exact match</strong> to search exact terms',
+          SearchDesc: 'The search feature is powered by <a href="https://aws.amazon.com/opensearch-service/features/serverless/" target="_blank">Amazon OpenSearch Serverless</a>, a managed service that scales to support petabyte storage without configuring or managing clusters. It now supports <strong>complex search query</strong> where you can use keywords such as <code>and</code>, <code>or</code>, <code>not</code> logical operators, <code>parenthesis</code> to group terms, <code>quotation</code> for exact phrase match, and <code>wildcard</code> search. See examples and syntax below.',
           SearchQueryFailed: 'Fail to query the search results',
-          // SearchDesc: 'Specify options to refine search results. Select specific category such as \'Video\' or \'Photo\' returns results in the selected categories. Select \'Exact match\' returns results that contains the exact phrases.',
           ExactMatch: 'Exact match',
           PageSize10: '10 results per page',
           PageSize30: '30 results per page',
           PageSize50: '50 results per page',
           SearchResultDesc: 'Search results',
           Category: 'Category',
+          SearchExampleSyntax: 'Search examples and syntax',
+          SearchExampleSyntaxDesc: 'The Amazon OpenSearch Service (search engine) can support complex search. For instance, you can search for multiple people who are present in the same video such as <code>Andy Jassy</code> and <code>Werner Vogels</code>. You can search for videos where <code>Andy Jassy</code> has said <code>"There is no compression algorithm for experience."</code>. Or, you can search for <code>Jeff Bezos</code> in video where <code>Blue Origins rocket launch</code>. Also note that, the search query is <strong>case insensitive</strong> that implies searching <code>Andy Jassy</code> and <code>andy jassy</code> returns the same results.  Let\'s take a look at a few search examples below.',
+          SearchExample1: 'Example 1: Simple search with a name',
+          SearchExample1Desc: 'Search: <code>Andy Jassy</code><br/>The results may return <code>Andy Jassy</code>, <code>Peter Jassy</code>, <code>Andy Jo</code>, and so forth. This is because the search query searches for any name that contains either <code>Andy</code> or <code>Jassy</code>. Obviously, some names are not really what you are looking for. The next example shows you how to perform an exact match search.',
+          SearchExample2: 'Example 2: Exact match search of a name',
+          SearchExample2Desc: 'Search: <code>"Andy Jassy"</code><br/>Instead of typing <code>Andy Jassy</code>, use the double quotation mark, <code>"Andy Jassy"</code>. When the search query is quoted, the search engine performs a search of the entire phrase instead of individual word of the phrase. This can be very useful when you are searching a phrase in the transcription. For instance, searching Andy Jassy\'s famous quote, <code>"no compression algorithm for experience."</code>',
+          SearchExample3: 'Example 3: Search for multiple names and phrases',
+          SearchExample3Desc: 'Search: <code>"Andy Jassy" AND "no compression algorithm for experience."</code><br/>You can use <code>AND</code>, <code>OR</code>, and/or <code>NOT</code> keywords to perform complex search. The search query above returns videos where <span class="text-success">Andy Jassy</span> says <span class="text-success">"no compression algorithm for experience."</span>.',
+          SearchExample4: 'Example 4: Complex search with grouping',
+          SearchExample4Desc: 'Search: <code>(("Andy Jassy" OR "Werner Vogels") NOT "AWS Summit")</code><br/>You can use parenthesis, <code>(</code> and <code>)</code> to build a complex search query. In this example, searching <code>(("Andy Jassy" OR "Werner Vogels") NOT "AWS Summit")</code> returns videos where both <span class="text-success">Andy Jassy</span> and <span class="text-success">Werner Vogels</span> are present but NOT in an <span class="text-success">AWS Summit</span> event.',
+          SearchExample5: 'Example 5: Wildcard search??',
+          SearchExample5Desc: 'Search: <code>(Werner AND Vog*) OR (Andy AND Jas??)</code><br/>Yes, you can do wildcard search, an asterisk <code>*</code> or a question mark, <code>?</code> where <code>*</code> matches multiple characters and <code>?</code> matches one character. <span class="font-weight-bold">It is important to note that <code>*</code> and <code>?</code> inside a double quotation (a phrase) is literal and will not match multiple characters.</span> In this example, <code>(Werner AND Vog*) OR (Andy AND Jas??)</code> will match <span class="text-success">Werner Vog<strong>els</strong></span> or <span class="text-success">Andy Jas<strong>sy</strong></span>',
           /* ai options */
           Transcript: 'Transcript',
           KnownFaces: 'Known faces',
@@ -100,6 +129,7 @@ export default class Localization {
           PhotoTab: 'Photo',
           PodcastTab: 'Podcast',
           DocumentTab: 'Document',
+          SearchTab: 'Search',
           GroupTab: 'Group',
           NoMediaPresent: 'You don\'t have any <abbr title="media">{{MEDIATYPE}}</abbr> files in your collection. Navigate to <abbr title="upload">{{UPLOADTAB}} Tab</abbr> to start adding files.',
           MediaInProcess: '<p><strong>{{BASENAME}}</strong> media is still in process. Please navigate to <strong>{{PROCESSINGTAB}} Tab</strong> to check the progress.</p>',
@@ -125,12 +155,13 @@ export default class Localization {
           GroupDesc: 'Specify a group name to tie all the files together. You can then search the files by group later on. The group name should only contain alphanumeric, dash, and underscore characters. Leave it blank if you don\'t want to group them.',
           AttrDesc: 'Attach additional attributes such as author, synopsis, or genre to the files. The attribute is a set of key-value pairs. Key can contain alphanumeric, dash and underscore characters. Value can contain alphanumeric, dash, underscore, comma, period, or percent sign characters. Use encodeURIComponent to encode the value if it contains other characters.',
           /* analysis component */
-          FramebasedDesc: '<span class="text-success">New feature:</span> Frame based analysis uses Amazon Rekognition Image APIs instead of Amazon Rekognition Video APIs to analyze video files. Detections include celebrities, faces, labels, moderations, and texts. (Note: segment and person pathing detections continue to use Amazon Rekognition Video APIs.)',
+          FramebasedDesc: 'Frame based analysis uses Amazon Rekognition <code>Image</code> APIs instead of Amazon Rekognition <code>Video</code> APIs to analyze video files. Detections include celebrities, faces, labels, moderations, and texts. (Note: segment and person pathing detections continue to use Amazon Rekognition Video APIs.)<br><span class="text-success">New feature:</span> <code>Use dynamic frame (Hamming distance)</code> option uses perceptual hash (hamming distance) to pick frames to analyze. In average, it is roughly equivalent to <code>1 frame every 4 seconds</code> to <code>1 frame every 6 seconds</code>.',
           Framebased: 'Frame based analysis',
-          FaceCollectionId: 'Face Collection',
+          FaceCollectionId: 'Face collection',
           CustomLabelModels: 'Custom label model(s)',
-          FrameCaptureMode: 'Frame capture mode',
-          FrameCaptureModeNone: 'Disable frame capture',
+          FrameCaptureMode: 'Frame based analysis',
+          FrameCaptureModeNone: 'Disable frame analysis',
+          FrameCaptureModeDynamic: 'Use dynamic frame (Hamming distance)',
           FrameCaptureMode1FPS: '1 frame per second',
           FrameCaptureMode2FPS: '2 frames per second',
           FrameCaptureMode3FPS: '3 frames per second',
@@ -148,6 +179,12 @@ export default class Localization {
           FrameCaptureMode1FramePer1Minute: '1 frame every 1 minute',
           FrameCaptureMode1FramePer2Minutes: '1 frame every 2 minutes',
           FrameCaptureMode1FramePer5Minutes: '1 frame every 5 minutes',
+          DynamicFrameName: 'Dynamic frame results',
+          DynamicFrameDesc: '<code>{{EXTRACTED}}</code> frames extracted from the video. Actual <code>{{ANALYZED}}</code> frames used to analyze. Total <code>{{PERCENTAGE}}%</code> of Amazon Rekognition Image API calls saved.',
+          AutoFaceIndexerStatsName: 'Face indexing results',
+          AutoFaceIndexerStatsDesc: 'Total of <code>{{FACES_INDEXED}}</code> new faces added to the collection with a total of <code>{{API_COUNT}}</code> Amazon Rekognition IndexFaces API and a total of <code>{{FACE_API_COUNT}}</code> Amazon Rekognition DetectFaces API invoked.',
+          ApiCountName: 'API invocations',
+          ApiCountDesc: 'Total of <code>{{API_COUNT}}</code> Amazon Rekognition API are invoked.',
           TextROI: 'Text regions of interest',
           LanguageCode: 'Language code',
           CustomLanguageModel: 'Custom Language Model',
@@ -156,9 +193,9 @@ export default class Localization {
           TextRegionOfInterest: 'Region of Interest for Amazon Rekognition Text Detection',
           SelectModel: 'Select a model...',
           SelectModels: 'Select model(s)...',
-          SelectFrameCaptureMode: 'Auto select...',
+          SelectFrameCaptureMode: 'Select mode...',
           SelectLanguageCode: 'Auto detect language...',
-          SelectCollection: 'Select a collection...',
+          SelectCollection: 'Disable facematch (SearchFacesByImage API)',
           MinConfidence: 'Min. confidence',
           Celeb: 'Celebrity detection',
           Label: 'Label detection',
@@ -173,9 +210,52 @@ export default class Localization {
           Topic: 'Topic analysis',
           Document: 'Document analysis',
           Segment: 'Shot segment detection',
-          CustomlabelDesc: '<span class="text-success">New feature:</span> With <a href="https://aws.amazon.com/rekognition/custom-labels-features/" target="_blank">Amazon Rekognition Custom Labels Feature</a>, you can quickly train a computer vision (CV) model such as image classification or object detection model to identify objects or classes based on your business needs. Select up to <strong>{{MAX_CUSTOMALBELMODELS}}</strong> models. Check out this GitHub sample solution, <a href="https://github.com/aws-samples/amazon-rekognition-custom-brand-detection" target="_blank">Building brand (custom object) detection demo</a>.',
+          CustomlabelDesc: 'With <a href="https://aws.amazon.com/rekognition/custom-labels-features/" target="_blank">Amazon Rekognition Custom Labels Feature</a>, you can quickly train a computer vision (CV) model such as image classification or object detection model to identify objects or classes based on your business needs. Select up to <code>{{MAX_CUSTOMALBELMODELS}} models</code>. Check out this GitHub sample solution, <a href="https://github.com/aws-samples/amazon-rekognition-custom-brand-detection" target="_blank">Building brand (custom object) detection demo</a>.',
           Customlabel: 'Custom label detection',
           ComprehendInCertainLanguage: '** Comprehend features may not be available in certain languages',
+          ImageProperty: 'Image property detection',
+          Scene: 'Scene detection',
+          SceneDesc: '<span class="text-success">New feature:</span> Scene detection uses AI/ML metadata to group shots into scenes. The feature uses <code>Frame Based analysis</code>, <code>Amazon Rekognition Shot Segment</code>, and <code>open source image embeddings model</code>.',
+          SceneListTitle: 'View a list of detected scenes ({{SCENES}}):',
+          SceneDetailTitle: 'Scene description',
+          SceneDetailDesc: '<strong>Scene #{{SCENE_NO}}</strong> starts at <code/>{{SMPTE_START}}</code> and ends at <code/>{{SMPTE_END}}</code>, elapsed <code/>{{DURATION}}</code> seconds. It contains {{SHOTS}} shots from Shot <code/>#{{SHOT_START}}</code> to Shot <code/>#{{SHOT_END}}</code>.',
+          SceneEnhanceWithTranscript: 'Enhancing scenes w/ transcript',
+          SceneEnhanceWithLLM: 'Scene description & taxonomies (GenAI)',
+          MinFrameSimilarity: 'Min. frame similarity',
+          MaxTimeDistance: 'Frame proximity range (min)',
+          AdBreak: 'Ad Break detection',
+          AdBreakInterval: 'Break interval (mins)',
+          AdBreakOffset: 'Break offset (mins)',
+          PauseWeight: 'Speech pause weight',
+          QuietnessWeight: 'Audio quietness weight',
+          ContextualWeight: 'Label contextual weight',
+          AdBreakDesc: '<span class="text-success">New feature:</span> Ad Break detection uses AI/ML metadata to estimate potential slots within the content where are suitable for inserting Ad minimizing the impact or disruption of the user viewing experience. The feature requires <code>Scene detection</code>, <code>Frame Based analysis</code>, <code>Amazon Rekognition Label Detection</code>, <code>Amazon Rekognition Shot Segment</code>, <code>Amazon Transcribe</code>, and <code>AWS Elemental MediaConvert Audio normalization (Loudness logging)</code> enabled.',
+          AdBreakDetailTitle: 'Ad break description',
+          AdBreakDetailDesc: '<strong>Ad break #{{BREAK_NO}}</strong> is detected at <code/>{{SMPTE_TIMESTAMP}}</code>, right <strong>{{BREAK_TYPE}}</strong> Scene #{{SCENE_NO}}. The ad break is recommended based on the momentary loudness of <code>{{MOMENTARY}} LUFS</code>, the speech pause duration of <code>{{PAUSE_DURATION}}s</code> around the ad break, and the contextual metadata distance of <code>{{CONTEXTUAL_DISTANCE}}</code> before and after the ad break.',
+          AutoFaceIndexer: 'Auto Face Indexer',
+          AutoFaceIndexerDesc: '<span class="text-success">New feature:</span> Auto Face Indexer feature actively indexes unrecognized faces to a Face Collection. Once the unrecognized faces are tagged, the faces would then be identified in contents without re-running the analysis.',
+          MinFaceWidth: 'Face Width min. pixels',
+          MinFaceHeight: 'Face Height min. pixels',
+          MinFaceBrightness: 'Brightness min. value',
+          MinFaceSharpness: 'Sharpness min. value',
+          MaxPosePitch: 'Pose Pitch max. threshold',
+          MaxPoseRoll: 'Pose Roll max. threshold',
+          MaxPoseYaw: 'Pose Yaw max. threshold',
+          MinCelebConfidence: 'Celebrity min. confidence',
+          ZeroshotLabel: 'Zero-Shot Label',
+          ZeroshotLabelDesc: '<span class="text-success">New feature:</span> Zero-Shot Label feature support both object detection and image classification without training a ML model. You can define your text query such as <code>dress, hat, skirt, blazer, pant</code> or upload images of the objects you would like to identify.',
+          Shoppable: 'Shoppable experience',
+          ShoppableDesc: '<span class="text-success">New feature:</span> Shoppable metadata detection uses machine learning models to identify apparel items in the content. It then finds similar items in your product catalog stored in Amazon OpenSearch with KNN, a <code>vector store</code>. This feature is disabled by default. Contact your AWS sales representative if you would like to try out this feature.',
+          Toxicity: 'Toxicity detection',
+          ToxicityDesc: '<span class="text-success">New feature:</span> Amazon Transcribe now supports Toxicity detection on speech. It requires <code>language code</code> set to en-US, <code>custom vocabulary</code> and <code>custom language model</code> disabled.',
+          AnalyseConversation: 'Analyse conversation (GenAI)',
+          BlackFrameDesc: '<span class="text-success">Black frame setting:</span> a filter that allows you to control the black frame detection by specifying the black levels and pixel coverage of black pixels in a frame. Applicable to Amazon Rekognition Segment API. Refer to <a href="https://docs.aws.amazon.com/rekognition/latest/APIReference/API_StartTechnicalCueDetectionFilter.html" target="_blank">Amazon Rekognition documentation</a>.',
+          BlackFramePixelThreshold: 'Max. pixel threshold',
+          BlackFrameCoveragePercentage: 'Min. coverage %',
+          InputCropDesc: '<span class="text-success">Input cropping setting:</span> a filter that allows you to crop the input video to remove potential noises introduced by Vertical Blanking Interval (VBI) scan lines.',
+          InputCropX: 'X offset (pixels)',
+          InputCropY: 'Y offset (pixels)',
+          InputCropKeepAR: 'Maintain aspect ratio',
           /* finalize component */
           Summary: 'Summary',
           Source: 'Source',
@@ -233,7 +313,7 @@ export default class Localization {
           Transcribe: 'Amazon Transcribe',
           Textract: 'Amazon Textract',
           Labels: 'Labels',
-          DownlaodJson: 'Download JSON',
+          DownloadJson: 'Download JSON',
           TranscribeTab: 'Transcribe',
           ImageCaptionTab: 'Captioning',
           CelebTab: 'Celebrity',
@@ -253,11 +333,18 @@ export default class Localization {
           CustomLabelTab: 'Custom label',
           EnableAll: 'Enable all labels',
           ToggleAll: 'Toggle all labels',
+          ToggleTextOverlay: 'Enable text overlay',
           TranscriptionJob: 'Transcription Job',
           SubtitleSwitch: 'Turn subtitle on/off',
+          ShowTranscript: 'View the full transcript in <code>{{LANGUAGECODE}}</code>',
           DownloadEDLDesc: 'Media2Cloud converts AI/ML detection results to Edit Decision List (EDL) format that allows you to import the detection results as timelines into popular editing software.',
           ScatterGraphDesc: 'Toggle a legend to show or hide data points of the selected label. Click on individual data point to seek to the timestamp on the video to see the detection results.',
           SearchSpecificLabel: '(Search specific label)',
+          FaceTagging: 'Tagging faces',
+          FaceTaggingToolDesc: 'You got numbers of faces that have not been tagged. Click on the <code>{{FACE_TAGGING_TOOL}}</code> to name the unrecognized faces.',
+          FaceTaggingInstruction: 'Left panel contains faces that have not been tagged. Right panel provides controls to name (or delete) face(s). To tag a face (or group of faces), hover to the face image and click on <code>Select</code> button. Provide a name, click on the <code>Lock</code> icon to confirm. To delete a face or faces, select the faces from the left panel and click on <code>Trash</code> icon to confirm. Repeat the steps to add (or delete) groups of faces. When you are ready, click on <code>Apply changes and done</code> button.',
+          FaceTaggingShortInstruction: 'To tag face(s), provide a name in the <code>Name</code> field and click on the <code>Lock</code> icon. To remove faces from the collection, click on <code>Trash</code> icon.',
+          ToBeRemoved: 'To be removed',
           /* textract */
           Row: 'Row',
           Rows: 'Rows',
@@ -293,14 +380,22 @@ export default class Localization {
           /* FaceCollection */
           FaceCollectionDesc: 'Create, view and manage your Amazon Rekognition Face Collection(s).',
           AvailableFaceCollections: 'List of available face collection(s)',
-          IndexedFacesInCollection: 'Indexed faces found in <strong>{{FACE_COLLECTION}}</strong> collection',
+          IndexedFacesInCollection: 'Faces indexed in <code>{{FACECOLLECTION}}</code> collection,',
           SelectFaceCollection: 'Select a face collection...',
           Alternatively: 'Alternatively,',
+          ManagedByFaceIndexer: 'managed by <code>Auto Face Indexer</code>',
+          NotManagedByFaceIndexer: '<u>not</u> managed by <code>Auto Face Indexer</code>',
+          ImportCollectionCompleted: 'Successfully imported <code>{{FACECOLLECTION}}</code> collection. Reloading the table...',
+          ColumnFaceId: 'FaceId',
+          ColumnExternalImageId: 'ExternalImageId',
+          ColumnIndexedAt: 'IndexedAt',
+          ColumnRelatedAssetId: 'RelatedAssetId',
+          ColumnRemove: 'Remove?',
           /* Snapshot */
           EnableSnapshotMode: 'Snapshot mode',
           /* UserManagementTab */
           UserManagementTab: 'User Management',
-          UserManagementDesc: 'The page provides a simple way to manage users and control user accesses to the Media2Cloud solution web portal. The user directory is managed by <a href="https://aws.amazon.com/cognito/" target="_blank">Amazon Cognito User Pool</a>. (Administrator privilege required.) Alternatively, you can manage your user directory from <a href="{{CONSOLE_USERPOOL}}" target="_blank">Amazon Cognito User Pools Console</a>.',
+          UserManagementDesc: 'The page provides a simple way to manage users and control user accesses to the Media2Cloud web portal. The user directory is managed by <a href="https://aws.amazon.com/cognito/" target="_blank">Amazon Cognito User Pool</a>. (Administrator privilege required.) Alternatively, you can manage your user directory from <a href="{{CONSOLE_USERPOOL}}" target="_blank">Amazon Cognito User Pools Console</a>.',
           Username: 'Username',
           Email: 'Email',
           Group: 'Group',
@@ -313,11 +408,40 @@ export default class Localization {
           CreateNewUsers: 'Create new user(s)',
           CreateNewUsersDesc: 'To add a new user, click on <strong>{{ADD_EMAIL}}</strong> button, enter a valid <em>email address</em>, assign user to a <em>group</em>, and (optionally) specify an <em>username</em>. Repeat the process to add multiple users. When you are ready, click on <strong>{{CONFIRM_AND_ADD}}</strong> button to create the user(s).',
           /* Image caption */
-          ImageCaptionDesc: '(Image caption generated by BLIP: Bootstrapping Language-Image Pre-training for Unified Vision-Language Understanding and Generation machine learning model. Learn more about <a href="https://arxiv.org/abs/2201.12086" target="_blank">BLIP</a>)',
+          ImageCaptionDesc: 'Image caption and other information are generated by using Anthropic Claude 3 Haiku (or Sonnet) Text & Vision model managed by Amazon Bedrock',
+          /* Knowledge Graph */
+          KnowledgeGraphTab: 'Knowledge Graph',
+          KnowledgeGraphTabDesc: 'Demonstrates a graph representation of the content and how it is related to other contents in your archive library',
+          KGViewConnections: 'View search results\' connections (Note: the query could take a few seconds)',
+          // GenAI
+          GenAITab: 'GenAI',
+          Bedrock: 'Foundation models on Amazon Bedrock',
+          BedrockDesc: 'Make sure you have requested access to Bedrock\'s Foundation models. Go to AWS console, select Amazon Bedrock service. Under the Model access page, request access to the models.',
+          AdjustParameters: 'Parameters to adjust the output:',
+          Template: 'Template',
+          Prompt: 'Prompt',
+          Temperature: 'Temperature',
+          TopK: 'Top-K',
+          TopP: 'Top-P',
+          MaxLength: 'MaxLength',
+          OriginalTranscriptPlaceholder: '== Original transcript ==',
+          ModelName: 'Model name',
+          // AdBreak
+          AdBreakTab: 'Ad Breaks',
+          AdBreakTabDesc: 'Identify potential Ad break opportunities in the video. The detection combines numbers of metadata outputs generated by AWS AI/ML services to derive the likelihood (weight) of timestamps to insert advertisement without randomly cutting off on-going dialogues.',
+          AdBreakGraphTitle: 'Graph view of the Ad breaks',
+          AdBreakListTitle: 'List view of the Ad breaks',
+          // Shoppable
+          ShoppableTab: 'Shoppable Items',
+          ShoppableTabDesc: 'Identify potential shoppable products in the video. This features uses <code>AWS AI/ML services</code> to identify apparels in the video, <code>Amazon OpenSearch Service</code> with K-NN plugin to map apparel items to product ID from <code>Amazon.com</code>, and a new, <code>invite only</code> service provided by <code>Amazon</code> to enable immersive purchasing for relevant products.',
+          ShoppableListTitle: 'A list of frame images that contains shoppable items',
+          ShoppableItemsDesc: 'Numbers of items ({{ITEMS}}) detected in the frame image. Hover to and click on the <code>green dots</code> to see similar products on amazon.com',
+          ShoppableAmazonTitle: 'Shop similar products at Amazon.com',
+          ShoppableMetadataTitle: 'Show shoppable metadata in JSON format',
         },
         Tooltips: {
           /* main view */
-          VisitSolutionPage: 'Visit AWS Solutions page',
+          VisitSolutionPage: 'Visit AWS Solutions Library',
           Logout: 'ready to logout?',
           RemoveMedia: 'Remove media from collection',
           /* analysis component */
@@ -349,6 +473,26 @@ export default class Localization {
           SetAsDefault: 'Save settings as default on your local browser',
           RestoreOriginal: 'Restore settings to the originals',
           ApplyToAllUsers: 'Store settings globally and apply to all users',
+          ToggleAll: 'Show all datapoints for all labels in the graph. Rendering all datapoints can affect performance. Recommend to use the \'search\' feature and select label that you are interested in.',
+          ToggleTextOverlay: 'Display labels on screen while playing video. Rendering large number of labels can affect video playback performance. Recommend to disable text overlay when you have over 200 labels.',
+          ImageProperty: 'This feature analyzes the dominate foreground and background color, brightness, and contrast. It requires Framed Based feature enabled.',
+          Scene: 'Enable Scene detection',
+          SceneEnhanceWithTranscript: 'Leveraging transcript result to enhance the scene detection',
+          SceneEnhanceWithLLM: 'Using Amazon Bedrock with Anthropic Claude V3 Sonnet to generate scene description, taxonomies, brands and logos from the scene level.',
+          MinFrameSimilarity: 'Minimum similarity score of frames to be considered in a same scene',
+          MaxTimeDistance: 'Proximity range (in minutes) where the detected similar frames should reside in order to be considered a same scene. Larger the number; fewer the scenes. Default to 3 minutes.',
+          AdBreak: 'Enable Ad Break detection',
+          AdBreakInterval: 'Define how often to evalute an ad break',
+          AdBreakOffset: 'Define the search windows (+/-offset) of each interval in minute unit',
+          AdBreakWeight: 'The value affects how the weight (priority) of an ad break is calculated',
+          AutoFaceIndexer: 'Auto Face Indexer actively indexes unrecognized faces to a face collection. This feature requires Frame Based, Celebrity, and Face Match detections',
+          MinFaceValue: 'Faces identified with the value lower than the minimum value is ignored',
+          MaxPoseThreshold: 'Faces identified with the pose value higher than the threshold is ignored',
+          MinCelebConfidence: 'Celebrity identified with a confidnce score higher than the minimum value is ignored. To index all identified celebrities, set the value to 100',
+          ZeroshotLabel: 'This feature uses open source Zero-Shot Image Classification and Zero-Shot Object Detection models to identify custom labels. It requires Framed Based feature enabled.',
+          Shoppable: 'This feature uses open source Zero-Shot Object Detection and Zero-Shot Image Classification models to identify Apparel items in the content. It requires Framed Based feature. Recommend to enable Shot Segment feature as well.',
+          Toxicity: 'Enable Amazon Transcribe Toxicity Detection feature',
+          AnalyseConversation: 'Using Amazon Bedrock with Anthropic Claude V3 Sonnet to analyse the transcript to provide contextual, logical changes of the conversations.',
           /* upload */
           RemoveFromList: 'Remove file from the list?',
           UploadOnly: 'File will be uploaded but won\'t be analyzed',
@@ -365,11 +509,24 @@ export default class Localization {
           /* face collection */
           RemoveFaceFromCollection: 'Remove face from collection',
           RemoveFaceCollection: 'Delete the entire face collection!',
+          ImportFaceCollection: 'Import the face collection and let Auto Face Indexer manage the collection',
+          FaceTaggingTool: 'Run the face tagging wizard to name the unknown faces',
           /* snapshot */
           IndexFace: 'Enter a name of the cropped face and select a face collection to store the face',
           /* user management */
           RemoveUserFromCognito: 'Remove user from user directory',
           RefreshUserTable: 'Fetch users from Amazon Cognito User Pool again',
+          SendRequest: 'Send request to foundation model to summary text. This may take up to 30 seconds.',
+          Prompt: 'Specify what you want the foundation model to generate; i.e., "Summarize text", "Sentiment of the text", and etc',
+          Temperature: 'Control the randonmess of the output. The larger the value; the more randomness of the output.',
+          TopK: 'Control the Top "k" tokens should be considered. The smaller the value would likely select the same token for the sentence which implements less randomness of the words being used.',
+          TopP: 'Control the probability of picking a token based on the token\'s probability. The smaller the value would likely pick a token with the highest probability.',
+          MaxLength: 'Maximum tokens (length) of the generated output. The larger the value; the longer it takes to inference which may also lead to timeout issue. Recommended to choose between 40 to 60.',
+          BlackFramePixelThreshold: 'The lower the threshold; the more strict on the black level. Default value is 0.2.',
+          BlackFrameCoveragePercentage: 'The higher the coverage %; the more stricted on the noise (non true black) level. Default value is 99.',
+          InputCropX: 'Crop X amount of pixels horizontally. The X value applies to both left and right of the width of the video.',
+          InputCropY: 'Crop Y amount of pixels vertically. The Y value applies to both top and bottom of the height of the video.',
+          InputCropKeepAR: 'Maintain the video aspect ratio after applying the cropping filter.',
         },
         Buttons: {
           Back: 'Back',
@@ -390,12 +547,18 @@ export default class Localization {
           DownloadEDL: 'Download EDL Package',
           Refresh: 'Refresh',
           CreateNewCollection: 'Create new collection',
-          RemoveFaceCollection: 'Delete face collection',
+          RemoveFaceCollection: 'Delete collection',
+          ImportFaceCollection: 'Import collection',
           IndexFace: 'Index face',
           CleanupDatastore: 'Clean up data store',
           ReAnalyzeContent: 'Re-run AI/ML analysis',
           AddEmail: 'Add email',
           ConfirmAndAddUsers: 'Confirm and add users',
+          LoadMore: 'Load more...',
+          SendRequest: 'Send request',
+          FaceTaggingTool: 'Start face tagging',
+          ApplyChangesAndDone: 'Apply changes and done',
+          Select: 'Select',
         },
         Statuses: {
           NotStarted: 'Not started',
@@ -432,6 +595,7 @@ export default class Localization {
           StartWorkflowError: 'fail to start ingest workflow...',
           /* face collection */
           InvalidFaceCollectionName: 'Face Collection name can only contain alphnumeric, period, dash, and underscore characters and be less than 255 characters',
+          ImportFaceCollectionFailed: 'Failed to import <code>{{FACECOLLECTION}}</code> collection.<br>{{ERROR}}',
           /* snapshot */
           InvalidIndexedName: 'Name can only contain alphnumeric, space, period, dash, and underscore characters and be less than 255 characters',
           InvalidFaceCollectionSelection: 'Make sure to select a face collection. If you don`t have any face collection, navigate to <strong>FaceCollection Tab</strong> to create one.',
@@ -444,6 +608,17 @@ export default class Localization {
           InvalidEmailAddress: 'Invalid email address',
           NoNewUsers: 'No user to add',
           FailAddingUsers: 'Problem adding the following users: {{USERS}}',
+          /* search */
+          InvalidSearchTerm: 'Search query should only contain letters, numbers, punctunations, currencies, and space characters, <code>[\\p{L}\\p{P}\\p{N}\\p{Sc}\\s]+</code>',
+          FailUpdatingFaceTags: 'Failed to update face information to the dynamodb table.',
+          // adbreak
+          NoAdBreakDetected: 'Unable to find any suitable ad break',
+          // shoppable
+          NoShoppableProduct: 'Unable to find any shoppable products with this video',
+          // bedrock
+          BedrockServiceUnavailable: 'Amazon Bedrock service unavailable in this region',
+          BedrockModelUnavailable: 'The selected foundation model unavailable in this region',
+          BedrockAccessRequired: 'Access denied. Please request access to the model in Amazon Bedrock console',
         },
       },
     };

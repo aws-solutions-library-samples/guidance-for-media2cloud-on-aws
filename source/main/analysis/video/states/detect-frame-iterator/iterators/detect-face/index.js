@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  DetectFacesCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
   AnalysisTypes,
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
@@ -24,34 +27,43 @@ class DetectFaceIterator extends BaseDetectFrameIterator {
   }
 
   async detectFrame(bucket, key, frameNo, timestamp) {
-    const fn = this.rekog.detectFaces.bind(this.rekog);
     const params = this.makeParams(bucket, key, this.paramOptions);
-    return this.detectFn(fn, params)
-      .then(result =>
-        this.parseFaceResult(result, frameNo, timestamp));
+    const command = new DetectFacesCommand(params);
+
+    return this.detectFn(command)
+      .then((res) =>
+        this.parseFaceResult(res, frameNo, timestamp));
   }
 
   parseFaceResult(data, frameNo, timestamp) {
-    return (!data || !data.FaceDetails || !data.FaceDetails.length)
-      ? undefined
-      : data.FaceDetails.map(x => ({
+    if (!data || !data.FaceDetails || !data.FaceDetails.length) {
+      return undefined;
+    }
+
+    const minConfidence = this.minConfidence;
+    const filtered = data.FaceDetails
+      .filter((x) =>
+        x.Gender
+        && x.Gender.Value
+        && x.Confidence >= minConfidence);
+    if (!filtered.length) {
+      return undefined;
+    }
+
+    return filtered
+      .map((x) => ({
         Timestamp: timestamp,
         FrameNumber: frameNo,
         Face: x,
       }));
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      ((x.Face || {}).Gender || {}).Value).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.Face.Gender.Value)),
+    ];
   }
 }
 

@@ -106,6 +106,12 @@
         {
           "AudioTypeControl": "FOLLOW_INPUT",
           "AudioSourceName": "##PLACEHOLDER",
+          "AudioNormalizationSettings": {
+            "Algorithm": "ITU_BS_1770_2",
+            "AlgorithmControl": "MEASURE_ONLY",
+            "LoudnessLogging": "LOG",
+            "PeakCalculation": "TRUE_PEAK"
+          },
           "CodecSettings": {
             "Codec": "AAC",
             "AacSettings": {

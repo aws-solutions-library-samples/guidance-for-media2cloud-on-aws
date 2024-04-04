@@ -1,10 +1,10 @@
 {
-    "Comment": "video ingest state machine to run mediainfo and start mediaconvert job to create proxy",
+    "Comment": "video ingest state machine to run mediainfo, start mediaconvert job to create proxy, and compute perceptual hashes",
     "StartAt": "Run mediainfo",
     "States": {
         "Run mediainfo": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestVideoLambda.Arn}",
             "Parameters": {
                 "operation": "run-mediainfo",
                 "uuid.$": "$.uuid",
@@ -29,7 +29,7 @@
             "Type": "Task",
             "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "FunctionName": "${a0}",
+                "FunctionName": "${IngestVideoLambda}",
                 "Payload": {
                     "token.$":"$$.Task.Token",
                     "operation": "start-transcode",
@@ -41,7 +41,80 @@
                 }
             },
             "TimeoutSeconds": 86400,
-            "End": true
+            "Next": "Has frame capture group?"
+        },
+        "Has frame capture group?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.input",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.framebased",
+                            "BooleanEquals": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.input.aiOptions.frameCaptureMode",
+                            "NumericGreaterThan": 0
+                        }
+                    ],
+                    "Next": "Compute perceptual hashes"
+                }
+            ],
+            "Default": "Ingest completed"
+        },
+        "Compute perceptual hashes": {
+            "Type": "Task",
+            "Resource": "${IngestVideoComputeHashLambda.Arn}",
+            "Parameters": {
+                "operation": "compute-perceptual-hash",
+                "uuid.$": "$.uuid",
+                "overallStatus.$": "$.overallStatus",
+                "input.$": "$.input",
+                "data.$": "$.data",
+                "status": "NOT_STARTED",
+                "progress": 0
+            },
+            "Next": "More hashes?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ]
+        },
+        "More hashes?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Ingest completed"
+                }
+            ],
+            "Default": "Compute perceptual hashes"
+        },
+        "Ingest completed": {
+            "Type": "Succeed"
         }
     }
 }

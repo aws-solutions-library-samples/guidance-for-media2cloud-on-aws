@@ -4,7 +4,7 @@
     "States": {
         "Check restore status": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestFixityLambda.Arn}",
             "Parameters": {
                 "operation": "check-restore-status",
                 "uuid.$": "$.uuid",
@@ -71,7 +71,7 @@
         },
         "Compute checksum": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestFixityLambda.Arn}",
             "Parameters": {
                 "operation": "compute-checksum",
                 "uuid.$": "$.uuid",
@@ -105,7 +105,7 @@
         },
         "Validate checksum": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestFixityLambda.Arn}",
             "Parameters": {
                 "operation": "validate-checksum",
                 "uuid.$": "$.uuid",

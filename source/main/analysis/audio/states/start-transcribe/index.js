@@ -5,6 +5,9 @@ const CRYPTO = require('crypto');
 const {
   Environment,
   StateData,
+  AnalysisTypes: {
+    Toxicity,
+  },
   AnalysisError,
   CommonUtils,
   ServiceToken,
@@ -63,28 +66,30 @@ class StateStartTranscribe {
   }
 
   async makeParams() {
-    const bucket = this.stateData.input.destination.bucket;
-    const key = this.stateData.input.audio.key;
+    const {
+      input: {
+        destination: {
+          bucket,
+        },
+        audio: {
+          key,
+        },
+        aiOptions: {
+          customLanguageModel,
+          customVocabulary,
+          languageCode,
+          [Toxicity]: _toxicity,
+        },
+      },
+    } = this.stateData;
     if (!bucket || !key) {
       throw new AnalysisError('missing input.destination.bucket and input.audio.key');
     }
-    const aiOptions = this.stateData.input.aiOptions;
+
     const id = this.makeUniqueJobName();
     const mediaFileUri = `s3://${PATH.join(bucket, key)}`;
     const outPrefix = this.makeOutputPrefix();
-    const modelSettings = (aiOptions.customLanguageModel)
-      ? {
-        LanguageModelName: aiOptions.customLanguageModel,
-      }
-      : undefined;
-    const settings = {
-      ShowSpeakerLabels: true,
-      MaxSpeakerLabels: 10,
-    };
-    if (aiOptions.customVocabulary !== undefined) {
-      settings.VocabularyName = aiOptions.customVocabulary;
-    }
-    return {
+    const params = {
       TranscriptionJobName: id,
       Media: {
         MediaFileUri: mediaFileUri,
@@ -97,16 +102,59 @@ class StateStartTranscribe {
       OutputBucketName: bucket,
       OutputKey: outPrefix,
       OutputEncryptionKMSKeyId: 'alias/aws/s3',
-      IdentifyLanguage: (aiOptions.languageCode === undefined),
-      LanguageCode: aiOptions.languageCode,
-      Settings: settings,
-      ModelSettings: modelSettings,
+      IdentifyLanguage: (languageCode === undefined),
+      IdentifyMultipleLanguages: (languageCode === undefined),
+      LanguageCode: languageCode,
+      Settings: {
+        // WORKAROUND:
+        // Enabling Channel Identification or SpeakerLabels causes
+        // Amazon Transcribe to create invalid timestamps of vtt output
+        ChannelIdentification: false,
+        // ShowSpeakerLabels: true,
+        // MaxSpeakerLabels: 10,
+      },
       Subtitles: {
         Formats: [
           'vtt',
         ],
       },
     };
+
+    if (customLanguageModel) {
+      params.ModelSettings = {
+        LanguageModelName: customLanguageModel,
+      };
+    }
+
+    if (customVocabulary !== undefined) {
+      params.Settings.VocabularyName = customVocabulary;
+    }
+
+    // Toxicity Detection transcription jobs currently do not support
+    // language identification, multi-language identification,
+    // channel identification, alternative transcriptions,
+    // speaker identification, vocabulary filters,
+    // or custom vocabulary use.
+    if (_toxicity) {
+      params.ToxicityDetection = [
+        {
+          ToxicityCategories: ['ALL'],
+        },
+      ];
+      params.IdentifyLanguage = false;
+      params.IdentifyMultipleLanguages = false;
+      params.LanguageCode = 'en-US';
+      params.Settings = {
+        ChannelIdentification: false,
+        ShowAlternatives: false,
+        ShowSpeakerLabels: false,
+      };
+      delete params.LanguageIdSettings;
+      delete params.LanguageOptions;
+      delete params.ModelSettings;
+    }
+
+    return params;
   }
 
   makeUniqueJobName() {

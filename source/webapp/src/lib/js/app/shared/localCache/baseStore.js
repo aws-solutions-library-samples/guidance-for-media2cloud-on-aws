@@ -1,12 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import LocalStoreDB from './localStoreDB.js';
+import {
+  GetLocalStoreDB,
+} from './localStoreDB.js';
 
 export default class BaseStore {
   constructor(storeName) {
     this.$storeName = storeName;
-    this.$db = LocalStoreDB.getSingleton();
+    this.$db = GetLocalStoreDB();
   }
 
   get storeName() {
@@ -27,5 +29,9 @@ export default class BaseStore {
 
   async deleteItem(id) {
     return this.db.deleteItem(this.storeName, id);
+  }
+
+  async deleteItemsBy(prefix) {
+    return this.db.deleteItemsBy(this.storeName, prefix);
   }
 }

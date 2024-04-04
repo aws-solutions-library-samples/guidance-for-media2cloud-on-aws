@@ -1,17 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  GetLabelDetectionCommand,
+} = require('@aws-sdk/client-rekognition');
 const {
   AnalysisTypes,
-  Environment,
+  WhitelistLabels,
 } = require('core-lib');
 const BaseCollectResultsIterator = require('../shared/baseCollectResultsIterator');
 
@@ -21,11 +15,6 @@ const NAMED_KEY = 'Labels';
 class CollectLabelIterator extends BaseCollectResultsIterator {
   constructor(stateData) {
     super(stateData, SUBCATEGORY, NAMED_KEY);
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    this.$func = rekog.getLabelDetection.bind(rekog);
     this.$paramOptions = {
       SortBy: 'TIMESTAMP',
     };
@@ -35,17 +24,37 @@ class CollectLabelIterator extends BaseCollectResultsIterator {
     return 'CollectLabelIterator';
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.Label || {}).Name).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+  getRunCommand(params) {
+    return new GetLabelDetectionCommand(params);
+  }
+
+  parseModelMetadata(dataset) {
+    return {
+      VideoMetadata: dataset.VideoMetadata,
+      LabelModelVersion: dataset.LabelModelVersion,
+    };
+  }
+
+  parseResults(dataset) {
+    /* Uncomment it to whitelist labels
+    const filtered = dataset[NAMED_KEY]
+      .filter((x) =>
+        WhitelistLabels[x.Label.Name] !== undefined);
+    return filtered;
+    */
+    const minConfidence = this.minConfidence;
+    return dataset[NAMED_KEY]
+      .filter((x) =>
+        x.Label.Name
+        && x.Label.Confidence >= minConfidence);
+  }
+
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.Label.Name)),
+    ];
   }
 }
 

@@ -1,56 +1,103 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const PATH = require('path');
 const {
-  AIML,
+  RekognitionClient,
+  ListFacesCommand,
+  DescribeProjectVersionsCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
+  TranscribeClient,
+  DescribeLanguageModelCommand,
+  GetVocabularyCommand,
+} = require('@aws-sdk/client-transcribe');
+const {
+  ComprehendClient,
+  DescribeEntityRecognizerCommand,
+} = require('@aws-sdk/client-comprehend');
+const {
+  aimlGetPresets,
   DB,
   CommonUtils,
-  Environment,
   StateData,
-  AnalysisTypes,
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
+    DynamoDB: {
+      Ingest: {
+        Table: IngestTable,
+        PartitionKey: IngestPartitionKey,
+      },
+    },
+    Proxy: {
+      Bucket: ProxyBucket,
+    },
+    Rekognition: {
+      MinConfidence,
+    },
+  },
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Text,
+      CustomLabel,
+      Person,
+      Segment,
+    },
+    Transcribe,
+    Comprehend: {
+      Keyphrase,
+      Entity,
+      Sentiment,
+      CustomEntity,
+    },
+    Textract,
+    AutoFaceIndexer,
+  },
   AnalysisError,
   ServiceAvailability,
   FrameCaptureMode,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 
 const DEFAULT_AI_OPTIONS = process.env.ENV_DEFAULT_AI_OPTIONS;
 const AI_OPTIONS_S3KEY = process.env.ENV_AI_OPTIONS_S3KEY;
 
 const TYPE_REKOGNITION_IMAGE = [
-  AnalysisTypes.Rekognition.Celeb,
-  AnalysisTypes.Rekognition.Face,
-  AnalysisTypes.Rekognition.FaceMatch,
-  AnalysisTypes.Rekognition.Label,
-  AnalysisTypes.Rekognition.Moderation,
-  AnalysisTypes.Rekognition.Text,
-  AnalysisTypes.Rekognition.CustomLabel,
+  Celeb,
+  Face,
+  FaceMatch,
+  Label,
+  Moderation,
+  Text,
+  CustomLabel,
 ];
 const TYPE_REKOGNITION = [
   ...TYPE_REKOGNITION_IMAGE,
-  AnalysisTypes.Rekognition.Person,
-  AnalysisTypes.Rekognition.Segment,
+  Person,
+  Segment,
 ];
 const TYPE_TRANSCRIBE = [
-  AnalysisTypes.Transcribe,
+  Transcribe,
 ];
 const TYPE_COMPREHEND = [
   ...TYPE_TRANSCRIBE,
-  AnalysisTypes.Comprehend.Keyphrase,
-  AnalysisTypes.Comprehend.Entity,
-  AnalysisTypes.Comprehend.Sentiment,
-  AnalysisTypes.Comprehend.CustomEntity,
+  Keyphrase,
+  Entity,
+  Sentiment,
+  CustomEntity,
 ];
 const TYPE_TEXTRACT = [
-  AnalysisTypes.Textract,
+  Textract,
 ];
 const PROJECT_VERSIONS_INVALID_STATUS = [
   'TRAINING_FAILED',
@@ -60,6 +107,12 @@ const PROJECT_VERSIONS_INVALID_STATUS = [
 const DISABLE_ANALYSIS = {
   enabled: false,
 };
+const {
+  Statuses: {
+    Processing,
+    AnalysisStarted,
+  },
+} = StateData;
 
 class StatePrepareAnalysis {
   constructor(stateData) {
@@ -88,8 +141,8 @@ class StatePrepareAnalysis {
     const src = this.stateData.input || {};
     /* #1: fetch from ingest tabe */
     const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
+      Table: IngestTable,
+      PartitionKey: IngestPartitionKey,
     });
     const fetched = await db.fetch(uuid, undefined, [
       'type',
@@ -117,8 +170,8 @@ class StatePrepareAnalysis {
       this.prepareDocumentAnalysis(fetched, aiOptions),
     ]);
     /* #3: update ingest table */
-    const overallStatus = StateData.Statuses.Processing;
-    const status = StateData.Statuses.AnalysisStarted;
+    const overallStatus = Processing;
+    const status = AnalysisStarted;
     await db.update(uuid, undefined, {
       overallStatus,
       status,
@@ -127,7 +180,7 @@ class StatePrepareAnalysis {
     }, false);
     /* #4: set state data and make sure input.destination is set */
     const destination = {
-      bucket: Environment.Proxy.Bucket,
+      bucket: ProxyBucket,
       prefix: CommonUtils.makeSafeOutputPrefix(uuid, fetched.key),
       ...src.destination,
     };
@@ -154,39 +207,25 @@ class StatePrepareAnalysis {
   }
 
   async getDefaultAIOptions() {
-    const aiOptions = {
-      ...AIML,
-      minConfidence: Environment.Rekognition.MinConfidence,
-    };
-
-    /* global options from stored by webapp (admin) */
-    const bucket = Environment.Proxy.Bucket;
+    // global options from stored by webapp (admin)
+    const bucket = ProxyBucket;
     const key = AI_OPTIONS_S3KEY;
-    const globalOptions = await CommonUtils.download(bucket, key, false)
+    const globalOptions = await CommonUtils.download(bucket, key)
       .then((x) =>
-        JSON.parse(x.Body.toString()))
+        JSON.parse(x))
       .catch(() =>
         undefined);
 
     if (globalOptions !== undefined) {
-      return {
-        ...aiOptions,
-        ...globalOptions,
-      };
+      return globalOptions;
     }
 
-    /* environment options during stack creation */
-    DEFAULT_AI_OPTIONS.split(',')
-      .forEach((x) => {
-        aiOptions[x] = true;
-      });
-
-    return aiOptions;
+    // environment options during stack creation
+    return aimlGetPresets(DEFAULT_AI_OPTIONS);
   }
 
   async parseAIOptions(requested) {
     const aiOptions = requested || {};
-
     const defaultAIOptions = await this.getDefaultAIOptions();
 
     /* merge requested and default aioptions */
@@ -210,14 +249,21 @@ class StatePrepareAnalysis {
       'comprehend',
       'transcribe',
       'textract',
-    ].map(x => this.checkService(x)));
+    ].map((x) =>
+      this.checkService(x)));
 
     let disabled = [];
+
     if (!rekognition) {
       disabled = disabled.concat(TYPE_REKOGNITION);
-    } else if (!(await this.checkFacesInCollection(options.faceCollectionId))) {
-      disabled.push(AnalysisTypes.Rekognition.FaceMatch);
+    } else if (!options[AutoFaceIndexer]) {
+      // if autofaceindexer is enabled, we don't care if there are faces in the collection or not.
+      const hasFaces = await this.checkFacesInCollection(options.faceCollectionId);
+      if (!hasFaces) {
+        disabled.push(FaceMatch);
+      }
     }
+
     if (!transcribe) {
       disabled = disabled.concat(TYPE_TRANSCRIBE);
     }
@@ -246,7 +292,10 @@ class StatePrepareAnalysis {
   }
 
   async checkService(service) {
-    const supported = await ServiceAvailability.probe(service).catch(() => false);
+    const supported = await ServiceAvailability.probe(service)
+      .catch(() =>
+        false);
+
     if (!supported) {
       console.log(`checkService: '${service}' not available in '${process.env.AWS_REGION}' region`);
     }
@@ -255,35 +304,42 @@ class StatePrepareAnalysis {
 
   async checkFacesInCollection(collectionId) {
     if (!collectionId) {
-      return undefined;
+      return false;
     }
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    return rekog.listFaces({
+
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new ListFacesCommand({
       CollectionId: collectionId,
       MaxResults: 2,
-    }).promise()
-      .then(data => (data.Faces || []).length)
-      .catch(() => undefined);
+    });
+    return rekognitionClient.send(command)
+      .then((res) =>
+        (res.Faces || []).length > 0)
+      .catch(() =>
+        false);
   }
 
   async checkRekognitionCustomLabels(options) {
     /* make sure customlabel and customLabelModels are set */
-    if (!options[AnalysisTypes.Rekognition.CustomLabel] || !options.customLabelModels) {
+    if (!options[CustomLabel] || !options.customLabelModels) {
       return options;
     }
     /* make sure frameCaptureMode was enabled */
     if (Object.values(FrameCaptureMode).indexOf(options.frameCaptureMode) < 0
     || options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
-      options[AnalysisTypes.Rekognition.CustomLabel] = false;
+      options[CustomLabel] = false;
       options.customLabelModels = undefined;
       return options;
     }
-    const projectArns = (await Promise.all([].concat(options.customLabelModels).map(x =>
-      this.getRunnableProjectVersion(x))))
-      .filter(x => x);
+    const projectArns = (await Promise.all([].concat(options.customLabelModels)
+      .map((x) =>
+        this.getRunnableProjectVersion(x))))
+      .filter((x) =>
+        x);
     options.customLabelModels = (projectArns.length > 0)
       ? projectArns
       : undefined;
@@ -291,26 +347,36 @@ class StatePrepareAnalysis {
   }
 
   async getRunnableProjectVersion(model) {
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
     const projectArn = [
       'arn:aws:rekognition',
       process.env.AWS_REGION,
       this.stateData.accountId,
       `project/${model}`,
     ].join(':');
+
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
     /* make sure there are runnable project versions */
-    return rekog.describeProjectVersions({
+    const command = new DescribeProjectVersionsCommand({
       ProjectArn: projectArn,
       MaxResults: 100,
-    }).promise()
-      .then(data =>
-        ((data.ProjectVersionDescriptions.find(x0 =>
-          PROJECT_VERSIONS_INVALID_STATUS.find(x1 =>
-            x1 === x0.Status) === undefined) !== undefined) ? model : undefined))
-      .catch(() => undefined);
+    });
+
+    return rekognitionClient.send(command)
+      .then((res) => {
+        const modelCanUse = res.ProjectVersionDescriptions
+          .find((x0) =>
+            PROJECT_VERSIONS_INVALID_STATUS.includes(x0.Status) !== true);
+        if (modelCanUse !== undefined) {
+          return model;
+        }
+        return undefined;
+      })
+      .catch(() =>
+        undefined);
   }
 
   async checkTranscribeCustomSettings(options) {
@@ -321,19 +387,25 @@ class StatePrepareAnalysis {
     if (!options.customLanguageModel) {
       return options;
     }
-    const transcribe = new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const response = await transcribe.describeLanguageModel({
+
+    const transcribeClient = xraysdkHelper(new TranscribeClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeLanguageModelCommand({
       ModelName: options.customLanguageModel,
-    }).promise()
-      .then(data => ({
-        name: data.LanguageModel.ModelName,
-        languageCode: data.LanguageModel.LanguageCode,
-        canUse: data.LanguageModel.ModelStatus === 'COMPLETED',
+    });
+
+    const response = await transcribeClient.send(command)
+      .then((res) => ({
+        name: res.LanguageModel.ModelName,
+        languageCode: res.LanguageModel.LanguageCode,
+        canUse: res.LanguageModel.ModelStatus === 'COMPLETED',
       }))
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
+
     /* CLM not ready to use */
     if (!response || !response.canUse) {
       options.customLanguageModel = undefined;
@@ -353,30 +425,38 @@ class StatePrepareAnalysis {
     if (!options.customVocabulary) {
       return options;
     }
-    const transcribe = new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const response = await transcribe.getVocabulary({
+
+    const transcribeClient = xraysdkHelper(new TranscribeClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new GetVocabularyCommand({
       VocabularyName: options.customVocabulary,
-    }).promise()
-      .then(data => ({
-        name: data.VocabularyName,
-        languageCode: data.LanguageCode,
-        canUse: data.VocabularyState === 'READY',
+    });
+
+    const response = await transcribeClient.send(command)
+      .then((res) => ({
+        name: res.VocabularyName,
+        languageCode: res.LanguageCode,
+        canUse: res.VocabularyState === 'READY',
       }))
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
+
     /* CV not ready to use */
     if (!response || !response.canUse) {
       options.customVocabulary = undefined;
       return options;
     }
+
     /* incompatible languageCode settings between lanaguageCode & CV */
     /* languageCode takes priority and disable CV */
     if (options.languageCode && options.languageCode !== response.languageCode) {
       options.customVocabulary = undefined;
       return options;
     }
+
     options.languageCode = response.languageCode;
     return options;
   }
@@ -386,7 +466,7 @@ class StatePrepareAnalysis {
   }
 
   async checkCustomEntityRecognizer(options) {
-    if (!options[AnalysisTypes.Comprehend.CustomEntity] || !options.customEntityRecognizer) {
+    if (!options[CustomEntity] || !options.customEntityRecognizer) {
       return options;
     }
     const arn = [
@@ -395,50 +475,73 @@ class StatePrepareAnalysis {
       this.stateData.accountId,
       `entity-recognizer/${options.customEntityRecognizer}`,
     ].join(':');
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    const response = await comprehend.describeEntityRecognizer({
+
+    const comprehendClient = xraysdkHelper(new ComprehendClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeEntityRecognizerCommand({
       EntityRecognizerArn: arn,
-    }).promise()
-      .then(data => ({
-        arn: data.EntityRecognizerProperties.EntityRecognizerArn,
-        languageCode: data.EntityRecognizerProperties.LanguageCode,
-        canUse: data.EntityRecognizerProperties.Status === 'TRAINED'
-          || data.EntityRecognizerProperties.Status === 'STOPPED',
+    });
+
+    const response = await comprehendClient.send(command)
+      .then((res) => ({
+        arn: res.EntityRecognizerProperties.EntityRecognizerArn,
+        languageCode: res.EntityRecognizerProperties.LanguageCode,
+        canUse: res.EntityRecognizerProperties.Status === 'TRAINED'
+          || res.EntityRecognizerProperties.Status === 'STOPPED',
       }))
-      .catch(() => undefined);
+      .catch(() =>
+        undefined);
+
     /* CER not ready to use */
     if (!response || !response.canUse) {
-      options[AnalysisTypes.Comprehend.CustomEntity] = false;
+      options[CustomEntity] = false;
       options.customEntityRecognizer = undefined;
       return options;
     }
+
     /* incompatible languageCode settings between lanaguageCode & CER */
     /* languageCode takes priority and disable CER */
     if (options.languageCode
       && options.languageCode.slice(0, 2) !== response.languageCode) {
-      options[AnalysisTypes.Comprehend.CustomEntity] = false;
+      options[CustomEntity] = false;
       options.customEntityRecognizer = undefined;
       return options;
     }
+
     return options;
   }
 
   async prepareVideoAnalysis(asset, options) {
     /* no video analysis options are enabled */
-    if (TYPE_REKOGNITION.find(x => options[x] === true) === undefined) {
+    if (!_hasAnalysis(options, TYPE_REKOGNITION)) {
       return DISABLE_ANALYSIS;
     }
-    const video = (asset.proxies || []).filter(x => x.type === 'video').shift();
+
+    const video = (asset.proxies || [])
+      .filter((x) =>
+        x.type === 'video')
+      .shift();
+
     if (!video || !video.key) {
       return DISABLE_ANALYSIS;
     }
+
     /* make sure video file exists */
-    if (!(await CommonUtils.headObject(Environment.Proxy.Bucket, video.key).catch(() => false))) {
+    const keyExist = await CommonUtils.headObject(
+      ProxyBucket,
+      video.key
+    ).then(() =>
+      true)
+      .catch(() =>
+        false);
+
+    if (!keyExist) {
       return DISABLE_ANALYSIS;
     }
+
     return {
       enabled: true,
       key: video.key,
@@ -447,20 +550,36 @@ class StatePrepareAnalysis {
 
   async prepareAudioAnalysis(asset, options) {
     /* no audio analysis options are enabled */
-    if ([
+    const fields = [
       ...TYPE_TRANSCRIBE,
       ...TYPE_COMPREHEND,
-    ].find(x => options[x] === true) === undefined) {
+    ];
+    if (!_hasAnalysis(options, fields)) {
       return DISABLE_ANALYSIS;
     }
-    const audio = (asset.proxies || []).filter(x => x.type === 'audio').shift();
+
+    const audio = (asset.proxies || [])
+      .filter((x) =>
+        x.type === 'audio')
+      .shift();
+
     if (!audio || !audio.key) {
       return DISABLE_ANALYSIS;
     }
+
     /* make sure audio file exists */
-    if ((!await CommonUtils.headObject(Environment.Proxy.Bucket, audio.key).catch(() => false))) {
+    const keyExist = await CommonUtils.headObject(
+      ProxyBucket,
+      audio.key
+    ).then(() =>
+      true)
+      .catch(() =>
+        false);
+
+    if (!keyExist) {
       return DISABLE_ANALYSIS;
     }
+
     return {
       enabled: true,
       key: audio.key,
@@ -468,21 +587,31 @@ class StatePrepareAnalysis {
   }
 
   async prepareImageAnalysis(asset, options) {
-    if (asset.type !== 'image') {
+    if (asset.type !== 'image' || !_hasAnalysis(options, TYPE_REKOGNITION_IMAGE)) {
       return DISABLE_ANALYSIS;
     }
-    if (TYPE_REKOGNITION_IMAGE.find(x => options[x] === true) === undefined) {
-      return DISABLE_ANALYSIS;
-    }
-    const proxy = (asset.proxies || []).reduce((acc, cur) =>
-      ((acc && acc.fileSize >= cur.fileSize) ? acc : cur), undefined);
+
+    const proxy = (asset.proxies || [])
+      .reduce((acc, cur) =>
+        ((acc && acc.fileSize >= cur.fileSize) ? acc : cur), undefined);
+
     if (!proxy || !proxy.key) {
       return DISABLE_ANALYSIS;
     }
+
     /* make sure image file exists */
-    if (!(await CommonUtils.headObject(Environment.Proxy.Bucket, proxy.key).catch(() => false))) {
+    const keyExist = await CommonUtils.headObject(
+      ProxyBucket,
+      proxy.key
+    ).then(() =>
+      true)
+      .catch(() =>
+        false);
+
+    if (!keyExist) {
       return DISABLE_ANALYSIS;
     }
+
     return {
       enabled: true,
       key: proxy.key,
@@ -491,12 +620,10 @@ class StatePrepareAnalysis {
 
   async prepareDocumentAnalysis(asset, options) {
     /* no document analysis options are enabled */
-    if (asset.type !== 'document') {
+    if (asset.type !== 'document' || !_hasAnalysis(options, TYPE_TEXTRACT)) {
       return DISABLE_ANALYSIS;
     }
-    if (TYPE_TEXTRACT.find(x => options[x] === true) === undefined) {
-      return DISABLE_ANALYSIS;
-    }
+
     return {
       enabled: true,
       prefix: PATH.parse(asset.proxies[0].key).dir,
@@ -506,11 +633,22 @@ class StatePrepareAnalysis {
 
   checkFrameBasedAnalysis(options) {
     if (options.framebased === true
-      && options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
+    && options.frameCaptureMode === FrameCaptureMode.MODE_NONE) {
       options.framebased = false;
     }
     return options;
   }
+}
+
+function _hasAnalysis(options, fields = []) {
+  for (let i = 0; i < fields.length; i += 1) {
+    const value = options[fields[i]];
+    if (value !== undefined && value !== false) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 module.exports = StatePrepareAnalysis;

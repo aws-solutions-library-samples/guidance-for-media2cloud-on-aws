@@ -3,10 +3,62 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
-import MediaManager from '../../../shared/media/mediaManager.js';
+import {
+  GetMediaManager,
+  RegisterMediaEvent,
+  ON_MEDIA_ADDED,
+  ON_MEDIA_UPDATED,
+  ON_MEDIA_ERROR,
+} from '../../../shared/media/mediaManager.js';
 import AppUtils from '../../../shared/appUtils.js';
+import MediaTypes from '../../../shared/media/mediaTypes.js';
+import ObserverHelper from '../../../shared/observerHelper.js';
 import CategorySlideEvents from './categorySlideComponentEvents.js';
 import BaseSlideComponent from '../../../shared/baseSlideComponent.js';
+
+const {
+  Statuses: {
+    Processing: STATUS_PROCESSING,
+    Completed: STATUS_COMPLETED,
+    Error: STATUS_ERROR,
+  },
+} = SolutionManifest;
+
+const OVERALL_STATUSES = [
+  STATUS_COMPLETED,
+  STATUS_PROCESSING,
+  STATUS_PROCESSING,
+];
+
+const {
+  Messages: {
+    CollectionTab: COLLECTION_TAB,
+    VideoTab: VIDEO_TAB,
+    PhotoTab: PHOTO_TAB,
+    PodcastTab: PODCAST_TAB,
+    DocumentTab: DOCUMENT_TAB,
+    UploadTab: UPLOAD_TAB,
+    ProcessingTab: PROCESSING_TAB,
+    NoMediaPresent: MSG_NO_MEDIA_PRESENT,
+    LoadMore: MSG_LOAD_MORE,
+    NoMoreData: MSG_NO_MORE_DATA,
+    ProcessingError: MSG_PROCESSING_ERR,
+  },
+  Statuses: {
+    Error: MSG_STATUS_ERROR,
+    Processing: MSG_STATUS_PROCESSING,
+  },
+  Tooltips: {
+    RemoveMedia: TOOLTIP_REMOVE_MEDIA,
+  },
+} = Localization;
+
+const MEDIATYPE_TO_TAB = {
+  [MediaTypes.Video]: VIDEO_TAB,
+  [MediaTypes.Photo]: PHOTO_TAB,
+  [MediaTypes.Podcast]: PODCAST_TAB,
+  [MediaTypes.Document]: DOCUMENT_TAB,
+};
 
 const DATA_UUID = 'data-uuid';
 const DATA_ROLE = 'data-role';
@@ -23,8 +75,12 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     };
     this.$mediaType = mediaType;
     this.$displayOptions = displayOptions;
-    this.$mediaManager = MediaManager.getSingleton();
-    this.registerMediaManagerEvents();
+    this.$mediaManager = GetMediaManager();
+
+    RegisterMediaEvent(
+      `basecategoryslidecomponent:${mediaType}`,
+      this.onMediaEvent.bind(this)
+    );
   }
 
   static get Events() {
@@ -43,33 +99,48 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     return this.$mediaManager;
   }
 
-  async show() {
+  async show(hashtag) {
     if (!this.initialized) {
-      this.slide.append(this.createSkeleton())
-        .append(this.createLoading());
-      await this.delayLoadContent();
+      const container = this.createSkeleton();
+      this.slide.append(container);
+
+      await this.refreshWithHashtag(hashtag);
     } else {
       await this.refreshContent();
     }
+
     return super.show();
   }
 
-  async delayLoadContent() {
-    setTimeout(async () => {
-      this.loading(true);
-      await this.mediaManager.scanRecordsByCategory(this.mediaType);
-      this.loading(false);
-      return this.refreshContent();
-    }, 10);
+  async refreshWithHashtag(hashtag = '') {
+    const uuid = hashtag.split('/').pop();
+
+    if (uuid) {
+      const items = await this.refreshContent(uuid);
+
+      const found = items.find((item) =>
+        item.attr(DATA_UUID) === uuid);
+
+      if (found) {
+        found.click();
+      }
+    }
   }
 
-  registerMediaManagerEvents() {
-    this.mediaManager.eventSource.on(MediaManager.Event.Media.Added, async (event, media) =>
-      this.onMediaAdded(media, true));
-    this.mediaManager.eventSource.on(MediaManager.Event.Media.Updated, async (event, media) =>
-      this.onMediaUpdated(media));
-    this.mediaManager.eventSource.on(MediaManager.Event.Media.Error, async (event, media) =>
-      this.onMediaError(media));
+  async onMediaEvent(event, media) {
+    if (event === ON_MEDIA_ADDED) {
+      return this.onMediaAdded(media, true);
+    }
+
+    if (event === ON_MEDIA_UPDATED) {
+      return this.onMediaUpdated(media);
+    }
+
+    if (event === ON_MEDIA_ERROR) {
+      return this.onMediaError(media);
+    }
+
+    return undefined;
   }
 
   async onMediaAdded(media, insertFirst = false) {
@@ -80,9 +151,14 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
     let item = list.find(`div[${DATA_UUID}="${media.uuid}"]`);
     if (item.length === 0) {
       item = await this.createMediaListItem(media);
-      const child = (insertFirst)
-        ? list.children().first()
-        : list.children().last();
+
+      let child = list.children();
+      if (insertFirst) {
+        child = child.first();
+      } else {
+        child = child.last();
+      }
+
       item.insertBefore(child);
     }
     return item;
@@ -122,194 +198,370 @@ export default class BaseCategorySlideComponent extends BaseSlideComponent {
       const replacedItem = await this.createMediaListItem(media);
       oldItem.replaceWith(replacedItem);
     }
-    const message = Localization.Messages.ProcessingError
+    const message = MSG_PROCESSING_ERR
       .replace('{{BASENAME}}', media.basename)
-      .replace('{{PROCESSINGTAB}}', Localization.Messages.ProcessingTab);
+      .replace('{{PROCESSINGTAB}}', PROCESSING_TAB);
     return this.showAlert(message);
   }
 
   createSkeleton() {
-    const noMedia = this.createNoMediaMessage();
+    const container = $('<div/>')
+      .addClass('row no-gutters');
+
+    const descContainer = $('<div/>')
+      .addClass('col-9 p-0 mx-auto mt-4')
+      .addClass('collapse')
+      .attr(DATA_ROLE, ROLE_MEDIADESC);
+    container.append(descContainer);
+
+    const desc = this.createNoMediaMessage();
+    descContainer.append(desc);
+
+    const listContainer = $('<div/>')
+      .addClass('col-12 p-0 mx-auto mt-4');
+    container.append(listContainer);
+
     const mediaList = this.createMediaList();
-    const row = $('<div/>').addClass('row no-gutters')
-      .append($('<div/>').addClass('col-9 p-0 mx-auto mt-4')
-        .addClass('collapse')
-        .attr(DATA_ROLE, ROLE_MEDIADESC)
-        .append(noMedia))
-      .append($('<div/>').addClass('col-12 p-0 mx-auto mt-4')
-        .append(mediaList));
-    return row;
+    listContainer.append(mediaList);
+
+    container.ready(async () => {
+      try {
+        this.loading();
+
+        await this.mediaManager.scanRecordsByCategory(this.mediaType);
+        await this.refreshContent();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        this.loading(false);
+      }
+    });
+
+    listContainer.ready(async () => {
+      const hashtag = [
+        COLLECTION_TAB,
+        MEDIATYPE_TO_TAB[this.mediaType],
+      ].join('/');
+
+      ObserverHelper.setHashOnVisible(
+        container,
+        hashtag
+      );
+    });
+
+    return container;
   }
 
   createNoMediaMessage() {
-    const message = Localization.Messages.NoMediaPresent
+    const container = $('<p/>')
+      .addClass('lead');
+
+    const message = MSG_NO_MEDIA_PRESENT
       .replace('{{MEDIATYPE}}', this.mediaType)
-      .replace('{{UPLOADTAB}}', Localization.Messages.UploadTab);
-    return $('<p/>').addClass('lead')
-      .html(message);
+      .replace('{{UPLOADTAB}}', UPLOAD_TAB);
+    container.append(message);
+
+    return container;
   }
 
   showNoMediaMessage(show = true) {
-    const message = this.slide.find(`div[${DATA_ROLE}="${ROLE_MEDIADESC}"]`);
-    return (show)
-      ? message.removeClass('collapse')
-      : message.addClass('collapse');
+    const message = this.slide
+      .find(`div[${DATA_ROLE}="${ROLE_MEDIADESC}"]`);
+
+    if (show) {
+      return message.removeClass('collapse');
+    }
+
+    return message.addClass('collapse');
   }
 
   createMediaList() {
-    return $('<div/>').addClass('row no-gutters')
+    return $('<div/>')
+      .addClass('row no-gutters')
       .attr('id', this.ids.mediaList);
   }
 
-  async refreshContent() {
-    this.loading(true);
-    const list = this.slide.find(`#${this.ids.mediaList}`);
-    list.children().remove();
-    const medias = this.mediaManager.findMediaByType(this.mediaType).filter(x =>
-      x.overallStatus !== SolutionManifest.Statuses.Error);
-    if (medias) {
-      await Promise.all(medias.map((media) =>
-        this.createMediaListItem(media, list)));
-      this.showNoMediaMessage(false);
-    } else {
-      this.showNoMediaMessage(true);
+  async refreshContent(uuid) {
+    try {
+      this.loading();
+
+      const list = this.slide
+        .find(`#${this.ids.mediaList}`);
+
+      list.children().remove();
+
+      let medias = [];
+
+      /* uuid from hashtag */
+      if (uuid) {
+        const media = await this.mediaManager.lazyGetByUuid(uuid);
+        if (media && media.type === this.mediaType) {
+          medias.push(media);
+        }
+      }
+
+      if (medias.length === 0) {
+        medias = this.mediaManager
+          .findMediaByType(this.mediaType)
+          .filter((x) =>
+            x.overallStatus !== STATUS_ERROR);
+      }
+
+      let mediaListItems = [];
+
+      if (medias.length > 0) {
+        mediaListItems = await Promise.all(medias
+          .map((media) =>
+            this.createMediaListItem(media, list)));
+        this.showNoMediaMessage(false);
+      } else {
+        this.showNoMediaMessage(true);
+      }
+
+      const moreBtn = this.createLoadMoreMedia();
+      list.append(moreBtn);
+      return mediaListItems;
+    } catch (e) {
+      console.error(e);
+      return [];
+    } finally {
+      this.loading(false);
     }
-    list.append(this.createLoadMoreMedia());
-    this.loading(false);
   }
 
   async createMediaListItem(media, container) {
-    const image = await this.createThumbnail(media);
-    const overlay = this.createMediaOverlay(media);
-    const item = $('<div/>').addClass('col-3')
+    const item = $('<div/>')
+      .addClass('col-3')
       .addClass(`media-${media.overallStatus.toLowerCase()}`)
       .attr(DATA_UUID, media.uuid)
-      .attr(DATA_STATUS, media.overallStatus)
-      .append(image)
-      .append(overlay);
-    item.off('click').on('click', async (event) => {
+      .attr(DATA_STATUS, media.overallStatus);
+
+    item.on('click', async (event) => {
       event.preventDefault();
       return this.slide.trigger(BaseCategorySlideComponent.Events.Media.Selected, [media]);
     });
+
     if (container) {
       container.append(item);
     }
+
+    item.ready(() => {
+      const image = this.createThumbnail(media);
+      const overlay = this.createMediaOverlay(media);
+      item.append(image)
+        .append(overlay);
+    });
+
     return item;
   }
 
   createLoadMoreMedia() {
+    const id = AppUtils.randomHexstring();
     const w = 80;
     const h = 45;
     const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-      <g id="${AppUtils.randomHexstring()}"><rect width="${w}" height="${h}" stroke="none" stroke-width="1"></rect></g>
+      <g id="${id}"><rect width="${w}" height="${h}" stroke="none" stroke-width="1"></rect></g>
     </svg>`;
+    const url = [
+      'data:image/svg+xml;charset=UTF-8',
+      encodeURIComponent(svg),
+    ].join(',');
 
-    const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-    const title = Localization.Messages.LoadMore;
-    const loadMore = $('<div/>').addClass('col-3')
-      .attr(DATA_UUID, ROLE_LOADMORE)
-      .append($('<img/>').addClass('w-100 h-max-12rem')
-        .attr('src', url)
-        .attr('alt', title))
-      .append($('<div/>').addClass('card-img-overlay category')
-        .css('background-color', '#777777')
-        .append($('<div/>').addClass('h-100 d-flex')
-          .append($('<h5/>').addClass('text-white lead m-0 align-self-center')
-            .attr(DATA_ROLE, ROLE_LOADMORE)
-            .append(title))
-          .append($('<i/>').addClass('fas fa-ellipsis-h icon-3 ml-auto my-auto'))));
+    const container = $('<div/>')
+      .addClass('col-3')
+      .attr(DATA_UUID, ROLE_LOADMORE);
 
-    loadMore.off('click').on('click', async (event) => {
+    const img = $('<img/>')
+      .addClass('w-100')
+      .css('aspect-ratio', '16 / 9')
+      .css('object-fit', 'cover')
+      .attr('src', url)
+      .attr('alt', MSG_LOAD_MORE);
+    container.append(img);
+
+    const overlayContainer = $('<div/>')
+      .addClass('card-img-overlay category')
+      .css('background-color', '#777777');
+    container.append(overlayContainer);
+
+    const flexContainer = $('<div/>')
+      .addClass('h-100 d-flex');
+    overlayContainer.append(flexContainer);
+
+    const title = $('<h5/>')
+      .addClass('text-white lead m-0 align-self-center')
+      .attr(DATA_ROLE, ROLE_LOADMORE)
+      .append(MSG_LOAD_MORE);
+    flexContainer.append(title);
+
+    const ellipsisIcon = $('<i/>')
+      .addClass('fas fa-ellipsis-h icon-3 ml-auto my-auto');
+    flexContainer.append(ellipsisIcon);
+
+    container.on('click', async (event) => {
       event.preventDefault();
+
       await this.scanNextByMediaType();
+
       if (this.mediaManager.noMoreData(this.mediaType)) {
-        this.disableScan(loadMore);
+        this.disableScan(container);
       }
     });
-    return loadMore;
+
+    return container;
   }
 
-  async createThumbnail(media) {
-    const proxy = await media.getThumbnail();
-    return $('<img/>').addClass('w-100 h-max-12rem')
-      .css('object-fit', this.displayOptions.objectFit || 'contain')
-      .attr('src', proxy)
+  createThumbnail(media) {
+    let objectFit = 'cover';
+    if ((this.displayOptions || {}).objectFit) {
+      objectFit = this.displayOptions.objectFit;
+    }
+
+    const img = $('<img/>')
+      .addClass('w-100')
+      .css('aspect-ratio', '16 / 9')
+      .css('object-fit', objectFit)
       .attr('alt', media.basename);
+
+    img.ready(async () => {
+      const proxy = await media.getThumbnail();
+      img.attr('src', proxy);
+    });
+
+    return img;
   }
 
   createMediaOverlay(media) {
-    const title = $('<div/>').addClass('col-6 p-0 m-0')
-      .append($('<h5/>').addClass('lead-s m-0 text-white text-contain')
-        .append(AppUtils.shorten(media.basename, 54)));
-    const status = this.createMediaStatus(media);
+    const container = $('<div/>')
+      .addClass('card-img-overlay category p-2');
 
-    const removeBtn = $('<button/>').addClass('btn btn-sm btn-outline-danger lead-sm media-action')
+    const contentContainer = $('<div/>')
+      .addClass('row no-gutters h-100');
+    container.append(contentContainer);
+
+    const titleContainer = $('<div/>')
+      .addClass('col-6 p-0 m-0');
+    contentContainer.append(titleContainer);
+
+    const name = AppUtils.shorten(media.basename, 54);
+    const title = $('<h5/>')
+      .addClass('lead-s m-0 text-white text-contain')
+      .append(name);
+    titleContainer.append(title);
+
+    const status = this.createMediaStatus(media);
+    contentContainer.append(status);
+
+    /* controls when hover the media */
+    const hoverControlsContainer = $('<div/>')
+      .addClass('col-12 p-0 align-self-end d-flex');
+    contentContainer.append(hoverControlsContainer);
+
+    const removeBtnContainer = $('<div/>')
+      .addClass('col-6 p-0 m-0 mt-auto');
+    hoverControlsContainer.append(removeBtnContainer);
+
+    const removeBtn = $('<button/>')
+      .addClass('btn btn-sm btn-outline-danger lead-sm media-action')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
-      .attr('title', Localization.Tooltips.RemoveMedia)
-      .append($('<i/>').addClass('far fa-trash-alt'))
+      .attr('title', TOOLTIP_REMOVE_MEDIA)
       .tooltip({
         trigger: 'hover',
       });
-    removeBtn.off('click').on('click', async (event) => {
+    removeBtnContainer.append(removeBtn);
+
+    const removeBtnIcon = $('<i/>')
+      .addClass('far fa-trash-alt');
+    removeBtn.append(removeBtnIcon);
+
+    const playBtnContainer = $('<div/>')
+      .addClass('col-6 p-0 m-0 ml-auto text-right');
+    hoverControlsContainer.append(playBtnContainer);
+
+    const playBtn = $('<button/>')
+      .addClass('btn btn-link media-action');
+    playBtnContainer.append(playBtn);
+
+    const playBtnIcon = $('<i/>')
+      .addClass('far fa-play-circle icon-4');
+    playBtn.append(playBtnIcon);
+
+    /* events handling */
+    removeBtn.on('click', async (event) => {
       event.preventDefault();
       event.stopPropagation();
       removeBtn.tooltip('hide');
       return this.slide.trigger(BaseCategorySlideComponent.Events.Media.Removing, [media]);
     });
 
-    const playIcon = $('<button/>').addClass('btn btn-link media-action')
-      .append($('<i/>').addClass('far fa-play-circle icon-4'));
-
-    const content = $('<div/>').addClass('row no-gutters h-100')
-      .append(title)
-      .append(status)
-      .append($('<div/>').addClass('col-12 p-0 align-self-end d-flex')
-        .append($('<div/>').addClass('col-6 p-0 m-0 mt-auto')
-          .append(removeBtn))
-        .append($('<div/>').addClass('col-6 p-0 m-0 ml-auto text-right')
-          .append(playIcon)));
-    const overlay = $('<div/>').addClass('card-img-overlay category p-2')
-      .append(content);
-    return overlay;
+    return container;
   }
 
   createMediaStatus(media) {
-    const text = $('<span/>').addClass('lead-xs px-2 text-white text-right bg-dark');
-    const status = $('<div/>').addClass('col-6 p-0 m-0')
-      .append($('<div/>').addClass('p-0 m-0 d-flex justify-content-end')
-        .append(text));
-    if (media.overallStatus === SolutionManifest.Statuses.Completed && media.duration) {
-      text.append(media.readableDuration);
-      return status;
+    if (!OVERALL_STATUSES.includes(media.overallStatus)) {
+      return undefined;
     }
-    if (media.overallStatus === SolutionManifest.Statuses.Processing) {
-      text.removeClass('bg-dark').addClass('bg-primary')
-        .append(Localization.Statuses.Processing);
-      return status;
+
+    const container = $('<div/>')
+      .addClass('col-6 p-0 m-0');
+
+    const statusContainer = $('<div/>')
+      .addClass('p-0 m-0 d-flex justify-content-end');
+    container.append(statusContainer);
+
+    const status = $('<span/>')
+      .addClass('lead-xs px-2 text-white text-right');
+    statusContainer.append(status);
+
+    if (media.overallStatus === STATUS_COMPLETED && media.duration) {
+      status
+        .addClass('bg-dark')
+        .append(media.readableDuration);
+      return container;
     }
-    if (media.overallStatus === SolutionManifest.Statuses.Error) {
-      text.removeClass('bg-dark').addClass('bg-danger')
-        .append(Localization.Statuses.Error);
-      return status;
+
+    if (media.overallStatus === STATUS_PROCESSING) {
+      status
+        .addClass('bg-primary')
+        .append(MSG_STATUS_PROCESSING);
+      return container;
     }
+
+    if (media.overallStatus === STATUS_ERROR) {
+      status
+        .addClass('bg-danger')
+        .append(MSG_STATUS_ERROR);
+      return container;
+    }
+
     return undefined;
   }
 
   async scanNextByMediaType() {
-    this.loading(true);
-    const medias = await this.mediaManager.scanRecordsByCategory(this.mediaType);
-    if (medias) {
-      for (let media of medias) {
-        await this.onMediaAdded(media);
+    try {
+      this.loading();
+
+      const medias = await this.mediaManager
+        .scanRecordsByCategory(this.mediaType);
+
+      if (medias) {
+        for (let i = 0; i < medias.length; i++) {
+          await this.onMediaAdded(medias[i]);
+        }
       }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.loading(false);
     }
-    this.loading(false);
   }
 
-  disableScan(loadMore) {
-    loadMore.find('.category').attr('disabled', 'disabled');
-    loadMore.find(`[${DATA_ROLE}="${ROLE_LOADMORE}"]`)
-      .html(Localization.Messages.NoMoreData);
+  disableScan(moreBtn) {
+    moreBtn.find('.category')
+      .attr('disabled', 'disabled');
+
+    moreBtn.find(`[${DATA_ROLE}="${ROLE_LOADMORE}"]`)
+      .html(MSG_NO_MORE_DATA);
   }
 }

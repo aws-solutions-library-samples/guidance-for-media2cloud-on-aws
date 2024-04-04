@@ -4,7 +4,11 @@
 const CRYPTO = require('crypto');
 const PATH = require('path');
 const {
-  AnalysisTypes,
+  AnalysisTypes: {
+    Comprehend: {
+      CustomEntity,
+    },
+  },
   ServiceToken,
 } = require('core-lib');
 const {
@@ -13,14 +17,12 @@ const {
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const CATEGORY = 'comprehend';
-const SUB_CATEGORY = AnalysisTypes.Comprehend.CustomEntity;
 const DOC_BASENAME = 'document';
 
 class StateStartCustomEntity extends BaseStateStartComprehend {
   constructor(stateData) {
     super(stateData, {
-      subCategory: SUB_CATEGORY,
-      func: () => {},
+      subCategory: CustomEntity,
     });
   }
 
@@ -30,10 +32,10 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
 
   async process() {
     let id = CRYPTO.randomBytes(4).toString('hex');
-    id = `${this.stateData.uuid}-${SUB_CATEGORY}-${id}`;
+    id = `${this.stateData.uuid}-${CustomEntity}-${id}`;
     const output = {
-      [SUB_CATEGORY]: {
-        ...this.stateData.data[CATEGORY][SUB_CATEGORY],
+      [CustomEntity]: {
+        ...this.stateData.data[CATEGORY][CustomEntity],
         backlogId: id,
         startTime: (new Date()).getTime(),
       },
@@ -44,7 +46,7 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
       id,
       this.stateData.event.token,
       CATEGORY,
-      SUB_CATEGORY,
+      CustomEntity,
       this.stateData.toJSON()
     ).catch((e) => {
       console.error(`ERR: ServiceToken.register: ${e.message}`);
@@ -62,7 +64,7 @@ class StateStartCustomEntity extends BaseStateStartComprehend {
 
   makeParams(id) {
     const bucket = this.stateData.input.destination.bucket;
-    const prefix = this.stateData.data[CATEGORY][SUB_CATEGORY].prefix;
+    const prefix = this.stateData.data[CATEGORY][CustomEntity].prefix;
     const languageCode = this.getComprehendLanguageCode();
     const arn = [
       'arn:aws:comprehend',

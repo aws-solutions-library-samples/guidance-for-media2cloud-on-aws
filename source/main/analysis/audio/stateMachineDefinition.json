@@ -5,7 +5,7 @@
             "Type": "Task",
             "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "FunctionName": "${a0}",
+                "FunctionName": "${AnalysisAudioLambda}",
                 "Payload": {
                     "token.$":"$$.Task.Token",
                     "operation": "start-transcribe",
@@ -30,7 +30,7 @@
         },
         "Collect transcribe results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisAudioLambda.Arn}",
             "Parameters": {
                 "operation": "collect-transcribe-results",
                 "uuid.$": "$.uuid",
@@ -80,7 +80,7 @@
         },
         "Index transcribe results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisAudioLambda.Arn}",
             "Parameters": {
                 "operation": "index-transcribe-results",
                 "uuid.$": "$.uuid",
@@ -109,7 +109,7 @@
                     "States": {
                         "Batch detect entities": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -132,7 +132,7 @@
                         },
                         "Index entity results": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -160,7 +160,7 @@
                     "States": {
                         "Batch detect keyphrases": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -183,7 +183,7 @@
                         },
                         "Index keyphrase results": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -211,7 +211,7 @@
                     "States": {
                         "Batch detect sentiments": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -234,7 +234,7 @@
                         },
                         "Index sentiment results": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -262,7 +262,7 @@
                     "States": {
                         "Check custom entity criteria": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -310,7 +310,7 @@
                             "Type": "Task",
                             "Resource":"arn:aws:states:::lambda:invoke.waitForTaskToken",
                             "Parameters": {
-                                "FunctionName": "${a0}",
+                                "FunctionName": "${AnalysisAudioLambda}",
                                 "Payload": {
                                     "token.$":"$$.Task.Token",
                                     "uuid.$": "$.uuid",
@@ -341,7 +341,7 @@
                         },
                         "Check custom entity status": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -388,7 +388,7 @@
                         },
                         "Create custom entity track": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -411,7 +411,7 @@
                         },
                         "Index custom entity results": {
                             "Type": "Task",
-                            "Resource": "${x0}",
+                            "Resource": "${AnalysisAudioLambda.Arn}",
                             "Parameters": {
                                 "uuid.$": "$.uuid",
                                 "status": "NOT_STARTED",
@@ -442,7 +442,7 @@
         },
         "Analysis completed": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisAudioLambda.Arn}",
             "Parameters": {
                 "operation": "job-completed",
                 "stateExecution.$": "$$.Execution",

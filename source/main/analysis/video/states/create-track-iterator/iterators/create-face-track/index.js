@@ -18,20 +18,19 @@ class CreateFaceTrackIterator extends BaseCreateTrackIterator {
     return 'CreateFaceTrackIterator';
   }
 
-  async downloadSelected(bucket, key, name) {
-    return this.downloadJson(bucket, key, name);
-  }
-
-  async downloadJson(bucket, key, name) {
-    const data = await CommonUtils.download(bucket, key)
-      .then(x => JSON.parse(x));
-    return ((data || {}).Faces || []).filter(x =>
-      (((x.Face || {}).Gender || {}).Value === name));
+  filterBy(name, data) {
+    if (!data || !data.Faces || !data.Faces.length) {
+      return [];
+    }
+    return data.Faces
+      .filter((x) =>
+        (((x || {}).Face || {}).Gender || {}).Value === name);
   }
 
   createTimeseriesData(name, datasets) {
     const timestamps = {};
-    for (let dataset of datasets) {
+    for (let i = 0; i < datasets.length; i++) {
+      const dataset = datasets[i];
       if (!dataset.Face.BoundingBox || !dataset.Face.Gender) {
         continue;
       }
@@ -40,16 +39,19 @@ class CreateFaceTrackIterator extends BaseCreateTrackIterator {
         desc.push(`Age: ${dataset.Face.AgeRange.Low}-${dataset.Face.AgeRange.High}`);
       }
       if (dataset.Face.Emotions) {
-        const emotion = dataset.Face.Emotions.sort((a, b) => b.Confidence - a.Confidence).shift();
-        desc.push(`${emotion.Type} (${Number.parseFloat(emotion.Confidence.toFixed(2))}%)`);
+        const emotion = dataset.Face.Emotions
+          .sort((a, b) =>
+            b.Confidence - a.Confidence)
+          .shift();
+        desc.push(`${emotion.Type} (${Number(emotion.Confidence.toFixed(2))}%)`);
       }
       timestamps[dataset.Timestamp] = timestamps[dataset.Timestamp] || [];
       timestamps[dataset.Timestamp].push({
-        c: Number.parseFloat(dataset.Face.Gender.Confidence.toFixed(2)),
-        w: Number.parseFloat(dataset.Face.BoundingBox.Width.toFixed(4)),
-        h: Number.parseFloat(dataset.Face.BoundingBox.Height.toFixed(4)),
-        l: Number.parseFloat(dataset.Face.BoundingBox.Left.toFixed(4)),
-        t: Number.parseFloat(dataset.Face.BoundingBox.Top.toFixed(4)),
+        c: Number(dataset.Face.Gender.Confidence.toFixed(2)),
+        w: Number(dataset.Face.BoundingBox.Width.toFixed(4)),
+        h: Number(dataset.Face.BoundingBox.Height.toFixed(4)),
+        l: Number(dataset.Face.BoundingBox.Left.toFixed(4)),
+        t: Number(dataset.Face.BoundingBox.Top.toFixed(4)),
         desc: (!desc.length) ? undefined : desc.join(';'),
       });
     }
@@ -58,11 +60,12 @@ class CreateFaceTrackIterator extends BaseCreateTrackIterator {
     }
     return {
       label: name,
-      data: Object.keys(timestamps).map(x => ({
-        x: Number.parseInt(x, 10),
-        y: timestamps[x].length,
-        details: timestamps[x],
-      })),
+      data: Object.keys(timestamps)
+        .map((x) => ({
+          x: Number(x),
+          y: timestamps[x].length,
+          details: timestamps[x],
+        })),
     };
   }
 }

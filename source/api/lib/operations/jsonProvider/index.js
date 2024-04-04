@@ -3,13 +3,15 @@
 
 const {
   CommonUtils,
+  MimeTypeHelper,
+  M2CException,
 } = require('core-lib');
 const CloudfirstProvider = require('./cloudfirstProvider');
 const DefaultProvider = require('./defaultProvider');
 
 class JsonProvider {
   static isJsonFile(key) {
-    return CommonUtils.parseMimeType(CommonUtils.getMime(key)) === 'json';
+    return MimeTypeHelper.parseMimeType(MimeTypeHelper.getMime(key)) === 'json';
   }
 
   static get Provider() {
@@ -20,28 +22,28 @@ class JsonProvider {
   }
 
   static getProvider(data) {
-    if (CloudfirstProvider.isSupported(data)) {
-      return JsonProvider.Provider.CloudFirst;
-    }
-    if (DefaultProvider.isSupported(data)) {
-      return JsonProvider.Provider.AWS;
-    }
-
-    return undefined;
+    return CloudfirstProvider.isSupported(data)
+      ? JsonProvider.Provider.CloudFirst
+      : DefaultProvider.isSupported(data)
+        ? JsonProvider.Provider.AWS
+        : undefined;
   }
 
   static async createProvider(params) {
     let instance;
 
     if (!params.bucket || !params.key) {
-      throw new Error('missing parameters');
+      throw new M2CException('missing parameters');
     }
 
     if (!JsonProvider.isJsonFile(params.key)) {
-      throw new Error('incorrect file type');
+      throw new M2CException('incorrect file type');
     }
 
-    const response = JSON.parse(await CommonUtils.download(params.bucket, params.key));
+    const response = await CommonUtils.download(params.bucket, params.key)
+      .then((res) =>
+        JSON.parse(res));
+
     switch (JsonProvider.getProvider(response)) {
       case JsonProvider.Provider.AWS:
         instance = new DefaultProvider(response);
@@ -54,7 +56,7 @@ class JsonProvider {
     }
 
     if (!instance) {
-      throw new Error('fail to find provider');
+      throw new M2CException('fail to find provider');
     }
     return instance;
   }

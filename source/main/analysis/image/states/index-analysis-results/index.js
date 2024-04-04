@@ -3,14 +3,26 @@
 
 const {
   StateData,
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Text,
+    },
+  },
   AnalysisError,
   CommonUtils,
   Indexer,
+  FaceIndexer,
 } = require('core-lib');
 
+const INDEX_CONTENT = Indexer.getContentIndex();
 const ANALYSIS_TYPE = 'image';
 const CATEGORY = 'rekog-image';
+const CAPTION = 'caption';
 
 class StateIndexAnalysisResults {
   constructor(stateData) {
@@ -32,53 +44,81 @@ class StateIndexAnalysisResults {
     const bucket = this.stateData.input.destination.bucket;
     const data = this.stateData.data[ANALYSIS_TYPE][CATEGORY];
     const subCategories = Object.keys(data);
-    await Promise.all(subCategories.map((subCategory) =>
-      this.indexResults(subCategory, bucket, data[subCategory].output)));
+
+    let fields = await Promise.all(subCategories
+      .map((subCategory) =>
+        this.parseResults(
+          subCategory,
+          bucket,
+          data[subCategory].output
+        )));
+    fields = fields.reduce((a0, c0) => ({
+      ...a0,
+      ...c0,
+    }), {});
+
+    if (Object.keys(fields).length > 0) {
+      await this.indexResults(fields);
+    }
+
     return this.setCompleted();
   }
 
-  async indexResults(subCategory, bucket, key) {
+  async parseResults(subCategory, bucket, key) {
     if (!bucket || !key) {
       return undefined;
     }
-    const data = await CommonUtils.download(bucket, key, false)
+
+    const data = await CommonUtils.download(bucket, key)
       .then((res) =>
-        JSON.parse(res.Body))
-      .catch((e) =>
-        console.error(`[ERR]: CommonUtils.download: ${subCategory}: ${bucket}/${key}: ${e.code} ${e.message}`));
+        JSON.parse(res))
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'StateIndexAnalysisResults.parseResults:',
+          'CommonUtils.download:',
+          e.name,
+          e.message,
+          subCategory
+        );
+        return undefined;
+      });
+
     let datasets;
-    switch (subCategory) {
-      case AnalysisTypes.Rekognition.Celeb:
-        datasets = this.parseCeleb(data);
-        break;
-      case AnalysisTypes.Rekognition.Face:
-        datasets = this.parseFace(data);
-        break;
-      case AnalysisTypes.Rekognition.FaceMatch:
-        datasets = this.parseFaceMatch(data);
-        break;
-      case AnalysisTypes.Rekognition.Label:
-        datasets = this.parseLabel(data);
-        break;
-      case AnalysisTypes.Rekognition.Moderation:
-        datasets = this.parseModeration(data);
-        break;
-      case AnalysisTypes.Rekognition.Text:
-        datasets = this.parseText(data);
-        break;
-      default:
-        datasets = undefined;
+    if (subCategory === Celeb) {
+      datasets = this.parseCeleb(data);
+    } else if (subCategory === Face) {
+      datasets = this.parseFace(data);
+    } else if (subCategory === FaceMatch) {
+      datasets = this.parseFaceMatch(data);
+    } else if (subCategory === Label) {
+      datasets = this.parseLabel(data);
+    } else if (subCategory === Moderation) {
+      datasets = this.parseModeration(data);
+    } else if (subCategory === Text) {
+      datasets = this.parseText(data);
+    } else if (subCategory === CAPTION) {
+      datasets = this.parseCaption(data);
     }
+
     if (datasets && datasets.length > 0) {
-      const uuid = this.stateData.uuid;
-      const indexer = new Indexer();
-      return indexer.indexDocument(subCategory, uuid, {
-        type: ANALYSIS_TYPE,
-        data: datasets,
-      }).catch((e) =>
-        console.error(`[ERR]: indexer.indexDocument: ${uuid}: ${subCategory}`, e));
+      return {
+        [subCategory]: datasets,
+      };
     }
+
     return undefined;
+  }
+
+  async indexResults(fields) {
+    const uuid = this.stateData.uuid;
+
+    const indexer = new Indexer();
+    return indexer.update(
+      INDEX_CONTENT,
+      uuid,
+      fields
+    );
   }
 
   parseCeleb(data) {
@@ -102,15 +142,27 @@ class StateIndexAnalysisResults {
   }
 
   parseFaceMatch(data) {
-    const externalImageId = ((((data || {})
-      .FaceMatches || [])[0] || {}).Face || {}).ExternalImageId;
-    return (!externalImageId)
-      ? undefined
-      : [
-        {
-          name: externalImageId.replace(/_/g, ' '),
-        },
-      ];
+    const face = (((data || {})
+      .FaceMatches || [])[0] || {}).Face;
+
+    if (face === undefined) {
+      return undefined;
+    }
+
+    const faceId = face.FaceId;
+
+    let name = face.Name;
+    if (!name) {
+      name = FaceIndexer.resolveExternalImageId(
+        face.ExternalImageId,
+        faceId
+      );
+    }
+
+    return [{
+      name,
+      faceId,
+    }];
   }
 
   parseLabel(data) {
@@ -146,12 +198,39 @@ class StateIndexAnalysisResults {
       name,
     }));
 
-    const caption = this.stateData.data[ANALYSIS_TYPE].caption;
-    if (caption && caption.length > 0) {
-      uniques.push({
-        name: caption,
-      });
+    return uniques;
+  }
+
+  parseCaption(data = {}) {
+    let uniques = [];
+
+    const {
+      description,
+      location,
+      tags,
+    } = data;
+    if ((description || {}).text) {
+      uniques.push(description.text);
     }
+
+    if ((location || {}).text) {
+      uniques.push(location.text);
+    }
+
+    (tags || []).forEach((tag) => {
+      if ((tag || {}).text) {
+        uniques.push(tag.text);
+      }
+    });
+
+    uniques = [
+      ...new Set(uniques),
+    ];
+    uniques = uniques
+      .map((text) => ({
+        name: text,
+      }));
+
     return uniques;
   }
 

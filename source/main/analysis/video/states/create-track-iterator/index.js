@@ -3,8 +3,21 @@
 
 const {
   StateData,
-  AnalysisError,
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Person,
+      Segment,
+      Text,
+      CustomLabel,
+    },
+    AutoFaceIndexer,
+  },
+  M2CException,
 } = require('core-lib');
 const CreateCelebTrackIterator = require('./iterators/create-celeb-track');
 const CreateFaceTrackIterator = require('./iterators/create-face-track');
@@ -15,21 +28,14 @@ const CreatePersonTrackIterator = require('./iterators/create-person-track');
 const CreateSegmentTrackIterator = require('./iterators/create-segment-track');
 const CreateTextTrackIterator = require('./iterators/create-text-track');
 const CreateCustomLabelTrackIterator = require('./iterators/create-custom-label-track');
+const CreateComboTrackIterator = require('./iterators/create-combo-track');
 
-const SUBCATEGORY_CELEB = AnalysisTypes.Rekognition.Celeb;
-const SUBCATEGORY_FACE = AnalysisTypes.Rekognition.Face;
-const SUBCATEGORY_FACEMATCH = AnalysisTypes.Rekognition.FaceMatch;
-const SUBCATEGORY_LABEL = AnalysisTypes.Rekognition.Label;
-const SUBCATEGORY_MODERATION = AnalysisTypes.Rekognition.Moderation;
-const SUBCATEGORY_PERSON = AnalysisTypes.Rekognition.Person;
-const SUBCATEGORY_SEGMENT = AnalysisTypes.Rekognition.Segment;
-const SUBCATEGORY_TEXT = AnalysisTypes.Rekognition.Text;
-const SUBCATEGORY_CUSTOMLABEL = AnalysisTypes.Rekognition.CustomLabel;
+const FRAME_SEGMENTATION = 'framesegmentation';
 
 class StateCreateTrackIterator {
   constructor(stateData) {
     if (!(stateData instanceof StateData)) {
-      throw new AnalysisError('stateData not StateData object');
+      throw new M2CException('stateData not StateData object');
     }
     this.$stateData = stateData;
   }
@@ -44,42 +50,43 @@ class StateCreateTrackIterator {
 
   async process() {
     const data = this.stateData.data;
+
     let iterator;
-    if (data[SUBCATEGORY_CELEB]) {
-      iterator = new CreateCelebTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_FACE]) {
-      iterator = new CreateFaceTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_FACEMATCH]) {
-      iterator = new CreateFaceMatchTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_LABEL]) {
+    if (data[Label]) {
       iterator = new CreateLabelTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_MODERATION]) {
+    } else if (data[Moderation]) {
       iterator = new CreateModerationTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_PERSON]) {
-      iterator = new CreatePersonTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_SEGMENT]) {
-      iterator = new CreateSegmentTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_TEXT]) {
+    } else if (data[Text]) {
       iterator = new CreateTextTrackIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_CUSTOMLABEL]) {
+    } else if (data[Person]) {
+      iterator = new CreatePersonTrackIterator(this.stateData);
+    } else if (data[CustomLabel]) {
       iterator = new CreateCustomLabelTrackIterator(this.stateData);
+    // auto face indexer
+    } else if (data[AutoFaceIndexer] && data[Celeb] && data[FaceMatch]) {
+      iterator = new CreateComboTrackIterator(this.stateData);
+    // with combo
+    } else if (data[Face] && (data[Celeb] || data[FaceMatch])) {
+      iterator = new CreateComboTrackIterator(this.stateData);
+    // without combo
+    } else if (data[Celeb]) {
+      iterator = new CreateCelebTrackIterator(this.stateData);
+    } else if (data[Face]) {
+      iterator = new CreateFaceTrackIterator(this.stateData);
+    } else if (data[FaceMatch]) {
+      iterator = new CreateFaceMatchTrackIterator(this.stateData);
+    } else if (data[Segment] && !data[FRAME_SEGMENTATION]) {
+      iterator = new CreateSegmentTrackIterator(this.stateData);
+    } else {
+      const message = `iterator for ${Object.keys(data).join(', ')} not supported`;
+      console.error(
+        'ERR:',
+        'StateCreateTrackIterator.process:',
+        message
+      );
+      throw M2CException(message);
     }
-    else {
-      iterator = undefined;
-    }
-    if (!iterator) {
-      const e = `iterator '${Object.keys(data).join(',')}' not impl`;
-      console.error(e);
-      throw new AnalysisError(e);
-    }
+
     return iterator.process();
   }
 }

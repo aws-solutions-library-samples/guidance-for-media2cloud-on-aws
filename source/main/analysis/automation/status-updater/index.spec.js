@@ -35,7 +35,7 @@ const event_for_index_transcribe_results = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -43,7 +43,7 @@ const event_for_index_transcribe_results = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -123,7 +123,7 @@ const context = {
             ENV_SOLUTION_ID: 'Test_ENV_Variable',
             ENV_RESOURCE_PREFIX: 'Test_ENV_Variable',
             ENV_SOLUTION_UUID: 'Test_ENV_Variable',
-            ENV_ANONYMIZED_USAGE: 'Test_ENV_Variable',
+            ENV_ANONYMOUS_USAGE: 'Test_ENV_Variable',
             ENV_IOT_HOST: 'Test_ENV_Variable',
             ENV_IOT_TOPIC: 'Test_ENV_Variable',
             ENV_PROXY_BUCKET: 'Test_ENV_Variable',

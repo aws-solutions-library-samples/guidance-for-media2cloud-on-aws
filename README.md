@@ -1,137 +1,314 @@
-# Guidance for Media2Cloud on AWS (formerly known as AWS Media2Cloud Solution)
+# Guidance for Media2Cloud on AWS
 
-## Table of contents
-* [Maintenance notice](#maintenance-notice)
-* [What's new in V3](#whats-new-in-v3)
-* [Introduction](#introduction)
-* [Architecture overview](#architecture-overview)
-  * [Main workflow](./source/main/README.md)
-  * [Ingest workflow](./source/main/ingest/main/README.md)
-  * [Analysis workflow](./source/main/analysis/main/README.md)
-  * [Frontend webapp](./source/webapp/README.md)
-* [Installation](#installation)
-* [Building and customizing the guidance](#building-and-customizing-the-guidance)
-* [Code structure](#code-structure)
-* [License](#license)
-* [Collection of operational metrics](#collection-of-operational-metrics)
+## Table of Contents
+
+- [Compatibility Notes](#compatibility-notes)
+- [What's New in V4](#whats-new-in-v4)
+- [Introduction](#introduction)
+- [Installation](#installation)
+- [Building and Customizing the Solution](#building-and-customizing-the-solution)
+- [Deep dive into Media2Cloud V4](#deep-dive-into-media2cloud-v4)
+- [V4 Demo Video Gallery](#v4-demo-video-gallery)
+- [LICENSE](#license)
+- [Collection of Operational Metrics](#collection-of-operational-metrics)
 
 __
 
-## Maintenance notice
+## Compatibility Notes
 
-With the release of Version 4, Version 3 of Media2Cloud has entered maintenance mode. New features will only be available in Version 4 going forward. The Version 3 branch will only receive critical bug fixes, such as updates to the Node.js version to 20.x.
+If you are running Media2Cloud Version 3, **do not** update your existing stack. Version 4 is **not** compatible with Version 3 in a few areas:
 
-We encourage you to check out the new Version 4 and take advantage of the latest features and improvements.
+- The format of the generated metadata JSON files is different.
+- The indices of the Amazon OpenSearch cluster have been optimized and condensed into a single index, `content`, instead of multiple indices such as `celeb` and `label`.
+
+We are working on a migration path to ensure you can move your Version 3 data files into the Version 4 environment.
+
+If you are looking for Version 3, please switch to [v3/maintenance](https://github.com/aws-solutions-library-samples/guidance-for-media2cloud-on-aws/tree/v3/maintenance) branch.
 
 __
 
-## What's new in V3?
+## What's new in V4?
 
-* New web user interface makes it easier to navigate different categories
-* Advanced search feature with [Amazon OpenSearch](https://aws.amazon.com/opensearch-service/the-elk-stack/what-is-opensearch/) service now returns types and timestamps of the search term that allows you to _jump_ to a specific timestamp of the media file that contains the search result.
-* Added ```Stats``` view lets you visualize your library.
-* Built-in ```Backlog Management System``` to handle large requests of Amazon Rekognition Video processes.
-* [Amazon Rekognition Video Segment API](https://docs.aws.amazon.com/rekognition/latest/dg/segment-api.html) allows you to analyze video shot change and technical cues such as black frame, color bar, and end credits event. V3 also converts segment results into Edit Decision List (EDL) format allowing you to import the shot timeline to popular editing software such as Adobe Premerie Pro and BlackMagic DaVinci Resolve.
-* [Amazon Rekognition Custom Labels](https://aws.amazon.com/rekognition/custom-labels-features/) (CL) feature is an AutoML service that lets you easily train computer vision models such as image classification and object detection model. Version 3 can use your trained CL model to analyze content. To train a CL model, check out this open source [custom brand detection](https://github.com/aws-samples/amazon-rekognition-custom-brand-detection) project. Version 3 also manages the runtime of your CL models (auto-start and stop the model after use) to minimize inference cost.
-* ```Frame based analysis``` option lets you specify the framerate (ie., one frame every second or one frame very two seconds) to run Amazon Rekognition Image API instead of Amazon Rekognition Video API. Note that for Video-specific APIs such as ```Amazon Rekognition Segment``` and ```Amazon Rekognition Person Pathing```, Version 3 continues to use the Video APIs.
-* Integrated [Amazon Transcribe Custom Language Model](https://docs.aws.amazon.com/transcribe/latest/dg/create-custom-language-model.html) (CLM) and [Amazon Transcribe Custom Vocabulary](https://docs.aws.amazon.com/transcribe/latest/dg/how-vocabulary.html) features that improve the transcription results. Check out [Building custom language models to supercharge speech-to-text performance for Amazon Transcribe](https://aws.amazon.com/blogs/machine-learning/building-custom-language-models-to-supercharge-speech-to-text-performance-for-amazon-transcribe/) blog post to learn more how you can train a domain specific CLM to improve transcription accuracy.
+- **Dynamic frame analysis**: V3 introduced frame-based analysis that allows you to specify frames per second to run the AWS AI/ML services. In V4, the Dynamic frame analysis uses two algorithms (Perceptual Hash and Laplacian Variant) to intelligently select frames to analyze.
+
+- **Auto Face Indexer**: This feature automatically indexes `unrecognized faces` during the analysis workflow. After faces are identified, we use the `late binding` technique that allows you to tag the unrecognized faces after the video files have been analyzed. The tagged names are then automatically propagated to all the video files without the need to re-run the analysis workflow.
+
+- **Scene detection**: Using a combination of AWS Generative AI and AI/ML services, including Amazon Bedrock Text & Vision (Anthropic Claude 3 Haiku / Sonnet) model, Amazon Rekognition Segment API, Amazon Transcribe API, and an open-source machine learning model (to generate image embeddings of the frames) and an ephemeral vector store, V4 provides contextual scene change events along with detailed information such as scene description, IAB Content Taxonomies, GARM Taxonomies, scene sentiments, and brands and logos at the scene level.
+
+- **Ad break detection**: Leveraging the scene change events derived from the Scene detection, V4 automatically derives and suggests relevant timestamps that are suitable for ad insertions.
+
+- **Image contextual description**: V4 uses the Amazon Bedrock model to analyze the uploaded image and provides image description, one-line ALT-TEXT, image file name suggestion, and the top five relevant tags for publishers to enhance SEO.
+
+- **Generative AI plugins**: V4 web user inference enables you to try out Amazon Bedrock models.
+
+See quick demo in [V4 Demo Video Gallery](#v4-demo-video-gallery)
 
 __
 
 ## Introduction
 
-Guidance for Media2Cloud on AWS is designed to demonstrate a serverless ingest and analysis framework that can quickly setup a baseline ingest and analysis workflow for placing video, image, audio, and document assets and associated metadata under management control of an AWS customer. The guidance will setup the core building blocks that are common in an ingest and analysis strategy:
-* Establish a storage policy that manages master materials as well as proxies generated by the ingest process.
-* Provide a unique identifier (UUID) for each master video asset.
-* Calculate and provide a MD5 checksum.
-* Perform a technical metadata extract against the master asset.
-* Build standardized proxies for use in a media asset management solution.
-* Run the proxies through audio, video, image analysis.
-* Provide a serverless dashboard that allows a developer to setup and monitor the ingest and analysis process.
+The AWS Media2Cloud solution is designed to demonstrate a serverless ingest and analysis framework that can quickly set up a baseline ingest and analysis workflow for placing video, image, audio, and document assets and associated metadata under the management control of an AWS customer. The solution will set up the core building blocks that are common in an ingest and analysis strategy:
 
-See it in action!
+- Establish a storage policy that manages master materials as well as proxies generated by the ingest process.
+- Provide a unique identifier (UUID) for each master video asset.
+- Calculate and provide an MD5 checksum.
+- Perform a technical metadata extract against the master asset.
+- Build standardized proxies for use in a media asset management solution.
+- Run the proxies through audio, video, and image analysis.
+- Provide a serverless dashboard that allows a developer to set up and monitor the ingest and analysis process.
 
-![Demo Video](./deployment/tutorials/images/media2cloud-v3.gif)
 
-__
-
-## Architecture overview
+### Architecture overview
 
 ![Architecture](./deployment/tutorials/images/architecture.png)
+
+The architecture diagram depicts a media processing and analysis pipeline on Guidance for Media2Cloud on AWS. It leverages various AWS services to ingest, process, analyze, and store different types of media files such as video, audio, images, and documents.
+
+The architecture can be divided into the following key components:
+
+1. **Ingestion Services**: This includes services like AWS Elemental MediaConvert, Mediainfo, PDF.JS, and ExifTool for ingesting different types of media files into the pipeline.
+
+2. **AWS Step Functions Workflows**: The core of the architecture is built around AWS Step Functions workflows, which orchestrate the media processing and analysis tasks. There are separate workflows for ingesting media files, processing them using AWS AI/ML services, and performing analysis tasks.
+
+3. **AWS Lambda Functions**: These serverless functions are used for various tasks such as media ingest, video analysis, audio analysis, image analysis, and document analysis.
+
+4. **AWS AI/ML Services**: The architecture integrates with several AWS AI/ML services like Amazon Bedrock, Amazon Rekognition, Amazon Transcribe, and Amazon Comprehend for performing intelligent media analysis tasks.
+
+5. **Data Storage Services**: The processed media files and analysis results are stored in Amazon S3 buckets. Other storage services like Amazon DynamoDB, Amazon OpenSearch Service, and Amazon Neptune are used for storing metadata and enabling search capabilities.
+
+6. **Integration Services**: The architecture supports integration with external systems through Amazon API Gateway, Amazon Cognito (for user authentication), Amazon CloudWatch (for monitoring), and Amazon EventBridge (for event-driven architectures).
+
+Here is a list of AWS services used in Media2Cloud.
+
+- Orchestration layer
+  - AWS Step Functions
+  - AWS Lambda
+- Generative AI and AI/ML layer
+  - Amazon Bedrock
+  - Amazon Rekognition
+  - Amazon Transcribe
+  - Amazon Comprehend
+  - Amazon Textract
+- Storage and datastore layer
+  - Amazon Simple Storage Service (S3)
+  - Amazon DynamoDB
+  - Amazon OpenSearch Service
+  - Amazon Neptune
+- Frontend authentication and authorization layer
+  - Amazon Cognito
+  - Amazon API Gateway
+  - Amazon CloudFront
+- Notification services
+  - AWS IoT Core
+  - Amazon Simple Notification layer
+- Event layer
+  - Amazon EventBridge
+  - Amazon CloudWatch
+- Media layer
+  - AWS Elemental MediaConvert
 
 __
 
 ## Installation
 
-Please follow the instructions described in the guidance implementation guide, [Automated deployment section](https://docs.aws.amazon.com/solutions/latest/media2cloud/automated-deployment.html).
+### Prerequisite
+
+Before you create the Media2Cloud V4 stack, make sure you have enabled the Anthropic Claude 3 Haiku or Sonnet model through the **Amazon Bedrock** console under the `Manage model access` page.
+
+Currently, the Anthropic Claude 3 Haiku and Sonnet models are available in the US East (N. Virginia) [us-east-1] and US West (Oregon) [us-west-2] regions. If you are creating the Media2Cloud V4 stack in other regions, such as Europe (Ireland), you can still try out the Anthropic Claude 3 Haiku and Sonnet models by enabling the model access in either `us-east-1` or `us-west-2` regions. Keep in mind that there will be additional Data Transfer cost across regions.
+
+![Amazon Bedrock](./deployment/tutorials/images/amazon-bedrock-model-access.gif)
+
+
+### Create Media2Cloud V4 stack with AWS CloudFormation
+
+#### _Using AWS Console_
+Log on to AWS CloudFormation console to create a new stack and follow the steps in the following video.
+
+![AWS CloudFormation](./deployment/tutorials/images/aws-cloudformation-create-stack.gif)
+
+#### _Using AWS CLI_
+
+```sh
+
+aws cloudformation create-stack \
+  --stack-name media2cloudv4 \
+  --template-url https://{S3URL}/media2cloud.template \
+  --parameters \
+    "ParameterKey=VersionCompatibilityStatement,ParameterValue=\"Yes, I understand and proceed\"" \
+    "ParameterKey=Email,ParameterValue=\"YOUR@EMAIL.COM\"" \
+    "ParameterKey=DefaultAIOptions,ParameterValue=\"Recommended V4 features (v4.default)\"" \
+    "ParameterKey=PriceClass,ParameterValue=\"Use Only U.S., Canada and Europe (PriceClass_100)\"" \
+    "ParameterKey=StartOnObjectCreation,ParameterValue=\"YES\"" \
+    "ParameterKey=UserDefinedIngestBucket,ParameterValue=\"\"" \
+    "ParameterKey=OpenSearchCluster,ParameterValue=\"Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)\"" \
+    "ParameterKey=EnableKnowledgeGraph,ParameterValue=\"NO\"" \
+    "ParameterKey=CidrBlock,ParameterValue=\"172.31.0.0/16\"" \
+    "ParameterKey=BedrockSecondaryRegionAccess,ParameterValue=\"North Virginia [US East] (us-east-1)\"" \
+    "ParameterKey=BedrockModel,ParameterValue=\"Anthropic Claude 3 Haiku\"" \
+  --tags \
+    "Key=SolutionName,Value=Media2Cloud" \
+    "Key=SolutionID,Value=SO0050" \
+  --capabilities \
+    "CAPABILITY_IAM" \
+    "CAPABILITY_NAMED_IAM" \
+    "CAPABILITY_AUTO_EXPAND"
+
+```
+
+#### _One-click Pre-built template_
+
+|Region|1-click Quick Deploy|Template URL|
+|:--|:--|:--|
+|US East (N. Virginia)|<a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-us-east-1.s3.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-us-east-1.s3.amazonaws.com/media2cloud/latest/media2cloud.template|
+|US West (Oregon)|<a href="https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/latest/media2cloud.template|
+|Europe (Ireland)|<a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/latest/media2cloud.template|
+
+The stack creation takes about 30 minutes to complete. Upon completion, you should receive an email invitation to the Media2Cloud web portal.
+
+
+#### _Input Parameters_
+
+| ParameterKey | ParameterValue | Description |
+|:-- |:-- |:--|
+|VersionCompatibilityStatement|Yes, I understand and proceed| (Mandatory) Make sure to read the version compatibility statement before you proceed|
+| Email | YOUR@EMAIL.COM | (Mandatory) Fill in your email address. The email address is used to sign up to Amazon Cognito UserPool and to receive an invitation email to the Media2Cloud web portal |
+|DefaultAIOptions | Recommended V4 features (v4.default) | Choose the default AI/ML settings. The settings can also be modified via the Media2Cloud web portal under the Settings page |
+|PriceClass|Use Only U.S., Canada and Europe (PriceClass_100)|Choose the most appropriate Amazon CloudFront price class for your region |
+|StartOnObjectCreation|YES|Enable auto-ingestion when a new object is uploaded to the Amazon S3 bucket (IngestBucket)|
+|UserDefinedIngestBucket|LEAVE IT BLANK|Optionally you can connect your existing ingest bucket to the Media2Cloud|
+|OpenSearchCluster|Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)|For testing and evaluation purpose, recommed to use a single instance. For stagging and production environment, consider to use the Production configuration.|
+|EnableKnowledgeGraph|NO|Select **YES** if you would like to enable Amazon Neptune graph database which allows you to visualize how your contents are connected in some ways.|
+|CidrBlock|172.31.0.0/16|Applicable only if you enable Amazon Neptune graph|
+|BedrockSecondaryRegionAccess|North Virginia [US East] (us-east-1)|Choose between `us-east-1` or `us-west-2` region to try out the Generative AI features in Media2Cloud V4. Highly recommended.|
+|BedrockModel|Anthropic Claude 3 Haiku|Choose between `Anthropic Claude 3 Haiku` or `Anthropic Claude 3 Sonnet`. Both models are Text & Vision capable.|
 
 __
 
-## Building and customizing the guidance
+## Building Media2Cloud V4 on your environment
 
-* **Prerequisites:** building the guidance requires the following tools to be installed on your system.
-  * [NodeJS 16.x](https://nodejs.org/en/download/)
-  * [AWS Command Line Interface (CLI)](https://aws.amazon.com/cli/)
-  * [jq](https://stedolan.github.io/jq/)
-* Create a bucket in the AWS region you would like to deploy the guidance. For example, ```media2cloud-template-us-east-1``` in us-east-1 region.
-* Make sure to specify ```--single-region``` in the command line indicating you are deploying the templates in a single region
+#### _Prerequisites_
+Make sure you have the following tools installed on your environment:
+- [NodeJS 20.x](https://nodejs.org/en/download/current/)
+- [AWS Command Line Interface (CLI)](https://aws.amazon.com/cli/)
+- [jq](https://stedolan.github.io/jq/)
+- [Docker](https://docs.docker.com/get-docker/)
 
-    ```
-    bash ./build-s3-dist.sh --bucket media2cloud-template-us-east-1 --single-region
-    ```
-* Ensure that you are owner of the AWS S3 bucket
+#### _Step 1: Create an Amazon S3 bucket_
 
-    ```
-    aws s3api head-bucket \
-    --bucket media2cloud-template-us-east-1 \
-    --expected-bucket-owner YOUR-AWS-ACCOUNT-NUMBER
-    ```
-* Deploy the distributable to an Amazon S3 bucket in your account. _Note:_ you must have the AWS Command Line Interface installed.
+When you build the Media2Cloud V4 on your environment, you create artifacts such as the CloudFormation templates and the code packages in zip format. You need a S3 bucket to store the artefact such that you can launch the stack by pointing to your own version of CloudFormation templates.
 
-    ```
-    bash ./deploy-s3-dist.sh --bucket media2cloud-template-us-east-1 --single-region
-    ```
+Skip this step if you already have a S3 bucket that you plan to use.
 
-* Get the HTTPS URL link of ```media2cloud.template``` after you have uploaded to your Amazon S3 bucket.
-* Deploy the guidance to your account by launching a new AWS CloudFormation stack using the link of the ```media2cloud.template```.
+```sh
+
+aws s3api create-bucket --bucket yourname-artefact-bucket --region us-east-1
+
+```
+
+#### _Step 2: Clone GitHub repo_
+
+```sh
+
+git clone https://github.com/aws-solutions-library-samples/guidance-for-media2cloud-on-aws
+
+```
+
+#### _Step 3: Run the build script_
+
+```sh
+
+# change to the deployment directory
+cd guidance-for-media2cloud-on-aws/deployment
+
+bash build-s3-dist.sh \
+  --bucket yourname-artefact-bucket \
+  --version v4.1234 \
+  --single-region > build.log 2>&1 &
+
+# tail the build.log
+tail -f build.log
+
+```
+
+\* _Tip 1: Always assign an unique version with `--version` flag to ensure Cloudformation Update stack operation works properly. If the version is not updated, the Update stack operation may skip updating some resources. Alternatively, you can update [.version](source/layers/core-lib/lib/.version) under source/layers/core-lib/lib/._
+
+\* _Tip 2: Always include `--single-region` flag when you are building the stack for a single region use._
+
+#### _Step 4: Deploy the build artefacts to your S3 bucket_
+
+```sh
+
+bash deploy-s3-dist.sh \
+  --bucket yourname-artefact-bucket \
+  --version v4.1234 \
+  --single-region
+
+```
+
+Once the artefacts are uploaded to yourname-artefact-bucket, you can use the HTTPS URL of the `media2cloud.template` to create the stack on CloudFormation.
 
 __
 
-## Code structure
+## Deep dive into Media2Cloud V4
 
-| Path | Description |
-| :--- | :---------- |
-| deployment/ | -- |
-| deployment/build-s3-dist.sh | shell script to build packages |
-| deployment/deploy-s3-dist.sh | shell script to deploy packages to your Amazon S3 bucket |
-| deployment/media2cloud.yaml | main Amazon CloudFormation template to deploy the stack |
-| source/ | -- |
-| source/api | Amazon API Gateway handler |
-| source/backlog | implementation of internal queue management to handle large numbers of Amazon Rekognition Video requests |
-| source/build | build script used by ```build-s3-dist.sh``` |
-| source/custom-resources | lambda function used by Amazon CloudFormation during stack creation and deletion |
-| LAYERS | -- |
-| source/layers | directory of various AWS Lambda Layers |
-| source/layers/aws-sdk-layer | latest AWS SDK layer |
-| source/layers/canvas-lib | canvas layer for processing images |
-| source/layers/core-lib | core library shared by all lambdas |
-| source/layers/fixity-lib | fixity library to compute MD5/SHA1 |
-| source/layers/image-process-lib | wrapper to exif-tool to extract image metadata |
-| source/layers/mediainfo | mediainfo layer |
-| source/layers/pdf-lib | wrapper of pdfjs package |
-| source/layers/service-backlog-lib | service backlog of internal queue management |
-| WORKFLOWS | -- |
-| [source/main](./source/main/README.md) | main state machine |
-| [source/main/ingest](./source/main/ingest/README.md) | ingest state machine implementation |
-| [source/main/analysis](./source/main/analysis/README.md) | analysis state machine implementation |
-| [source/main/automation](./source/main/automation/README.md) | triggers and automations of workflows |
-| WEBAPP | -- |
-| [source/webapp](./source/webapp/README.md) | implementation of webapp |
+#### _Resource naming convention_
+
+The resources created by the Media2Cloud CloudFormation stack follow a naming convention that follows the pattern [SolutionID]-[PartialStackID]-[WorkflowName]. The SolutionID for Media2Cloud is `so0050`, the PartialStackID is a unique ID generated by CloudFormation upon stack creation, and the WorkflowName can be `ingest`, `analysis`, or other workflow names. For example, the Ingestion Main state machine would be named `so0050-000000000000-ingest-main`, and a lambda function in the Analysis Main state machine would be named `so0050-000000000000-analysis-main`.
+
+
+#### _Backend workflow_
+
+The core part of the Media2Cloud V4 is the backend ingestion and analysis workflows. To learn more, click on the topics.
+
+- [Main state machine](./source/main/README.md)
+  - [Ingestion Main state machine](./source/main/ingest/main/README.md)
+    - [Video Ingestion state machine](./source/main/ingest/video/README.md)
+    - [Audio Ingestion state machine](./source/main/ingest/audio/README.md)
+    - [Image Ingestion state machine](./source/main/ingest/image/README.md)
+    - [Document Ingestion state machine](./source/main/ingest/document/README.md)
+  - [Analysis Main state machine](./source/main/analysis/main/README.md)
+    - [Video Analysis state machine](./source/main/analysis/video/README.md)
+    - [Audio Analysis state machine](./source/main/analysis/audio/README.md)
+    - [Image Analysis state machine](./source/main/analysis/image/README.md)
+    - [Document Analysis state machine](./source/main/analysis/document/README.md)
+- [Opensource ML models and vector store](./docker/README.md)
+  - [CLIP (zeroshot image classification model)](./docker/zero-shot-classifier-on-aws/README.md)
+  - [OWL-ViT (zero-shot object detection model)](./docker/zero-shot-object-on-aws/README.md)
+  - [Faiss (ephemeral vector store)](./docker/faiss-on-aws/README.md)
+
+
+#### _Frontend workflow_
+
+- [Web application](./source/webapp/README.md)
+- [API Endpoint](./source/api/README.md)
 
 __
 
+## V4 Demo Video Gallery
 
-## License
+#### _Scene and Ad break detection_
+
+Demonstrating the differences between scene and shot, the conversation topic analysis, the contextual information at the scene level including scene description, IAB Content Taxonomy, GARM Taxonomy, Sentiment, and Brands and logos.
+
+![Scene and Ad break detection](./deployment/tutorials/images/v4-scene-detection.gif)
+
+#### _Dynamic Frame Analysis_
+
+Demonstrating how the Dynamic Frame Analysis feature can significantly reduce the numbers of API calls to Amazon Rekognition services while still extracting the valuable metadata from the media file.
+
+![Dynamic Frame Analysis](./deployment/tutorials/images/v4-dynamic-frame-analysis.gif)
+
+#### _Auto Face Indexer_
+
+Demonstrating how the Auto Face Indexer uses the late binding technique to allow you to "tag" the unrecognized faces without re-analyzing the meda files.
+
+![Auto Face Indexer](./deployment/tutorials/images/v4-auto-face-indexer.gif)
+
+
+__
+
+## LICENSE
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
@@ -151,6 +328,4 @@ __
 
 ## Collection of operational metrics
 
-This guidance collects anonymized operational metrics to help AWS improve the
-quality of features of the guidance. For more information, including how to disable
-this capability, please see the [implementation guide](https://docs.aws.amazon.com/solutions/latest/media2cloud/collection-of-operational-metrics.html).
+This solution collects anonymous operational metrics to help AWS improve the quality of features of the solution. For more information, including how to disable this capability, please see the [implementation guide](https://aws-solutions-library-samples.github.io/media-entertainment/media2cloud-on-aws.html#anonymized-data-collection).

@@ -1,15 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  TranscribeClient,
+  GetMedicalTranscriptionJobCommand,
+  GetTranscriptionJobCommand,
+  StartMedicalTranscriptionJobCommand,
+  StartTranscriptionJobCommand,
+} = require('@aws-sdk/client-transcribe');
 const {
   DataAccess,
   Solution: {
@@ -18,7 +16,11 @@ const {
     },
   },
 } = require('../../shared/defs');
-
+const xraysdkHelper = require('../../shared/xraysdkHelper');
+const retryStrategyHelper = require('../../shared/retryStrategyHelper');
+const {
+  M2CException,
+} = require('../../shared/error');
 const BacklogJob = require('../backlogJob');
 
 class TranscribeBacklogJob extends BacklogJob {
@@ -49,25 +51,6 @@ class TranscribeBacklogJob extends BacklogJob {
     return Object.values(TranscribeBacklogJob.ServiceApis).indexOf(serviceApi) >= 0;
   }
 
-  getTranscribeInstance() {
-    return new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-      customUserAgent: CustomUserAgent,
-    });
-  }
-
-  bindToFunc(serviceApi) {
-    const transcribe = this.getTranscribeInstance();
-    switch (serviceApi) {
-      case TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob:
-        return transcribe.startMedicalTranscriptionJob.bind(transcribe);
-      case TranscribeBacklogJob.ServiceApis.StartTranscriptionJob:
-        return transcribe.startTranscriptionJob.bind(transcribe);
-      default:
-        return undefined;
-    }
-  }
-
   async startAndRegisterJob(id, serviceApi, params) {
     const serviceParams = {
       ...params,
@@ -84,11 +67,33 @@ class TranscribeBacklogJob extends BacklogJob {
   }
 
   async startJob(serviceApi, serviceParams) {
-    let response = await super.startJob(serviceApi, serviceParams)
-      .catch(e => e);
+    let command;
+    if (serviceApi === TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob) {
+      command = new StartMedicalTranscriptionJobCommand(serviceParams);
+    } else if (serviceApi === TranscribeBacklogJob.ServiceApis.StartTranscriptionJob) {
+      command = new StartTranscriptionJobCommand(serviceParams);
+    } else {
+      console.error(
+        'ERR:',
+        'TranscribeBacklogJob.startJob:',
+        'not supported:',
+        serviceApi
+      );
+      throw new M2CException(`${serviceApi} not supported`);
+    }
+
+    const transcribeClient = xraysdkHelper(new TranscribeClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    let response = await transcribeClient.send(command)
+      .catch((e) =>
+        e);
     if (response instanceof Error) {
       response = await this.testJob(serviceApi, serviceParams, response);
     }
+
     return response;
   }
 
@@ -97,38 +102,55 @@ class TranscribeBacklogJob extends BacklogJob {
      * Transcribe doesn't use ClientRequestToken. Test ConflictException
      * and try to get the actual TranscriptionJobName (JobId)
      */
-    let response;
-    if (!this.conflictException(originalError.code)) {
+    if (!this.conflictException(originalError.name)) {
       throw originalError;
     }
-    const transcribe = this.getTranscribeInstance();
+
+    let command;
     if (serviceApi === TranscribeBacklogJob.ServiceApis.StartMedicalTranscriptionJob) {
-      response = await transcribe.getMedicalTranscriptionJob({
+      command = new GetMedicalTranscriptionJobCommand({
         MedicalTranscriptionJobName: serviceParams.MedicalTranscriptionJobName,
-      }).promise();
+      });
     } else if (serviceApi === TranscribeBacklogJob.ServiceApis.StartTranscriptionJob) {
-      response = await transcribe.getTranscriptionJob({
+      command = new GetTranscriptionJobCommand({
         TranscriptionJobName: serviceParams.TranscriptionJobName,
-      }).promise();
+      });
+    } else {
+      console.error(
+        'ERR:',
+        'TranscribeBacklogJob.testJob:',
+        'not supported:',
+        serviceApi
+      );
+      throw new M2CException(`${serviceApi} not supported`);
     }
+
+    const transcribeClient = xraysdkHelper(new TranscribeClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
     /**
      * if job is already completed,
      * throw the original error so we don't queue the process
      */
+    const response = await transcribeClient.send(command);
+
     const status = (response.TranscriptionJob || {}).TranscriptionJobStatus
       || (response.MedicalTranscriptionJob || {}).TranscriptionJobStatus;
     if (status === 'FAILED' || status === 'COMPLETED') {
       throw originalError;
     }
+
     return response;
   }
 
-  noMoreQuotasException(code) {
-    return (code === 'LimitExceededException');
+  noMoreQuotasException(name) {
+    return (name === 'LimitExceededException');
   }
 
-  conflictException(code) {
-    return (code === 'ConflictException');
+  conflictException(name) {
+    return (name === 'ConflictException');
   }
 
   parseJobId(data) {

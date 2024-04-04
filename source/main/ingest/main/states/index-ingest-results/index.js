@@ -10,25 +10,8 @@ const {
   IngestError,
 } = require('core-lib');
 
-const INDEX_INGEST = 'ingest';
-const CORE_ATTRIBUTES = [
-  'overallStatus',
-  'lastModified',
-  'timestamp',
-  'status',
-  'basename',
-  'attributes',
-  'bucket',
-  'group',
-  'fileSize',
-  'mime',
-  'framerate',
-  'uuid',
-  'key',
-  'duration',
-  'type',
-  'md5',
-];
+const INDEX_CONTENT = Indexer.getContentIndex();
+const INGEST_FIELDS = Indexer.getIngestFields();
 
 class StateIndexIngestResults {
   constructor(stateData) {
@@ -52,31 +35,52 @@ class StateIndexIngestResults {
       PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
     });
     const uuid = this.stateData.uuid;
-    const result = await db.fetch(uuid, undefined, CORE_ATTRIBUTES);
-    const indexer = new Indexer();
-    await indexer.indexDocument(INDEX_INGEST, uuid, result)
-      .catch((e) =>
-        console.error(`[ERR]: indexDocument: ${INDEX_INGEST}: ${uuid}:`, e));
+    const result = await db.fetch(
+      uuid,
+      undefined,
+      INGEST_FIELDS
+    );
 
-    await this.sendAnonymized(result);
+    const indexer = new Indexer();
+    await indexer.indexDocument(
+      INDEX_CONTENT,
+      uuid,
+      result
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'StateIndexIngestResults.process:',
+        'indexer.indexDocument:',
+        e.name,
+        e.message,
+        INDEX_CONTENT,
+        uuid,
+        JSON.stringify(result)
+      );
+      throw e;
+    });
+
+    await this.sendAnonymous(result);
+
     this.stateData.setData('indexer', {
       terms: Object.keys(result),
     });
     this.stateData.setCompleted();
+
     return this.stateData.toJSON();
   }
 
-  async sendAnonymized(data) {
-    if (!Environment.Solution.Metrics.AnonymizedUsage) {
+  async sendAnonymous(data) {
+    if (!Environment.Solution.Metrics.AnonymousUsage) {
       return undefined;
     }
-    return Metrics.sendAnonymizedData({
+    return Metrics.sendAnonymousData({
       uuid: this.stateData.uuid,
       process: 'ingest',
       fileSize: data.fileSize,
       duration: data.duration || 0,
       mime: data.mime,
-    }).catch(e => console.log(`sendAnonymized: ${e.message}`));
+    }).catch(e => console.log(`sendAnonymous: ${e.message}`));
   }
 }
 

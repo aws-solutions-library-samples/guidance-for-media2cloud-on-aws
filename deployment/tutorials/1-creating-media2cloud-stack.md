@@ -1,6 +1,6 @@
 ## Tutorial 1: Creating the Guidance for Media2Cloud on AWS using AWS CloudFormation service
 
-In this tutorial, we will walk through the steps to create your first Guidance for Media2Cloud on AWS using AWS CloudFormation service. If you are not familiar with AWS CloudFormation service, [click here](https://aws.amazon.com/cloudformation/) to learn more.
+In this tutorial, we will walk through the steps to create your first Guidance for Media2Cloud on AWS on AWS using AWS CloudFormation service. If you are not familiar with AWS CloudFormation service, [click here](https://aws.amazon.com/cloudformation/) to learn more.
 
 Two options we will discuss:
 * [Option 1: Launch stack on AWS Console](#option-1-launching-stack-on-aws-console)
@@ -38,7 +38,7 @@ Make sure the following capabilities are checked:
 - [x] I acknowledge that AWS CloudFormation might create IAM resources with custom names.
 - [x] I acknowledge that AWS CloudFormation might require the following capability: CAPABILITY_AUTO_EXPAND
 
-Click **Create stack** to create the guidance.
+Click **Create stack** to create the solution.
 
 __
 

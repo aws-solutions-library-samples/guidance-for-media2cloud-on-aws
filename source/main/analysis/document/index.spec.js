@@ -25,7 +25,7 @@ const lambda = require('./index.js');
 const event_StateIndexAnalysisResults = {
     "operation": "index-analysis-results",
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
       "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
       "aiOptions": {
@@ -63,7 +63,7 @@ const event_StateIndexAnalysisResults = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
       },
       "video": {
@@ -92,7 +92,7 @@ const event_StateIndexAnalysisResults = {
     "data": {
       "document": {
         "status": "COMPLETED",
-        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
+        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
         "startTime": 1672908613005,
         "endTime": 1672908619938,
         "textract": {
@@ -110,7 +110,7 @@ const event_StateIndexAnalysisResults = {
 const event_StateStartDocumentAnalysis = {
     "operation": "start-document-analysis",
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
       "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
       "aiOptions": {
@@ -148,7 +148,7 @@ const event_StateStartDocumentAnalysis = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
       },
       "video": {
@@ -175,12 +175,12 @@ const event_StateStartDocumentAnalysis = {
       }
     },
     "stateExecution": {
-      "Id": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
+      "Id": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
       "Input": {
         "status": "NOT_STARTED",
         "progress": 0,
         "input": {
-          "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+          "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
           "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
           "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
           "aiOptions": {
@@ -218,7 +218,7 @@ const event_StateStartDocumentAnalysis = {
           },
           "attributes": {},
           "destination": {
-            "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+            "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
             "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
           },
           "video": {
@@ -249,7 +249,7 @@ const event_StateStartDocumentAnalysis = {
       },
       "StartTime": "2023-01-05T08:50:13.005Z",
       "Name": "673359b3-1020-47b9-a4c6-7e189b6a5cab",
-      "RoleArn": "arn:aws:iam::account-number:role/so0050-0a709c9ee415/MyMedia2CloudTest-Backend-AnalysisStateMachineServ-15UVTS9SYPLZU"
+      "RoleArn": "arn:aws:iam::account-number:role/so0050-111111111111/MyMedia2CloudTest-Backend-AnalysisStateMachineServ-15UVTS9SYPLZU"
     },
     "data": {},
     "progress": 0,
@@ -280,7 +280,7 @@ const context = {
             ENV_SOLUTION_ID: 'Test_ENV_Variable',
             ENV_RESOURCE_PREFIX: 'Test_ENV_Variable',
             ENV_SOLUTION_UUID: 'Test_ENV_Variable',
-            ENV_ANONYMIZED_USAGE: 'Test_ENV_Variable',
+            ENV_ANONYMOUS_USAGE: 'Test_ENV_Variable',
             ENV_IOT_HOST: 'Test_ENV_Variable',
             ENV_IOT_TOPIC: 'Test_ENV_Variable',
             ENV_PROXY_BUCKET: 'Test_ENV_Variable',

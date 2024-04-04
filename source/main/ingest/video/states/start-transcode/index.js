@@ -59,6 +59,10 @@ class StateStartTranscode {
     return this.stateData.input;
   }
 
+  get remixChannels() {
+    return this.input.remixChannels || true;
+  }
+
   async process() {
     const src = this.stateData.input || {};
     let missing = [
@@ -139,6 +143,11 @@ class StateStartTranscode {
       ogs.push(frameCaptureGroup);
     }
 
+    // apply input cropping filter if present
+    const filters = (this.stateData.input.aiOptions || {}).filters;
+    const video = (this.stateData.data.mediainfo.video || [])[0];
+    const inputCrop = _useInputCropFilter(filters, video);
+
     const template = {
       Role: Environment.DataAccess.RoleArn,
       Settings: {
@@ -158,6 +167,7 @@ class StateStartTranscode {
             DenoiseFilter: 'DISABLED',
             TimecodeSource: 'ZEROBASED',
             FileInput: `s3://${src.bucket}/${src.key}`,
+            ...inputCrop,
           },
         ],
       },
@@ -169,6 +179,7 @@ class StateStartTranscode {
       Queue: await this.useQueue(),
       BillingTagsSource: 'JOB',
     };
+
     /* sanitize JSON data */
     return JSON.parse(JSON.stringify(template));
   }
@@ -208,15 +219,15 @@ class StateStartTranscode {
       return [audio[0].iD];
     }
     /* #3: multiple audio tracks and contain stereo track */
-    for (let track of audio) {
-      if (this.getChannels(track) >= 2) {
-        return [track.iD];
+    for (let i = 0; i < audio.length; i++) {
+      if (this.getChannels(audio[i]) >= 2) {
+        return [audio[i].iD];
       }
     }
     /* #4: multiple audio tracks and contain Dolby E track */
-    for (let track of audio) {
-      if (track.format === 'Dolby E') {
-        return [track.iD];
+    for (let i = 0; i < audio.length; i++) {
+      if (audio[i].format === 'Dolby E') {
+        return [audio[i].iD];
       }
     }
     /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
@@ -231,6 +242,9 @@ class StateStartTranscode {
     const audio = this.stateData.data.mediainfo.audio || [];
     const name = 'Audio Selector 1';
     const tracks = this.parseTracks(audio);
+
+    const remixSettings = this.makeRemixSettings(tracks);
+
     return (!tracks.length)
       ? undefined
       : {
@@ -241,6 +255,7 @@ class StateStartTranscode {
             DefaultSelection: 'DEFAULT',
             SelectorType: 'TRACK',
             Tracks: tracks,
+            ...remixSettings,
           },
         },
       };
@@ -265,19 +280,28 @@ class StateStartTranscode {
       return [reordered[0].trackIdx];
     }
     /* #3: multiple audio tracks and contain stereo track */
-    for (let track of reordered) {
-      if (this.getChannels(track) >= 2) {
-        return [track.trackIdx];
+    for (let i = 0; i < reordered.length; i++) {
+      if (this.getChannels(reordered[i]) >= 2) {
+        return [reordered[i].trackIdx];
       }
     }
     /* #4: multiple audio tracks and contain Dolby E track */
-    for (let track of reordered) {
-      if (track.format === 'Dolby E') {
-        return [track.trackIdx];
+    for (let i = 0; i < reordered.length; i++) {
+      if (reordered[i].format === 'Dolby E') {
+        return [reordered[i].trackIdx];
       }
     }
-    /* #5: multiple PCM mono audio tracks, take the first 2 mono tracks */
-    const pcms = reordered.filter(x => this.getChannels(x) === 1);
+
+    const pcms = reordered.filter((x) =>
+      this.getChannels(x) === 1);
+
+    /* #5: remix all PCM mono audio tracks */
+    if (this.remixChannels) {
+      return pcms.map((x) =>
+        x.trackIdx);
+    }
+
+    /* #6: multiple PCM mono audio tracks, take the first 2 mono tracks */
     return pcms.slice(0, 2).map(x => x.trackIdx);
   }
 
@@ -312,9 +336,9 @@ class StateStartTranscode {
         width,
         height,
       ] = this.downscaleOutput();
-      for (let output of outputs) {
-        output.VideoDescription.Width = width;
-        output.VideoDescription.Height = height;
+      for (let i = 0; i < outputs.length; i++) {
+        outputs[i].VideoDescription.Width = width;
+        outputs[i].VideoDescription.Height = height;
       }
     }
     /* make sure each output has at least one output stream */
@@ -324,6 +348,8 @@ class StateStartTranscode {
   }
 
   makeOutputPrefix(prefix, keyword = '') {
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     return PATH.join(prefix, CATEGORY, keyword, '/');
   }
 
@@ -331,9 +357,16 @@ class StateStartTranscode {
     const dest = this.stateData.input.destination;
     const bucket = dest.bucket;
     const json = `${ogName}.json`;
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     const key = PATH.join(CUSTOM_TEMPLATE_S3_PREFIX, json);
-    const tmpl = await CommonUtils.download(bucket, key).catch(() =>
-      FS.readFileSync(PATH.join(__dirname, 'tmpl', json)));
+    const tmpl = await CommonUtils.download(bucket, key)
+      .catch(() => {
+        // eslint-disable-next-line
+        // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+        const file = PATH.join(__dirname, 'tmpl', json);
+        return FS.readFileSync(file);
+      });
     return JSON.parse(tmpl);
   }
 
@@ -421,6 +454,101 @@ class StateStartTranscode {
     codecSettings.FrameCaptureSettings.FramerateNumerator = numerator;
     codecSettings.FrameCaptureSettings.FramerateDenominator = denominator;
     return outputGroup;
+  }
+
+  makeRemixSettings(tracks) {
+    if (!this.remixChannels || tracks.length < 2) {
+      return undefined;
+    }
+
+    const inputChannelsL = new Array(tracks.length).fill(-60)
+      .map((x, idx) =>
+        (0 - (idx % 2) * 60));
+    const inputChannelsR = new Array(tracks.length).fill(-60)
+      .map((x, idx) =>
+        (0 - (1 - (idx % 2)) * 60));
+
+    return {
+      RemixSettings: {
+        ChannelMapping: {
+          OutputChannels: [
+            {
+              InputChannelsFineTune: inputChannelsL,
+            },
+            {
+              InputChannelsFineTune: inputChannelsR,
+            },
+          ],
+        },
+        ChannelsIn: tracks.length,
+        ChannelsOut: 2,
+      },
+    };
+  }
+}
+
+function _useInputCropFilter(filters, videoInfo) {
+  try {
+    if (
+      ((filters || {})[CATEGORY] === undefined) ||
+      (videoInfo === undefined)
+    ) {
+      return undefined;
+    }
+
+    const srcW = Number(videoInfo.width);
+    const srcH = Number(videoInfo.height);
+
+    if (Number.isNaN(srcW) || Number.isNaN(srcH)) {
+      throw new Error('invalid srcW or srcH value');
+    }
+
+    let {
+      cropX = 0,
+      cropY = 0,
+      keepAR,
+    } = filters[CATEGORY];
+
+    keepAR = (keepAR !== false);
+
+    cropX = Number(cropX);
+    cropY = Number(cropY);
+
+    if (
+      (Number.isNaN(cropX) || Number.isNaN(cropY)) ||
+      ((cropX + cropY) === 0)
+    ) {
+      throw new Error('invalid cropX or cropY value');
+    }
+
+    // rounding to multiplier of 2
+    cropX = Math.round(cropX / 2) * 2;
+    cropY = Math.round(cropY / 2) * 2;
+
+    let destW = srcW - (cropX * 2);
+    let destH = srcH - (cropY * 2);
+
+    if (keepAR) {
+      const scale = Math.min((destW / srcW), (destH / srcH));
+
+      destW = Math.round((srcW * scale) / 4) * 4;
+      destH = Math.round((srcH * scale) / 4) * 4;
+      cropX = Math.round((srcW - destW) / 2);
+      cropY = Math.round((srcH - destH) / 2);
+    }
+
+    const inputCropping = {
+      Crop: {
+        X: cropX,
+        Y: cropY,
+        Width: destW,
+        Height: destH,
+      },
+    };
+
+    return inputCropping;
+  } catch (e) {
+    return undefined;
   }
 }
 

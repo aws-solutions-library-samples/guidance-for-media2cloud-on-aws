@@ -8,10 +8,11 @@ module.exports = {
     FaceMatch: 'facematch',
     Label: 'label',
     Moderation: 'moderation',
-    Person: 'person',
+    // Person: 'person',
     Text: 'text',
     Segment: 'segment',
     CustomLabel: 'customlabel',
+    ImageProperty: 'imageprop',
   },
   Transcribe: 'transcribe',
   Comprehend: {
@@ -22,6 +23,24 @@ module.exports = {
     // Classification: 'classification',
     CustomEntity: 'customentity',
   },
-  /* textract */
+  // textract
   Textract: 'textract',
+
+  //
+  // Advanced features below:
+  //
+  // Ad break feature: generated breaks from scenes
+  AdBreak: 'adbreak',
+  // Auto face indexer: auto index unrecognized faces
+  AutoFaceIndexer: 'autofaceindexer',
+  // Zero shot object detection / image classification: open source ML models
+  ZeroshotLabels: 'zeroshotlabels',
+  // Shoppable metadata feature: require zeroshot object detection / zeroshot image classification
+  Shoppable: 'shoppable',
+  // Scene detection: combination segment, zeroshot image classification model, and faiss
+  Scene: 'scene',
+  // Toxicity features, applied to both Transcribe and Comprehend
+  Toxicity: 'toxicity',
+  // Transcode features
+  Transcode: 'transcode',
 };

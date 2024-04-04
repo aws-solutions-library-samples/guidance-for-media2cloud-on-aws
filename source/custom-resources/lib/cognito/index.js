@@ -1,15 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  CognitoIdentityProviderClient,
+  AdminCreateUserCommand,
+} = require('@aws-sdk/client-cognito-identity-provider');
+const {
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
+} = require('core-lib');
 const mxBaseResponse = require('../shared/mxBaseResponse');
+
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
+
+class X0 extends mxBaseResponse(class {}) {}
 
 /**
  * @function RegisterUser
@@ -17,12 +22,12 @@ const mxBaseResponse = require('../shared/mxBaseResponse');
  * @param {object} context
  */
 exports.RegisterUser = async (event, context) => {
-  console.log(`event = ${JSON.stringify(event, null, 2)}`);
-
-  class X0 extends mxBaseResponse(class {}) {}
-  const x0 = new X0(event, context);
+  let x0;
 
   try {
+    console.log(`event = ${JSON.stringify(event, null, 2)}`);
+
+    x0 = new X0(event, context);
     if (x0.isRequestType('Delete')) {
       x0.storeResponseData('Status', 'SKIPPED');
       return x0.responseData;
@@ -30,11 +35,12 @@ exports.RegisterUser = async (event, context) => {
 
     const data = event.ResourceProperties.Data || {};
     if (!data.UserPoolId) {
-      throw new Error('UserPoolId must be specified');
+      throw new M2CException('UserPoolId must be specified');
     }
     if (!data.Username || (!data.Email && !data.TemporaryCode)) {
-      throw new Error('Username and Email or TemporarCode must be specified');
+      throw new M2CException('Username and Email or TemporarCode must be specified');
     }
+
     let params = {
       UserPoolId: data.UserPoolId,
       Username: data.Username,
@@ -45,6 +51,7 @@ exports.RegisterUser = async (event, context) => {
         TemporaryPassword: data.TemporaryCode,
       };
     }
+
     if (data.Email) {
       params = {
         ...params,
@@ -63,21 +70,29 @@ exports.RegisterUser = async (event, context) => {
         ],
       };
     }
-    const cognito = new AWS.CognitoIdentityServiceProvider({
-      apiVersion: '2016-04-18',
-      customUserAgent: process.env.ENV_CUSTOM_USER_AGENT,
-    });
-    await cognito.adminCreateUser(params).promise()
-      .catch((e) => {
-        console.error(`[ERR]: cognito.adminCreateUser: ${e.code} ${e.message} ${JSON.stringify(params, null, 2)}`);
-        throw e;
+    const cognitoIdpClient = xraysdkHelper(new CognitoIdentityProviderClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new AdminCreateUserCommand(params);
+
+    return cognitoIdpClient.send(command)
+      .then(() => {
+        x0.storeResponseData('Username', data.Username);
+        x0.storeResponseData('Status', 'SUCCESS');
+        return x0.responseData;
       });
-    x0.storeResponseData('Username', data.Username);
-    x0.storeResponseData('Status', 'SUCCESS');
-    return x0.responseData;
   } catch (e) {
-    e.message = `RegisterUser: ${e.message}`;
-    console.error(e);
+    console.error(
+      'ERR:',
+      'RegisterUser:',
+      'AdminCreateUserCommand:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
+
     x0.storeResponseData('Status', 'FAILED');
     return x0.responseData;
   }

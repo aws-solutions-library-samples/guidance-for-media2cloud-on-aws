@@ -1,33 +1,13 @@
 {
   "name": "image-process-lib",
-  "version": "1.0.0",
-  "description": "media2cloud image process layer",
+  "version": "exiftool-12.70",
+  "description": "Perl5 and EXIFtool into a lambda layer",
   "main": "index.js",
   "private": true,
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
-  "license": "Apache-2.0",
-  "dependencies": {
-    "jimp": "^0.16.1"
-  },
+  "dependencies": {},
   "scripts": {
-    "pretest": "npm install",
-    "test": "echo \"image-process-lib layer wraps 3rd party packages, jimp and exiftool, skipping unit test.\"",
-    "perl:clean": "rm -rf t && mkdir -p t",
-    "perl:download": "wget -q --no-check-certificate https://github.com/aws-kens/perl5-lambda-amazon-linux-2/releases/download/v5.30.0-amazon-linux-2/perl5-5-30-amazon-linux-2-runtime.zip -O perl.zip",
-    "perl:install": "unzip -q perl.zip -d t/ && rm -r t/man && rm perl.zip",
-    "exiftool:clean": "rm -rf t/exiftool && mkdir -p t/exiftool",
-    "exiftool:download": "wget -q --no-check-certificate https://github.com/exiftool/exiftool/archive/refs/tags/12.30.tar.gz -O exiftool.tar.gz && tar zxf exiftool.tar.gz",
-    "exiftool:install": "mv exiftool-12.30/exiftool exiftool-12.30/lib t/exiftool && rm -rf exiftool-12.30/ exiftool.tar.gz",
-    "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/image-process-lib",
-    "build:copy": "cp -r package.json index.js amazon exiftool t dist/nodejs/node_modules/image-process-lib",
-    "build:install": "cd dist/nodejs/node_modules/image-process-lib && npm install --omit=dev --omit=optional",
-    "build": "npm-run-all -s perl:clean perl:download perl:install exiftool:clean exiftool:download exiftool:install build:clean build:copy build:install",
-    "zip": "cd dist && zip -rq"
+    "test": "echo \"Wrapping Perl5 and EXIFtool runtimes. skipping unit test...\""
   },
-  "devDependencies": {
-    "npm-run-all": "*"
-  }
+  "author": "aws-mediaent-solutions",
+  "devDependencies": {}
 }

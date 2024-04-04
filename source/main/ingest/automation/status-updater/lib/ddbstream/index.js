@@ -1,14 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  unmarshall,
+} = require('@aws-sdk/util-dynamodb');
 const PATH = require('path');
 const {
   Environment,
@@ -26,7 +21,7 @@ const MEDIA_TYPES = [
   'document',
   'image',
 ];
-const INDEX_INGEST = 'ingest';
+const INDEX_CONTENT = Indexer.getContentIndex();
 const PROXY_PREFIXES = [
   '/transcode/',
   '/mediainfo/',
@@ -47,9 +42,10 @@ class DDBStreamEvent {
   }
 
   static unmarshallData(data) {
-    return (data !== undefined)
-      ? AWS.DynamoDB.Converter.unmarshall(data)
-      : undefined;
+    if (data === undefined) {
+      return data;
+    }
+    return unmarshall(data);
   }
 
   get event() {
@@ -70,10 +66,21 @@ class DDBStreamEvent {
       PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
       SortKey: Environment.DynamoDB.AIML.SortKey,
     });
-    return Promise.all(MEDIA_TYPES.map((type) =>
-      db.purge(uuid, type)
-        .catch((e) =>
-          console.error(`[ERR]: db.delete: ${uuid} ${e.code} ${e.message}`))));
+
+    return Promise.all(MEDIA_TYPES
+      .map((type) =>
+        db.purge(uuid, type)
+          .catch((e) => {
+            console.error(
+              'ERR:',
+              'DDBStreamEvent.deleteFromAnalysisTable:',
+              'db.purge:',
+              e.name,
+              e.message,
+              uuid
+            );
+            return undefined;
+          })));
   }
 
   async deleteFromS3(uuid, keepProxies = false) {
@@ -86,8 +93,18 @@ class DDBStreamEvent {
       response = await CommonUtils.listObjects(bucket, prefix, {
         ContinuationToken: (response || {}).NextContinuationToken,
         MaxKeys: 300,
-      }).catch((e) =>
-        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+      }).catch((e) => {
+        console.error(
+          'ERR:',
+          'DDBStreamEvent.deleteFromS3:',
+          'CommonUtils.listObjects:',
+          e.name,
+          e.message,
+          prefix
+        );
+        return undefined;
+      });
+
       if (response && response.Contents) {
         let contents = response.Contents;
         if (keepProxies) {
@@ -98,47 +115,85 @@ class DDBStreamEvent {
               return false;
             }
             /* if object is one of the prefixes, don't delete the object */
-            for (let prefix of PROXY_PREFIXES) {
-              if (x.Key.indexOf(prefix) > 0) {
+            for (let i = 0; i < PROXY_PREFIXES.length; i++) {
+              if (x.Key.indexOf(PROXY_PREFIXES[i]) > 0) {
                 return false;
               }
             }
             return true;
           });
         }
-        await Promise.all(contents.map((x) =>
-          CommonUtils.deleteObject(bucket, x.Key)
-            .then(() =>
-              fileDeleted += 1)
-            .catch((e) =>
-              console.error(`[ERR]: CommonUtils.deleteObject: ${x.Key} ${e.code} ${e.message}`))));
+        await Promise.all(contents
+          .map((x) =>
+            CommonUtils.deleteObject(bucket, x.Key)
+              .then(() =>
+                fileDeleted += 1)
+              .catch((e) => {
+                console.error(
+                  'ERR:',
+                  'DDBStreamEvent.deleteFromS3:',
+                  'CommonUtils.deleteObject:',
+                  e.name,
+                  e.message,
+                  x.Key
+                );
+                return undefined;
+              })));
       }
     } while ((response || {}).NextContinuationToken);
     return fileDeleted;
   }
 
-  async deleteFromOpenSearch(uuid, myIndices) {
+  async deleteDocumentFromOpenSearch(uuid) {
     const indexer = new Indexer();
-    const indices = myIndices || Indexer.getIndices();
-    return Promise.all(indices.map((name) =>
-      indexer.deleteDocument(name, uuid)
-        .catch((e) =>
-          console.error(`[ERR]: indexer.deleteDocument: ${name}: ${uuid}: ${JSON.stringify(e.body, null, 2)}`))));
+
+    return indexer.deleteDocument(
+      INDEX_CONTENT,
+      uuid
+    ).catch((e) => {
+      console.log(
+        'ERR:',
+        'indexer.deleteDocument:',
+        INDEX_CONTENT,
+        uuid,
+        JSON.stringify(e.body)
+      );
+      return undefined;
+    });
+  }
+
+  async dropAnalysisFieldsFromOpenSearch(uuid) {
+    const indexer = new Indexer();
+
+    return indexer.dropAnalysisFields(
+      INDEX_CONTENT,
+      uuid
+    ).catch((e) => {
+      console.log(
+        'ERR:',
+        'indexer.dropAnalysisFields:',
+        INDEX_CONTENT,
+        uuid,
+        JSON.stringify(e.body)
+      );
+      return undefined;
+    });
   }
 
   async onRemoveEvent(event) {
+    // AssetRemoval state machine to handle deleting assets
+    return undefined;
+    /*
     const uuid = (event.oldImage || {}).uuid;
     if (!uuid) {
       return undefined;
     }
     return Promise.all([
-      /* delete entries from analysis table */
       this.deleteFromAnalysisTable(uuid),
-      /* delete all metadata from S3 */
       this.deleteFromS3(uuid),
-      /* delete document from OpenSearch */
-      this.deleteFromOpenSearch(uuid),
+      this.deleteDocumentFromOpenSearch(uuid),
     ]);
+    */
   }
 
   async onInsertEvent(event) {
@@ -166,16 +221,13 @@ class DDBStreamEvent {
 
   async onRemoveFieldAnalysis(uuid) {
     const keepProxies = true;
-    const indices = Indexer.getIndices()
-      .filter((x) =>
-        x !== INDEX_INGEST);
     return Promise.all([
       /* delete entries from analysis table */
       this.deleteFromAnalysisTable(uuid),
       /* delete all metadata from S3 */
       this.deleteFromS3(uuid, keepProxies),
       /* delete document from OpenSearch */
-      this.deleteFromOpenSearch(uuid, indices),
+      this.dropAnalysisFieldsFromOpenSearch(uuid),
     ]);
   }
 
@@ -192,43 +244,41 @@ class DDBStreamEvent {
       status,
       overallStatus,
     };
-    await this.updateOpenSearch(uuid, fields, [
-      INDEX_INGEST,
-    ]);
+    await this.updateOpenSearch(uuid, fields);
     return undefined;
   }
 
-  async updateOpenSearch(uuid, fields, indices) {
-    if (!indices.length || !uuid) {
-      return undefined;
-    }
-    const doc = JSON.parse(JSON.stringify(fields));
-    if (Object.keys(doc).length === 0) {
-      return undefined;
-    }
+  async updateOpenSearch(uuid, fields) {
     const indexer = new Indexer();
-    return Promise.all(indices.map((name) =>
-      indexer.indexDocument(name, uuid, doc)
-        .catch((e) =>
-          console.error(`[ERR]: indexer.indexDocument: ${name}: ${uuid}: ${JSON.stringify(e.body)}`))));
+
+    return indexer.update(
+      INDEX_CONTENT,
+      uuid,
+      fields
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'DDBStreamEvent.updateOpenSearch:',
+        'indexer.update:',
+        e.name,
+        e.message,
+        INDEX_CONTENT,
+        uuid,
+        JSON.stringify(fields)
+      );
+      return undefined;
+    });
   }
 
   async process() {
-    const responses = await Promise.all(this.records.map((x) => {
-      switch (x.event) {
-        case EVENT_REMOVE:
-          this.onRemoveEvent(x);
-          break;
-        case EVENT_INSERT:
-          this.onInsertEvent(x);
-          break;
-        case EVENT_MODIFY:
-          this.onModifyEvent(x);
-          break;
-        default:
-          return undefined;
-      }
-    }));
+    const responses = await Promise.all(this.records.map((x) =>
+      ((x.event === EVENT_REMOVE)
+        ? this.onRemoveEvent(x)
+        : (x.event === EVENT_INSERT)
+          ? this.onInsertEvent(x)
+          : (x.event === EVENT_MODIFY)
+            ? this.onModifyEvent(x)
+            : undefined)));
     return responses;
   }
 }

@@ -5,11 +5,53 @@ import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../shared/localization.js';
 import AppUtils from '../../shared/appUtils.js';
 import ApiHelper from '../../shared/apiHelper.js';
-import S3Utils from '../../shared/s3utils.js';
+import {
+  GetS3Utils,
+} from '../../shared/s3utils.js';
 import BaseUploadSlideComponent from './baseUploadSlideComponent.js';
 import {
   AWSConsoleS3,
 } from '../../shared/awsConsole.js';
+
+const {
+  MimeGetMime,
+} = window.MimeWrapper;
+
+const MSG_STATUS_NOT_STARTED = Localization.Statuses.NotStarted;
+const MSG_STATUS_WAITING = Localization.Statuses.Waiting;
+const MSG_STATUS_PROCESSING = Localization.Statuses.Processing;
+const MSG_STATUS_COMPLETED = Localization.Statuses.Completed;
+const MSG_STATUS_ERROR = Localization.Statuses.Error;
+const MSG_STATUS_TOTAL = Localization.Statuses.Total;
+
+const MSG_VALIDATE_UUID = Localization.Messages.ValidateUuid;
+const MSG_COMPUTE_CHECKSUM = Localization.Messages.ComputeChecksum;
+const MSG_UPLOAD_STATUS = Localization.Messages.UploadStatus;
+const MSG_UPLOAD_S3 = Localization.Messages.UploadS3;
+const MSG_FINALIZE_UPLOAD_DESC = Localization.Messages.FinalizeUploadDesc;
+
+const MSG_SUMMARY = Localization.Messages.Summary;
+const PROPKEY_SOURCE = Localization.Messages.Source;
+const PROPKEY_FILENAME = Localization.Messages.FileName;
+const PROPKEY_FILESIZE = Localization.Messages.FileSize;
+const PROPKEY_FILETYPE = Localization.Messages.FileType;
+const PROPKEY_LASTMODIFIED = Localization.Messages.LastModified;
+const PROPKEY_DESTINATION = Localization.Messages.Destination;
+const PROPKEY_BUCKET = Localization.Messages.Bucket;
+const PROPKEY_KEY = Localization.Messages.Key;
+const PROPKEY_ATTRIBUTES = Localization.Messages.Attributes;
+
+const BTN_CANCEL = Localization.Buttons.Cancel;
+const BTN_START_NOW = Localization.Buttons.StartNow;
+const BTN_DONE = Localization.Buttons.Done;
+const BTN_DOWNLOAD_SUMMARY = Localization.Buttons.DownloadSummary;
+
+const ERR_UPLOAD_S3 = Localization.Alerts.UploadS3Error;
+const ERR_CREATE_UUID = Localization.Alerts.CreateUuidError;
+const ERR_COMPUTE_CHECKSUM = Localization.Alerts.ComputeChecksumError;
+const ERR_START_WORKFLOW = Localization.Alerts.StartWorkflowError;
+
+const MD5_CHUNK_SIZE = 8 * 1024 * 1024;
 
 export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   constructor() {
@@ -22,18 +64,6 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
     this.$report = [];
     this.$fileList = [];
     this.$bucket = SolutionManifest.Ingest.Bucket;
-  }
-
-  static get Constants() {
-    return {
-      Md5: {
-        ChunkSize: 8 * 1024 * 1024,
-      },
-      Multipart: {
-        PartSize: 8 * 1024 * 1024,
-        MaxConcurrentUpload: 4,
-      },
-    };
   }
 
   static get Events() {
@@ -127,26 +157,27 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       .attr('href', AWSConsoleS3.getLink(this.bucket))
       .attr('target', '_blank')
       .html(this.bucket);
-    const desc = Localization.Messages.FinalizeUploadDesc.replace('{{BUCKET}}', anchor.prop('outerHTML'));
+    const desc = MSG_FINALIZE_UPLOAD_DESC
+      .replace('{{BUCKET}}', anchor.prop('outerHTML'));
     return $('<p/>').addClass('lead')
       .html(desc);
   }
 
   createControls() {
     const cancel = $('<button/>').addClass('btn btn-light ml-1')
-      .html(Localization.Buttons.Cancel);
+      .html(BTN_CANCEL);
     const startnow = $('<button/>').addClass('btn btn-success ml-1')
-      .html(Localization.Buttons.StartNow);
+      .html(BTN_START_NOW);
     const done = $('<button/>').addClass('btn btn-success ml-1 collapse')
-      .html(Localization.Buttons.Done);
+      .html(BTN_DONE);
     const overall = $('<span/>').addClass('lead collapse')
-      .html(Localization.Statuses.NotStarted);
+      .html(MSG_STATUS_NOT_STARTED);
     const download = $('<a/>').addClass('btn btn-light ml-1 collapse')
       .attr('role', 'button')
       .attr('href', '')
       .attr('download', '')
       .attr('target', '_blank')
-      .html(Localization.Buttons.DownloadSummary);
+      .html(BTN_DOWNLOAD_SUMMARY);
 
     // local reset controls funciton
     const resetControls = () => {
@@ -155,7 +186,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       startnow.removeClass('collapse');
       cancel.removeClass('collapse');
       overall.addClass('collapse').removeClass('text-success text-danger')
-        .html(Localization.Statuses.NotStarted);
+        .html(MSG_STATUS_NOT_STARTED);
     };
 
     cancel.off('click').on('click', async (event) => {
@@ -180,7 +211,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
     });
 
     this.slide.on(FinalizeSlideComponent.Events.Overall.Progress, async (event, index) => {
-      overall.removeClass('collapse').html(`${Localization.Statuses.Processing} (${index + 1} / ${totalFiles})...`);
+      overall.removeClass('collapse').html(`${MSG_STATUS_PROCESSING} (${index + 1} / ${totalFiles})...`);
     });
 
     this.slide.on(FinalizeSlideComponent.Events.Overall.Completed, async (event, metrics) => {
@@ -194,7 +225,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       cancel.addClass('collapse').removeAttr('disabled');
       download.removeClass('collapse');
       done.removeClass('collapse');
-      const status = `${Localization.Statuses.Completed} / ${Localization.Statuses.Error} / ${Localization.Statuses.Total}: (${metrics.completed} / ${metrics.errors} / ${totalFiles})`;
+      const status = `${MSG_STATUS_COMPLETED} / ${MSG_STATUS_ERROR} / ${MSG_STATUS_TOTAL}: (${metrics.completed} / ${metrics.errors} / ${totalFiles})`;
       overall.addClass('text-dark').html(status);
     });
 
@@ -231,7 +262,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
     const tabContent = this.slide.find(`#${this.ids.tabcontent}`).first();
     fileList.forEach((x) => {
       const id = `tab-${x.fileId}`;
-      tabList.append(this.createItemTab(id, x.file.name, Localization.Statuses.NotStarted));
+      tabList.append(this.createItemTab(id, x.file.name, MSG_STATUS_NOT_STARTED));
       tabContent.append(this.createItemContent(id, x));
     });
     this.fileList = fileList;
@@ -265,27 +296,27 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   createContentSummary(id, file) {
-    const MSG = Localization.Messages;
     const summary = $('<div/>')
       .attr('data-type', 'summary');
 
-    const status = $('<span/>').addClass('d-block p-2 text-black bg-light lead my-2')
-      .html(MSG.Summary);
+    const status = $('<span/>')
+      .addClass('d-block p-2 text-black bg-light lead my-2')
+      .html(MSG_SUMMARY);
     summary.append(status);
 
     const key = file.resolveKey();
     const data = {
-      [MSG.Source]: {
-        [MSG.FileName]: file.displayName,
-        [MSG.FileSize]: `${AppUtils.readableFileSize(file.file.size)} (${file.file.size} bytes)`,
-        [MSG.FileType]: file.file.type,
-        [MSG.LastModified]: new Date(file.file.lastModified).toISOString(),
+      [PROPKEY_SOURCE]: {
+        [PROPKEY_FILENAME]: file.displayName,
+        [PROPKEY_FILESIZE]: `${AppUtils.readableFileSize(file.file.size)} (${file.file.size} bytes)`,
+        [PROPKEY_FILETYPE]: file.file.type,
+        [PROPKEY_LASTMODIFIED]: new Date(file.file.lastModified).toISOString(),
       },
-      [MSG.Destination]: {
-        [MSG.Bucket]: this.bucket,
-        [MSG.Key]: key,
+      [PROPKEY_DESTINATION]: {
+        [PROPKEY_BUCKET]: this.bucket,
+        [PROPKEY_KEY]: key,
       },
-      [MSG.Attributes]: file.attributes,
+      [PROPKEY_ATTRIBUTES]: file.attributes,
     };
 
     Object.keys(data).forEach((cat) => {
@@ -315,10 +346,10 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
 
     const status = $('<div/>').addClass('d-block p-2 text-black bg-light lead my-2')
       .append($('<span/>').addClass('d-inline-flex mr-1')
-        .html(Localization.Messages.UploadStatus))
+        .html(MSG_UPLOAD_STATUS))
       .append($('<span/>').addClass('badge badge-light badge-custom')
-        .attr('data-status', Localization.Statuses.NotStarted)
-        .html(`${Localization.Statuses.NotStarted}`));
+        .attr('data-status', MSG_STATUS_NOT_STARTED)
+        .html(`${MSG_STATUS_NOT_STARTED}`));
 
     const uuidFlow = this.createUuidFlow(container, file.fileId);
     const checksumFlow = this.createChecksumFlow(container, file.fileId);
@@ -332,7 +363,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   createUuidFlow(container, fileId) {
-    const process = this.createFlow('uuid', Localization.Messages.ValidateUuid);
+    const process = this.createFlow('uuid', MSG_VALIDATE_UUID);
 
     const eUuid = `${FinalizeSlideComponent.Events.Process.Uuid}:${fileId}`;
     container.on(eUuid, async (event, file) => {
@@ -342,7 +373,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
         src: {
           name: file.displayName,
           bytes: file.file.size,
-          type: AppUtils.Mime.getMime(file),
+          type: MimeGetMime(file),
           lastModified: new Date(file.file.lastModified).getTime(),
         },
         metrics: {
@@ -361,7 +392,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       report.metrics.uuid.endTime = new Date().getTime();
       report.elapsed += report.metrics.uuid.endTime - report.metrics.uuid.startTime;
       if (!report.uuid) {
-        report.error = Localization.Alerts.CreateUuidError;
+        report.error = ERR_CREATE_UUID;
         return this.slide.trigger(eError, [file.fileId, report.error, report]);
       }
       file.setUuid(report.uuid);
@@ -374,7 +405,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   createChecksumFlow(container, fileId) {
-    const process = this.createFlow('checksum', Localization.Messages.ComputeChecksum);
+    const process = this.createFlow('checksum', MSG_COMPUTE_CHECKSUM);
 
     const eChecksum = `${FinalizeSlideComponent.Events.Process.Checksum}:${fileId}`;
     container.on(eChecksum, async (event, file, previous) => {
@@ -392,7 +423,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       report.metrics.checksum.endTime = new Date().getTime();
       report.elapsed += report.metrics.checksum.endTime - report.metrics.checksum.startTime;
       if (!report.checksum) {
-        report.error = Localization.Alerts.ComputeChecksumError;
+        report.error = ERR_COMPUTE_CHECKSUM;
         const eError = `${FinalizeSlideComponent.Events.Process.Statuses.Error}:${file.fileId}`;
         return this.slide.trigger(eError, [file.fileId, report.error, report]);
       }
@@ -405,7 +436,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   createUploadS3Flow(container, fileId) {
-    const process = this.createFlow('uploads3', Localization.Messages.UploadS3);
+    const process = this.createFlow('uploads3', MSG_UPLOAD_S3);
 
     const eUploadS3 = `${FinalizeSlideComponent.Events.Process.UploadS3}:${fileId}`;
     container.on(eUploadS3, async (event, file, previous) => {
@@ -428,7 +459,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       report.metrics.uploads3.endTime = new Date().getTime();
       report.elapsed += report.metrics.uploads3.endTime - report.metrics.uploads3.startTime;
       if (!response) {
-        report.error = Localization.Alerts.UploadS3Error;
+        report.error = ERR_UPLOAD_S3;
         const eError = `${FinalizeSlideComponent.Events.Process.Statuses.Error}:${file.fileId}`;
         return this.slide.trigger(eError, [file.fileId, report.error, report]);
       }
@@ -437,7 +468,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       if (file.canSupport) {
         response = await this.startWorkflow(file);
         if (!response) {
-          report.error = Localization.Alerts.StartWorkflowError;
+          report.error = ERR_START_WORKFLOW;
           const eError = `${FinalizeSlideComponent.Events.Process.Statuses.Error}:${file.fileId}`;
           return this.slide.trigger(eError, [file.fileId, report.error, report]);
         }
@@ -503,7 +534,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
 
     /* error: can't create an unique uuid */
     if (record.uuid) {
-      this.showResult(progressbar, progressInput, result, 'danger', Localization.Alerts.CreateUuidError);
+      this.showResult(progressbar, progressInput, result, 'danger', ERR_CREATE_UUID);
       return undefined;
     }
     this.updateProgress(progressbar, progressInput, 100);
@@ -539,13 +570,13 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   getChunkSize(filesize) {
-    return Math.ceil(filesize / FinalizeSlideComponent.Constants.Md5.ChunkSize);
+    return Math.ceil(filesize / MD5_CHUNK_SIZE);
   }
 
   computeChunkChecksum(file, chunkIdx, previous) {
     return new Promise((resolve, reject) => {
-      const start = chunkIdx * FinalizeSlideComponent.Constants.Md5.ChunkSize;
-      const end = Math.min(start + FinalizeSlideComponent.Constants.Md5.ChunkSize, file.size);
+      const start = chunkIdx * MD5_CHUNK_SIZE;
+      const end = Math.min(start + MD5_CHUNK_SIZE, file.size);
       const spark = new SparkMD5.ArrayBuffer();
       if (previous) {
         spark.setState(previous.state);
@@ -593,35 +624,72 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
     const progressInput = process.find('input');
     const result = process.find('[data-field="result"]');
 
-    let percentage = 1;
+    const percentage = 1;
     this.updateProgress(progressbar, progressInput, percentage);
 
-    const request = this.requestMultipartUpload(bucket, key, file);
-    request.on('httpUploadProgress', (data) => {
-      percentage = Math.ceil((data.loaded / data.total) * 100);
-      this.updateProgress(progressbar, progressInput, percentage);
+    const bindFn = this.updateProgress.bind(
+      this,
+      progressbar,
+      progressInput
+    );
+
+    let uploads3 = await this.requestMultipartUpload(
+      bucket,
+      key,
+      file,
+      bindFn
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'requestMultipartUpload:',
+        key,
+        e.message
+      );
+
+      this.showResult(
+        progressbar,
+        progressInput,
+        result,
+        'danger',
+        ERR_UPLOAD_S3
+      );
+
+      return undefined;
     });
 
-    let uploads3 = await request.promise().catch(e => e);
-    /* error: failed to compute checksum */
-    if (uploads3 instanceof Error) {
-      this.showResult(progressbar, progressInput, result, 'danger', Localization.Alerts.UploadS3Error);
+    /* error: failed to upload to s3 */
+    if (uploads3 === undefined) {
       return undefined;
     }
+
     uploads3 = $('<a/>')
       .attr('href', `https://s3.console.aws.amazon.com/s3/object/${bucket}/${key}?region=${SolutionManifest.Region}`)
       .attr('target', '_blank')
       .html(`s3://${bucket}/${key}`)
       .prop('outerHTML');
-    this.showResult(progressbar, progressInput, result, 'success', uploads3);
+
+    this.showResult(
+      progressbar,
+      progressInput,
+      result,
+      'success',
+      uploads3
+    );
+
     return uploads3;
   }
 
-  requestMultipartUpload(bucket, key, file) {
-    const s3 = S3Utils.getInstance();
-    return s3.upload({
+  requestMultipartUpload(
+    bucket,
+    key,
+    file,
+    progressFn
+  ) {
+    const s3utils = GetS3Utils();
+    const params = {
       Bucket: bucket,
       Key: key,
+      Body: file.file,
       ContentType: file.mime,
       Metadata: {
         ...file.attributes,
@@ -629,17 +697,31 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
         md5: file.checksum,
         webupload: new Date().toISOString(),
       },
-      Body: file.file,
-      ExpectedBucketOwner: SolutionManifest.S3.ExpectedBucketOwner,
-    }, {
-      partSize: FinalizeSlideComponent.Constants.Multipart.PartSize,
-      queueSize: FinalizeSlideComponent.Constants.Multipart.MaxConcurrentUpload,
-    });
+    };
+
+    return s3utils.upload(
+      params,
+      progressFn
+    );
   }
 
   updateProgress(progressbar, progressInput, percentage) {
-    progressbar.css('width', `${percentage}%`).attr('aria-valuenow', percentage);
-    progressInput.val(`${percentage}%`);
+    let percentage_ = percentage;
+
+    /* from multipart upload */
+    if (typeof percentage_ === 'object'
+    && percentage_.loaded !== undefined) {
+      percentage_ = Math.ceil(
+        (percentage_.loaded / percentage_.total) * 100
+      );
+    }
+
+    progressbar
+      .css('width', `${percentage_}%`)
+      .attr('aria-valuenow', percentage_);
+
+    progressInput
+      .val(`${percentage_}%`);
   }
 
   async startWorkflow(file) {
@@ -659,10 +741,22 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
   }
 
   showResult(progressbar, progressInput, result, type, text) {
-    result.html('').append($('<span/>').addClass(`text-${type}`)
-      .html(text));
-    progressbar.parent().addClass('collapse');
-    progressInput.parent().addClass('collapse');
+    const cssText = `text-${type}`;
+
+    const desc = $('<span/>')
+      .addClass(cssText)
+      .html(text);
+
+    result
+      .html('')
+      .append(desc);
+
+    progressbar.parent()
+      .addClass('collapse');
+
+    progressInput.parent()
+      .addClass('collapse');
+
     result.removeClass('collapse');
   }
 
@@ -685,15 +779,22 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       const eError = `${FinalizeSlideComponent.Events.Process.Statuses.Error}:${file.fileId}`;
 
       this.slide.on(eStarted, async (event, fileId) => {
-        this.updateBadge(Localization.Statuses.Processing, fileId);
+        this.updateBadge(MSG_STATUS_PROCESSING, fileId);
         const anchor = this.slide.find(`a[href="#tab-${fileId}"]`);
+        /* TODO: auto-scroll to focus the processing item
+        const tablist = this.slide.children().first();
+        const top = anchor.position().top;
+        const viewBottom = tablist.innerHeight();
+        const visible = top < viewBottom;
+        console.log(`tab.visible: ${top},${viewBottom},${visible}`);
+        */
         anchor.tab('show');
         this.slide.off(eStarted);
       });
 
       this.slide.on(eCompleted, async (event, fileId, report) => {
         this.report.push(report);
-        this.updateBadge(Localization.Statuses.Completed, fileId);
+        this.updateBadge(MSG_STATUS_COMPLETED, fileId);
         this.slide.off(eCompleted);
         resolve(fileId);
       });
@@ -701,7 +802,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       this.slide.on(eError, async (event, fileId, error, report) => {
         this.report.push(report);
         this.slide.off(eError);
-        this.updateBadge(Localization.Statuses.Error, fileId);
+        this.updateBadge(MSG_STATUS_ERROR, fileId);
         resolve(fileId);
       });
 
@@ -729,23 +830,23 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
 
     const badges = 'badge-primary badge-secondary badge-success badge-danger badge-light';
     switch (status) {
-      case Localization.Statuses.NotStarting:
+      case MSG_STATUS_NOT_STARTED:
         items.removeClass(badges).addClass('badge-light').html(status);
         contents.removeClass(badges).addClass('badge-light').html(status);
         break;
-      case Localization.Statuses.Waiting:
+      case MSG_STATUS_WAITING:
         items.removeClass(badges).addClass('badge-secondary').html(status);
         contents.removeClass(badges).addClass('badge-secondary').html(status);
         break;
-      case Localization.Statuses.Processing:
+      case MSG_STATUS_PROCESSING:
         items.removeClass(badges).addClass('badge-primary').html(status);
         contents.removeClass(badges).addClass('badge-primary').html(status);
         break;
-      case Localization.Statuses.Completed:
+      case MSG_STATUS_COMPLETED:
         items.removeClass(badges).addClass('badge-success').html(status);
         contents.removeClass(badges).addClass('badge-success').html(status);
         break;
-      case Localization.Statuses.Error:
+      case MSG_STATUS_ERROR:
         items.removeClass(badges).addClass('badge-danger').html(status);
         contents.removeClass(badges).addClass('badge-danger').html(status);
         break;

@@ -32,7 +32,7 @@ const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_PROXY_BUCKET',
@@ -47,7 +47,7 @@ function parseEvent(event, context) {
     return new StateData(stateMachine, parsed, context);
   }
   if (!parsed.stateExecution) {
-    throw new Error('fail to parse event.stateExecution');
+    throw new AnalysisError('fail to parse event.stateExecution');
   }
 
   /* parse execution input object */
@@ -57,7 +57,7 @@ function parseEvent(event, context) {
   const executionArn = parsed.stateExecution.Id;
   delete parsed.stateExecution;
   if (!uuid || !input) {
-    throw new Error('fail to find uuid or input from event.stateExecution');
+    throw new AnalysisError('fail to find uuid or input from event.stateExecution');
   }
   /* parse and merge parallel state outputs */
   const parallelStateOutputs = parsed.parallelStateOutputs;
@@ -93,8 +93,6 @@ function parseEvent(event, context) {
   };
   return new StateData(stateMachine, parsed, context);
 }
-
-exports.parseEvent = parseEvent;
 
 exports.handler = async (event, context) => {
   console.log(`event = ${JSON.stringify(event, null, 2)}; context = ${JSON.stringify(context, null, 2)};`);

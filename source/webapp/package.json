@@ -1,6 +1,6 @@
 {
   "name": "m2c-webapp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "media2cloud webapp",
   "main": "src/lib/js/app.js",
   "type": "module",
@@ -14,18 +14,15 @@
     "zip": "cd dist && zip -rq"
   },
   "jest": {
-    "setupTestFrameworkScriptFile": "tests/setup.js",
+    "setupFilesAfterEnv": [
+      "tests/setup.js"
+    ],
     "transform": {
       "^.+\\.jsx?$": "babel-jest"
     }
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
-    "jest": "^29.3.1"
-  },
-  "license": "Apache-2.0"
+    "@babel/plugin-transform-modules-commonjs": "^7.24.1"
+  }
 }

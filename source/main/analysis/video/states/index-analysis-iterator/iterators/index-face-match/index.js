@@ -16,6 +16,21 @@ class IndexFaceMatchIterator extends BaseAnalysisIndexer {
   get [Symbol.toStringTag]() {
     return 'IndexFaceMatchIterator';
   }
+
+  parseMetadata(data) {
+    return Object.keys(data)
+      .map((name) => ({
+        name,
+        faceId: (data[name][0] || {}).faceId,
+        timecodes: data[name]
+          .map((x) => ({
+            begin: x.begin,
+            end: x.end,
+          })),
+      }))
+      .filter((x) =>
+        x.timecodes.length > 0);
+  }
 }
 
 module.exports = IndexFaceMatchIterator;

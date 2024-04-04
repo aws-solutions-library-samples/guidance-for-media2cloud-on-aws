@@ -42,7 +42,7 @@ exports.SendConfig = async (event, context) => {
     const data = event.ResourceProperties.Data;
     const key = (x0.isRequestType('Delete')) ? 'Deleted' : 'Launch';
     const cluster = data.ElasticsearchCluster || data.OpenSearchCluster;
-    const matched = cluster.match(/([A-z0-9 ]+)\s\(([a-zA-Z0-9.=,]+)\)/);
+    const matched = cluster.match(/([a-zA-z0-9 ]+)\s\(([a-zA-Z0-9.=,]+)\)/);
     if (matched) {
       const config = matched[2].split(',').map(x => {
         const a0 = x.split('=');
@@ -63,13 +63,13 @@ exports.SendConfig = async (event, context) => {
     };
     const params = {
       Version: data.Version,
-      Metrics: data.AnonymizedUsage,
+      Metrics: data.AnonymousUsage,
       SearchEngine: cluster,
       [key]: (new Date()).toISOString().replace('T', ' ').replace('Z', ''),
     };
-    console.log(`sendAnonymizedData = ${JSON.stringify(params, null, 2)}`);
-    const response = await Metrics.sendAnonymizedData(params, env);
-    console.log(`sendAnonymizedData = ${response.toString()}`);
+    console.log(`sendAnonymousData = ${JSON.stringify(params, null, 2)}`);
+    const response = await Metrics.sendAnonymousData(params, env);
+    console.log(`sendAnonymousData = ${response.toString()}`);
     x0.storeResponseData('Status', 'SUCCESS');
   } catch (e) {
     console.log(`SendConfig: ${e.message}`);

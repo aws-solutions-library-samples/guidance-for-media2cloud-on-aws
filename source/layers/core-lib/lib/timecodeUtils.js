@@ -1,5 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
+const {
+  M2CException,
+} = require('./error');
 
 const EnumFrameRate = Object.freeze({
   FPS_23_976: Symbol('23.976'),
@@ -11,118 +14,114 @@ const EnumFrameRate = Object.freeze({
   FPS_60: Symbol('60'),
 });
 
+function _lookupFramerate(enumFPS) {
+  if (enumFPS === EnumFrameRate.FPS_23_976) {
+    return [24000, 1001];
+  }
+  if (enumFPS === EnumFrameRate.FPS_24) {
+    return [24000, 1000];
+  }
+  if (enumFPS === EnumFrameRate.FPS_25) {
+    return [25000, 1000];
+  }
+  if (enumFPS === EnumFrameRate.FPS_29_97) {
+    return [30000, 1001];
+  }
+  if (enumFPS === EnumFrameRate.FPS_30) {
+    return [30000, 1000];
+  }
+  if (enumFPS === EnumFrameRate.FPS_59_94) {
+    return [60000, 1001];
+  }
+  if (enumFPS === EnumFrameRate.FPS_60) {
+    return [60000, 1000];
+  }
+
+  throw new M2CException('invalid framerate enum');
+}
+
 // https://www.davidheidelberger.com/2010/06/10/drop-frame-timecode/
 class TimecodeUtils {
-  constructor(enumFPS, dropFrame = false) {
-    this.$enumFPS = enumFPS;
-    this.$dropFrame = dropFrame
-      && (enumFPS === EnumFrameRate.FPS_23_976
-        || enumFPS === EnumFrameRate.FPS_29_97
-        || enumFPS === EnumFrameRate.FPS_59_94);
-    this.$framerateFraction = TimecodeUtils.lookupFramerate(enumFPS);
+  static get EnumFPS() {
+    return EnumFrameRate;
   }
 
-  get enumFPS() {
-    return this.$enumFPS;
-  }
+  // convert fps to enum
+  static framerateToEnum(framerate) {
+    const _framerate = Math.floor(framerate);
 
-  get dropFrame() {
-    return this.$dropFrame;
-  }
-
-  get framerateFraction() {
-    return this.$framerateFraction;
-  }
-
-  static get Enum() {
-    return {
-      Framerate: EnumFrameRate,
-    };
-  }
-
-  static lookupFramerate(enumFPS) {
-    switch (enumFPS) {
-      case EnumFrameRate.FPS_23_976:
-        return [24000, 1001];
-      case EnumFrameRate.FPS_24:
-        return [24000, 1000];
-      case EnumFrameRate.FPS_25:
-        return [25000, 1000];
-      case EnumFrameRate.FPS_29_97:
-        return [30000, 1001];
-      case EnumFrameRate.FPS_30:
-        return [30000, 1000];
-      case EnumFrameRate.FPS_59_94:
-        return [60000, 1001];
-      case EnumFrameRate.FPS_60:
-        return [60000, 1000];
-      default:
-        return undefined;
+    if (_framerate === 23) {
+      return EnumFrameRate.FPS_23_976;
     }
+    if (_framerate === 24) {
+      return EnumFrameRate.FPS_24;
+    }
+    if (_framerate === 25) {
+      return EnumFrameRate.FPS_25;
+    }
+    if (_framerate === 29) {
+      return EnumFrameRate.FPS_29_97;
+    }
+    if (_framerate === 30) {
+      return EnumFrameRate.FPS_30;
+    }
+    if (_framerate === 59) {
+      return EnumFrameRate.FPS_59_94;
+    }
+    if (_framerate === 60) {
+      return EnumFrameRate.FPS_60;
+    }
+
+    throw new M2CException('invalid framerate');
   }
 
-  toTimecode(num) {
-    if (this.dropFrame) {
-      if (this.enumFPS === EnumFrameRate.FPS_23_976) {
-        return this.toPseudoDropFrameTimecode(num);
-      }
-      else {
-        return this.toDropFrameTimecode(num);
-      }
+  // Drop Frame timecode (29.97 or 59.94)
+  static fromDropFrameTimecode(enumFPS, hhmmssff) {
+    if (
+      (enumFPS !== EnumFrameRate.FPS_29_97) &&
+      (enumFPS !== EnumFrameRate.FPS_59_94)
+    ) {
+      throw new M2CException(`${enumFPS.toString()} Drop Frame not supported`);
     }
-    return this.toNonDropFrameTimecode(num);
-  }
 
-  toNonDropFrameTimecode(num) {
-    if (!this.framerateFraction) {
-      throw new Error(`${this.enumFPS.toString()} not supported`);
-    }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    const timeBase = Math.floor(framerate);
-    const framesPerHour = timeBase * 60 * 60;
-    const framesPer24Hours = framesPerHour * 24;
+    const [numerator, denominator] = _lookupFramerate(enumFPS);
+    const framerate = numerator / denominator;
 
-    let frameNumber = num;
-    while (frameNumber < 0) {
-      frameNumber += framesPer24Hours;
-    }
-    frameNumber %= framesPer24Hours;
-
-    let remaningFrames = frameNumber;
+    const dropFrames = Math.round(framerate * 0.066666);
+    const timeBase = Math.round(framerate);
     const hourFrames = timeBase * 60 * 60;
     const minuteFrames = timeBase * 60;
 
-    const hours = Math.floor(remaningFrames / hourFrames);
-    remaningFrames -= (hours * hourFrames);
+    const [hours, minutes, seconds, frames] = hhmmssff;
+    const totalMinutes = (60 * hours) + minutes;
+    const frameNumber = ((hourFrames * hours)
+      + (minuteFrames * minutes)
+      + (timeBase * seconds)
+      + frames)
+      - (dropFrames * (totalMinutes - Math.floor(totalMinutes / 10)));
 
-    const minutes = Math.floor(remaningFrames / minuteFrames);
-    remaningFrames -= (minutes * minuteFrames);
-
-    const seconds = Math.floor(remaningFrames / timeBase);
-    const frames = remaningFrames - (seconds * timeBase);
-
-    return [
-      hours,
-      minutes,
-      seconds,
-      frames,
-    ];
+    return frameNumber;
   }
 
-  // 29.97 or 59.94 DF
-  toDropFrameTimecode(num) {
-    if (this.enumFPS !== EnumFrameRate.FPS_29_97 && this.enumFPS !== EnumFrameRate.FPS_59_94) {
-      throw new Error(`${this.enumFPS.toString()} Drop Frame not supported`);
+  static toDropFrameTimecode(enumFPS, frameNum) {
+    if (
+      (enumFPS !== EnumFrameRate.FPS_29_97) &&
+      (enumFPS !== EnumFrameRate.FPS_59_94)
+    ) {
+      throw new M2CException(`${enumFPS.toString()} Drop Frame not supported`);
     }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
+    const [numerator, denominator] = _lookupFramerate(enumFPS);
+    const framerate = numerator / denominator;
+
     // frames to drop on the minute mark.
     const dropFrames = Math.round(framerate * 0.066666);
+
     const framesPerMinute = Math.round(framerate * 60) - dropFrames;
     const framesPer10Minutes = Math.round(framerate * 60 * 10);
     const framesPerHour = Math.round(framerate * 60 * 60);
     const framesPer24Hours = framesPerHour * 24;
 
-    let frameNumber = num;
+    let frameNumber = frameNum;
     while (frameNumber < 0) {
       frameNumber += framesPer24Hours;
     }
@@ -141,139 +140,190 @@ class TimecodeUtils {
     const frRound = Math.round(framerate);
     const frames = frameNumber % frRound;
     const seconds = Math.floor(frameNumber / frRound) % 60;
-    const minutes = Math.floor(Math.floor(frameNumber / frRound) / 60) % 60;
-    const hours = Math.floor(Math.floor(Math.floor(frameNumber / frRound) / 60) / 60);
+    const minutes = Math.floor(
+      Math.floor(frameNumber / frRound) / 60
+    ) % 60;
+    const hours = Math.floor(
+      Math.floor(
+        Math.floor(frameNumber / frRound) / 60
+      ) / 60
+    );
+
+    const hh = String(hours).padStart(2, '0');
+    const mm = String(minutes).padStart(2, '0');
+    const ss = String(seconds).padStart(2, '0');
+    const ff = String(frames).padStart(2, '0');
 
     return [
-      hours,
-      minutes,
-      seconds,
-      frames,
+      `${hh}:${mm}:${ss};${ff}`,
+      [hours, minutes, seconds, frames],
     ];
   }
 
-  // 23.976
-  toPseudoDropFrameTimecode(num) {
-    if (this.enumFPS !== EnumFrameRate.FPS_23_976) {
-      throw new Error(`${this.enumFPS.toString()} Drop Frame not supported`);
-    }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    const secondsDecimal = num / framerate;
-    let secondsInt = Math.floor(secondsDecimal);
-    const secondsDecimalPart = secondsDecimal - secondsInt;
-
-    let frames = Math.round(secondsDecimalPart * framerate);
-    if (frames === 24) {
-      frames = 0;
-      secondsInt += 1;
+  // Non-Drop Frame timecode
+  static fromNonDropFrameTimecode(enumFPS, hhmmssff) {
+    let _enumFPS = enumFPS;
+    if (enumFPS === EnumFrameRate.FPS_23_976) {
+      _enumFPS = EnumFrameRate.FPS_24;
     }
 
-    let remainingSeconds = secondsInt;
-    const hours = Math.floor(remainingSeconds / (60 * 60));
-    remainingSeconds -= (hours * 60 * 60);
-    const minutes = Math.floor(remainingSeconds / 60);
-    remainingSeconds -= (minutes * 60);
-    const seconds = remainingSeconds;
+    const [numerator, denominator] = _lookupFramerate(_enumFPS);
+    const framerate = numerator / denominator;
 
-    return [
-      hours,
-      minutes,
-      seconds,
-      frames,
-    ];
-  }
-
-  fromTimecode(hours, minutes, seconds, frames) {
-    if (this.dropFrame) {
-      if (this.enumFPS === EnumFrameRate.FPS_23_976) {
-        return this.fromPseudoDropFrameTimecode(hours, minutes, seconds, frames);
-      }
-      else {
-        return this.fromDropFrameTimecode(hours, minutes, seconds, frames);
-      }
-    }
-
-    return this.fromNonDropFrameTimecode(hours, minutes, seconds, frames);
-  }
-
-  fromNonDropFrameTimecode(hours, minutes, seconds, frames) {
-    if (!this.framerateFraction) {
-      throw new Error(`${this.enumFPS.toString()} not supported`);
-    }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
     const timeBase = Math.round(framerate);
     const hourFrames = timeBase * 60 * 60;
     const minuteFrames = timeBase * 60;
+
+    const [hours, minutes, seconds, frames] = hhmmssff;
     const frameNumber = (hourFrames * hours)
       + (minuteFrames * minutes)
       + (timeBase * seconds)
       + frames;
+
     return frameNumber;
   }
 
-  // 29.97 and 59.94
-  fromDropFrameTimecode(hours, minutes, seconds, frames) {
-    if (this.enumFPS !== EnumFrameRate.FPS_29_97 && this.enumFPS !== EnumFrameRate.FPS_59_94) {
-      throw new Error(`${this.enumFPS.toString()} Drop Frame not supported`);
+  static toNonDropFrameTimecode(enumFPS, frameNum) {
+    // 23.976 uses 24 timing
+    let _enumFPS = enumFPS;
+    if (_enumFPS === EnumFrameRate.FPS_23_976) {
+      _enumFPS = EnumFrameRate.FPS_24;
     }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    const dropFrames = Math.round(framerate * 0.066666);
-    const timeBase = Math.round(framerate);
+
+    const [numerator, denominator] = _lookupFramerate(_enumFPS);
+
+    const framerate = numerator / denominator;
+    const timeBase = Math.floor(framerate);
+    const framesPerHour = timeBase * 60 * 60;
+    const framesPer24Hours = framesPerHour * 24;
+
+    let frameNumber = frameNum;
+    while (frameNumber < 0) {
+      frameNumber += framesPer24Hours;
+    }
+    frameNumber %= framesPer24Hours;
+
+    let remaningFrames = frameNumber;
     const hourFrames = timeBase * 60 * 60;
     const minuteFrames = timeBase * 60;
-    const totalMinutes = (60 * hours) + minutes;
-    const frameNumber = ((hourFrames * hours)
-      + (minuteFrames * minutes)
-      + (timeBase * seconds)
-      + frames)
-      - (dropFrames * (totalMinutes - Math.floor(totalMinutes / 10)));
-    return frameNumber;
-  }
 
-  // 23.976
-  fromPseudoDropFrameTimecode(hours, minutes, seconds, frames) {
-    if (this.enumFPS !== EnumFrameRate.FPS_23_976) {
-      throw new Error(`${this.enumFPS.toString()} Drop Frame not supported`);
-    }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    const hourFrames = framerate * 60 * 60;
-    const minuteFrames = framerate * 60;
-    const framesDouble = (hours * hourFrames)
-      + (minutes * minuteFrames)
-      + (seconds * framerate)
-      + frames;
-    const frameNumber = Math.round(framesDouble);
-    return frameNumber;
-  }
+    const hours = Math.floor(remaningFrames / hourFrames);
+    remaningFrames -= (hours * hourFrames);
 
-  toTimestamp(num) {
-    if (!this.framerateFraction) {
-      throw new Error(`${this.enumFPS.toString()} not supported`);
-    }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    let milliseconds = Math.round(num * framerate * 1000);
-    const hours = Math.floor(milliseconds / 3600 / 1000);
-    milliseconds -= (hours * 3600 * 1000);
-    const minutes = Math.floor(milliseconds / 60 / 1000);
-    milliseconds -= (minutes * 60 * 1000);
-    const seconds = Math.floor(milliseconds / 1000);
-    milliseconds -= (seconds * 1000);
+    const minutes = Math.floor(remaningFrames / minuteFrames);
+    remaningFrames -= (minutes * minuteFrames);
+
+    const seconds = Math.floor(remaningFrames / timeBase);
+    const frames = remaningFrames - (seconds * timeBase);
+
+    const hh = String(hours).padStart(2, '0');
+    const mm = String(minutes).padStart(2, '0');
+    const ss = String(seconds).padStart(2, '0');
+    const ff = String(frames).padStart(2, '0');
 
     return [
-      hours,
-      minutes,
-      seconds,
-      milliseconds,
+      `${hh}:${mm}:${ss}:${ff}`,
+      [hours, minutes, seconds, frames],
     ];
   }
 
-  fromMilliseconds(msecs) {
-    if (!this.framerateFraction) {
-      throw new Error(`${this.enumFPS.toString()} not supported`);
+  static fromTimecode(enumFPS, timecodeString) {
+    if (!timecodeString) {
+      throw new M2CException('invalid timecode string');
     }
-    const framerate = this.framerateFraction[0] / this.framerateFraction[1];
-    const frameNumber = Math.floor((framerate * msecs) / 1000);
+
+    let hhmmssff = timecodeString.split(':');
+    if (hhmmssff.length === 4) {
+      hhmmssff = hhmmssff
+        .map((x) =>
+          Number(x));
+
+      return TimecodeUtils.fromNonDropFrameTimecode(
+        enumFPS,
+        hhmmssff
+      );
+    }
+
+    if (hhmmssff.length === 3) {
+      const ssff = hhmmssff.pop().split(';');
+      hhmmssff = hhmmssff.concat(ssff)
+        .map((x) =>
+          Number(x));
+
+      return TimecodeUtils.fromDropFrameTimecode(
+        enumFPS,
+        hhmmssff
+      );
+    }
+
+    throw new M2CException('invalid timecode string');
+  }
+
+  static toTimecode(enumFPS, frameNum, dropFrame = false) {
+    if (dropFrame) {
+      return TimecodeUtils.toDropFrameTimecode(enumFPS, frameNum);
+    }
+    return TimecodeUtils.toNonDropFrameTimecode(enumFPS, frameNum);
+  }
+
+  // Timestamp
+  static toTimestamp(enumFPS, frameNum) {
+    const [numerator, denominator] = _lookupFramerate(enumFPS);
+
+    let milliseconds = Math.round(
+      (frameNum * denominator * 1000) / numerator
+    );
+
+    const hours = Math.floor(milliseconds / 3600000);
+    milliseconds -= (hours * 3600000);
+
+    const minutes = Math.floor(milliseconds / 60000);
+    milliseconds -= (minutes * 60000);
+
+    const seconds = Math.floor(milliseconds / 1000);
+    milliseconds -= (seconds * 1000);
+
+    const hh = String(hours).padStart(2, '0');
+    const mm = String(minutes).padStart(2, '0');
+    const ss = String(seconds).padStart(2, '0');
+    const msecs = String(milliseconds).padStart(3, '0');
+
+    return [
+      `${hh}:${mm}:${ss}.${msecs}`,
+      [hours, minutes, seconds, milliseconds],
+    ];
+  }
+
+  static millisecondsToFrames(enumFPS, milliseconds) {
+    const [numerator, denominator] = _lookupFramerate(enumFPS);
+    const frameNumber = Math.round(
+      ((milliseconds * numerator) / denominator) / 1000
+    );
+
     return frameNumber;
+  }
+
+  static secondsToFrames(enumFPS, seconds) {
+    return TimecodeUtils.millisecondsToFrames(enumFPS, seconds * 1000);
+  }
+
+  static framesToMilliseconds(enumFPS, frameNum) {
+    const [numerator, denominator] = _lookupFramerate(enumFPS);
+
+    const milliseconds = Math.round(
+      (frameNum * denominator * 1000) / numerator
+    );
+
+    return milliseconds;
+  }
+
+  static framesToSeconds(enumFPS, frameNum) {
+    const milliseconds = TimecodeUtils.framesToMilliseconds(
+      enumFPS,
+      frameNum
+    );
+
+    return milliseconds / 1000;
   }
 }
 

@@ -1,0 +1,170 @@
+{
+    "Comment": "Detect shoppable items returns embeddings of the products that can then be used to search similar items on OpenSearch to match the product Ids",
+    "StartAt": "Asset removed?",
+    "States": {
+        "Asset removed?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.detail",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.detail.stateMachineArn",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.detail.stateMachineArn",
+                            "StringMatches": "*${AssetRemoval}"
+                        }
+                    ],
+                    "Next": "Delete record"
+                }
+            ],
+            "Default": "Prepare analysis"
+        },
+        "Delete record": {
+            "Type": "Task",
+            "Resource": "${AnalysisShoppableLambda.Arn}",
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Prepare analysis": {
+            "Type": "Task",
+            "Resource": "${AnalysisShoppableLambda.Arn}",
+            "Next": "Detect shoppable items",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "FeatureNotEnabledException"
+                    ],
+                    "Next": "Feature not enabled"
+                }
+            ],
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Detect shoppable items": {
+            "Type": "Task",
+            "Resource": "${DetectShoppableItemsLambda.Arn}",
+            "InputPath": "$.data.shoppable",
+            "ResultPath": "$.data.shoppable",
+            "Next": "More items?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ClientExecutionTimeoutException",
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 6,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                },
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More items?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.data.shoppable.names",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.shoppable.names[0]",
+                            "IsPresent": true
+                        }
+                    ],
+                    "Next": "Detect shoppable items"
+                }
+            ],
+            "Default": "Run similarity search"
+        },
+        "Run similarity search": {
+            "Type": "Task",
+            "Resource": "${AnalysisShoppableLambda.Arn}",
+            "End": true,
+            "Parameters": {
+                "operation": "StateSimilaritySearch",
+                "uuid.$": "$.uuid",
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Feature not enabled": {
+            "Type": "Succeed"
+        }
+    }
+}

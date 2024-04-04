@@ -1,17 +1,17 @@
 ## Tutorial 2. Using the Media2Cloud RESTful APIs to ingest, analyze, and search contents
 
-In [Tutorial 1: Creating the Guidance for Media2Cloud on AWS using AWS CloudFormation service](./1-creating-media2cloud-stack.md), we have created our own Media2Cloud stack and were able to upload images and videos using the Media2Cloud Web Portal.
+In [Tutorial 1: Creating the Guidance for Media2Cloud on AWS using AWS CloudFormation service](./1-creating-media2cloud-stack.md), we have created our own Guidance for Media2Cloud on AWS and were able to upload images and videos using the Media2Cloud Web Portal.
 
-In this tutorial, we will use the Media2Cloud RESTful APIs to programmatically drive different workflows. This is useful when we plan to integrate Media2Cloud into other workflows such as Media Supply Chain, Media Asset Management, Archive Migration workflows.
+In this tutorial, we will use the Media2Cloud RESTful APIs to programmatically drive different workflows. This is useful when we plan to integrate Guidance for Media2Cloud on AWS into other workflows such as Media Supply Chain, Media Asset Management, Archive Migration workflows.
 
 _
 
 _Check out how UKTV uses Guidance for Media2Cloud on AWS in their Media Supply Chain_
 
-[![UKTV Enhances Media Workstreams and Functions with Guidance for Media2Cloud on AWS](https://img.youtube.com/vi/cz03AFD1T-c/0.jpg)](https://www.youtube.com/watch?v=cz03AFD1T-c)
+[![UKTV Enhances Media Workstreams and Functions with an AWS Solution](https://img.youtube.com/vi/cz03AFD1T-c/0.jpg)](https://www.youtube.com/watch?v=cz03AFD1T-c)
 
 _And, how Formula 1 uses Media2Cloud for the archive migration workflow_
-[![Guidance for Media2Cloud on AWS: Architecture for the Formula 1 Legacy](https://img.youtube.com/vi/CANn5FdkNbA/0.jpg)](https://www.youtube.com/watch?v=CANn5FdkNbA)
+[![AWS Solutions Media2Cloud: Architecture for the Formula 1 Legacy](https://img.youtube.com/vi/CANn5FdkNbA/0.jpg)](https://www.youtube.com/watch?v=CANn5FdkNbA)
 
 
 ### In this tutorial, we will
@@ -166,7 +166,7 @@ Before we upload an image file, we need to know where (or which bucket) we shoul
 
 ### Find the ingest bucket from the CloudFormation stack
 
-Media2Cloud stack creates numbers of buckets for different purposes. The bucket naming convention is `so0050-{stackId}-{accountId}-{region}-{suffix}` where
+Guidance for Media2Cloud on AWS creates numbers of buckets for different purposes. The bucket naming convention is `so0050-{stackId}-{accountId}-{region}-{suffix}` where
 
 | Component | Description |
 | :-- | :-- |
@@ -220,7 +220,7 @@ aws cloudformation describe-stack-resources --stack-name m2c-demo
 
 ```
 
-#### 2: Find the nested stack called `CoreStack` which is the stack that creates all the buckets for the guidance. Find the `PhysicalResourceId` of the `CoreStack` based on `LogicalResourceId`
+#### 2: Find the nested stack called `CoreStack` which is the stack that creates all the buckets for the solution. Find the `PhysicalResourceId` of the `CoreStack` based on `LogicalResourceId`
 
 ```shell
 jq '.StackResources[] | select(.LogicalResourceId == "CoreStack") | .PhysicalResourceId' | tr -d '"'
@@ -314,7 +314,7 @@ curl https://{apiId}.execute-api.{region}.amazonaws.com/demo/assets \
 }
 
 ```
-where `uuid` is the unique Id of the content now being ingested to the Media2Cloud.
+where `uuid` is the unique Id of the content now being ingested to the Guidance for Media2Cloud on AWS.
 
 __
 
@@ -856,7 +856,7 @@ __
 #### 2. Replace the curly bracket-ed parameters:
 
 * `{accessKey}` and `{secretKey}` with the credentials in [Step 1: Create an IAM user](#create-access-key-for-the-user)
-* `{region}` with the AWS region we created the Media2Cloud stack
+* `{region}` with the AWS region we created the Guidance for Media2Cloud on AWS
 * `{ApiEndpoint}` with the [Media2Cloud API Endpoint from Step 2](#step-2-locate-media2cloud-api-endpoint).
 
 #### 3. Save the file as `Media2CloudPostmanCollection.json`

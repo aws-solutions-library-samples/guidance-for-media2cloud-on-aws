@@ -3,152 +3,160 @@
 
 const LanguageCodes = [
   {
-    name: 'Afrikaans (South Africa)',
+    name: 'Afrikaans',
     value: 'af-ZA',
   },
   {
-    name: 'Arabic (U.A.E.)',
+    name: 'Arabic, Gulf',
     value: 'ar-AE',
   },
   {
-    name: 'Arabic (Saudi Arabia)',
+    name: 'Arabic, Modern Standard',
     value: 'ar-SA',
   },
   {
-    name: 'Chinese (PRC)',
+    name: 'Chinese, Simplified',
     value: 'zh-CN',
   },
   {
-    name: 'Chinese (Traditional)',
+    name: 'Chinese, Traditional',
     value: 'zh-TW',
   },
   {
-    name: 'Danish (Denmark)',
+    name: 'Danish',
     value: 'da-DK',
   },
   {
-    name: 'Dutch (Netherlands)',
+    name: 'Dutch',
     value: 'nl-NL',
   },
   {
-    name: 'German (Switzerland)',
-    value: 'de-CH',
-  },
-  {
-    name: 'German (Germany)',
-    value: 'de-DE',
-  },
-  {
-    name: 'English (Scottish)',
-    value: 'en-AB',
-  },
-  {
-    name: 'English (Australia)',
+    name: 'English, Australian',
     value: 'en-AU',
   },
   {
-    name: 'English (Ireland)',
-    value: 'en-IE',
-  },
-  {
-    name: 'English (Indian)',
-    value: 'en-IN',
-  },
-  {
-    name: 'English (New Zealand)',
-    value: 'en-NZ',
-  },
-  {
-    name: 'English (South Africa)',
-    value: 'en-ZA',
-  },
-  {
-    name: 'English (United Kingdom)',
+    name: 'English, British',
     value: 'en-GB',
   },
   {
-    name: 'English (United States)',
+    name: 'English, Indian',
+    value: 'en-IN',
+  },
+  {
+    name: 'English, Irish',
+    value: 'en-IE',
+  },
+  {
+    name: 'English, New Zealand',
+    value: 'en-NZ',
+  },
+  {
+    name: 'English, Scottish',
+    value: 'en-AB',
+  },
+  {
+    name: 'English, South African',
+    value: 'en-ZA',
+  },
+  {
+    name: 'English, US',
     value: 'en-US',
   },
   {
-    name: 'English (Welsh)',
+    name: 'English, Welsh',
     value: 'en-WL',
   },
   {
-    name: 'Spanish (Spain)',
-    value: 'es-ES',
-  },
-  {
-    name: 'Spanish (United States)',
-    value: 'es-US',
-  },
-  {
-    name: 'Farsi (Iran)',
-    value: 'fa-IR',
-  },
-  {
-    name: 'French (Canada)',
-    value: 'fr-CA',
-  },
-  {
-    name: 'French (France)',
+    name: 'French',
     value: 'fr-FR',
   },
   {
-    name: 'Hebrew (Israel)',
+    name: 'French, Canadian',
+    value: 'fr-CA',
+  },
+  {
+    name: 'Farsi',
+    value: 'fa-IR',
+  },
+  {
+    name: 'German',
+    value: 'de-DE',
+  },
+  {
+    name: 'German, Swiss',
+    value: 'de-CH',
+  },
+  {
+    name: 'Hebrew',
     value: 'he-IL',
   },
   {
-    name: 'Hindi (India)',
+    name: 'Hindi, Indian',
     value: 'hi-IN',
   },
   {
-    name: 'Indonesian (Indonesia)',
+    name: 'Indonesian',
     value: 'id-ID',
   },
   {
-    name: 'Italian (Italy)',
+    name: 'Italian',
     value: 'it-IT',
   },
   {
-    name: 'Japanese (Japan)',
+    name: 'Japanese',
     value: 'ja-JP',
   },
   {
-    name: 'Korean (Korea)',
+    name: 'Korean',
     value: 'ko-KR',
   },
   {
-    name: 'Malay (Malaysia)',
+    name: 'Malay',
     value: 'ms-MY',
   },
   {
-    name: 'Portuguese (Brazil)',
-    value: 'pt-BR',
-  },
-  {
-    name: 'Portuguese (Portugal)',
+    name: 'Portuguese',
     value: 'pt-PT',
   },
   {
-    name: 'Russian (Russia)',
+    name: 'Portuguese, Brazilian',
+    value: 'pt-BR',
+  },
+  {
+    name: 'Russian',
     value: 'ru-RU',
   },
   {
-    name: 'Tamil (India)',
+    name: 'Spanish',
+    value: 'es-ES',
+  },
+  {
+    name: 'Spanish, US',
+    value: 'es-US',
+  },
+  {
+    name: 'Swedish',
+    value: 'sv-SE',
+  },
+  {
+    name: 'Tamil',
     value: 'ta-IN',
   },
   {
-    name: 'Thai (Thailand)',
-    value: 'th-TH',
-  },
-  {
-    name: 'Telugu (India)',
+    name: 'Telugu',
     value: 'te-IN',
   },
   {
-    name: 'Turkish (Turkey)',
+    name: 'Thai',
+    value: 'th-TH',
+  },
+  {
+    name: 'Turkish',
     value: 'tr-TR',
+  },
+  {
+    name: 'Vietnamese',
+    value: 'vi-VN',
   },
 ];
 

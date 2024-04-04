@@ -1,0 +1,86 @@
+{
+    "Comment": "Analysis post processing state machine. Run analysis that requires a combination of the generated metadata.",
+    "StartAt": "Is video?",
+    "States": {
+        "Is video?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.input.video",
+                            "IsPresent": false
+                        },
+                        {
+                            "Variable": "$.input.video.enabled",
+                            "IsPresent": false
+                        },
+                        {
+                            "Variable": "$.input.video.enabled",
+                            "BooleanEquals": false
+                        }
+                    ],
+                    "Next": "Skip analysis post process"
+                }
+            ],
+            "Default": "Scene enhancement with transcribe"
+        },
+        "Scene enhancement with transcribe": {
+            "Type": "Task",
+            "Resource": "${AnalysisPostProcessLambda.Arn}",
+            "Parameters": {
+                "operation": "StateSceneEnhancement",
+                "stateExecution.$": "$$.Execution"
+            },
+            "Next": "Create scene taxonomy data"
+        },
+        "Create scene taxonomy data": {
+            "Type": "Task",
+            "Resource": "${AnalysisPostProcessLambda.Arn}",
+            "Parameters": {
+                "operation": "StateCreateSceneTaxonomy",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "Next": "More scene taxonomy?"
+        },
+        "More scene taxonomy?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Ad break detection"
+                },
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "WAIT_RETRY",
+                    "Next": "Wait X seconds"
+                }
+            ],
+            "Default": "Create scene taxonomy data"
+        },
+        "Wait X seconds": {
+            "Type": "Wait",
+            "SecondsPath": "$.data.video.rekognition.scene.waitInSeconds",
+            "Next": "Create scene taxonomy data"
+        },
+        "Ad break detection": {
+            "Type": "Task",
+            "Resource": "${AnalysisPostProcessLambda.Arn}",
+            "Parameters": {
+                "operation": "StateAdBreakDetection",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "input.$": "$.input",
+                "data.$": "$.data"
+            },
+            "End": true
+        },
+        "Skip analysis post process": {
+            "Type": "Succeed"
+        }
+    }
+}

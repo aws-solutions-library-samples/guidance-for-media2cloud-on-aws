@@ -4,7 +4,7 @@
     "States": {
         "Create record": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestMainLambda.Arn}",
             "Parameters": {
                 "operation": "create-record",
                 "executionArn.$": "$$.Execution.Id",
@@ -24,7 +24,7 @@
         },
         "Start fixity (nested)": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
                 "Input": {
                     "operation": "check-restore-status",
@@ -34,13 +34,13 @@
                     "input.$": "$.input",
                     "data.$": "$.data"
                 },
-                "StateMachineArn": "${FixityStateMachine}"
+                "StateMachineArn": "${IngestFixityStateMachine}"
             },
             "Next": "Fixity completed"
         },
         "Fixity completed": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestMainLambda.Arn}",
             "Parameters": {
                 "operation": "fixity-completed",
                 "nestedStateOutput.$": "$"
@@ -85,7 +85,7 @@
         },
         "Start image ingest (nested)": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
                 "Input": {
                     "operation": "run-imageinfo",
@@ -95,13 +95,13 @@
                     "input.$": "$.input",
                     "data.$": "$.data"
                 },
-                "StateMachineArn": "${ImageStateMachine}"
+                "StateMachineArn": "${IngestImageStateMachine}"
             },
             "Next": "Update record"
         },
         "Start video ingest (nested)": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
                 "Input": {
                     "operation": "run-mediainfo",
@@ -111,13 +111,13 @@
                     "input.$": "$.input",
                     "data.$": "$.data"
                 },
-                "StateMachineArn": "${VideoStateMachine}"
+                "StateMachineArn": "${IngestVideoStateMachine}"
             },
             "Next": "Update record"
         },
         "Start audio ingest (nested)": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
                 "Input": {
                     "operation": "run-mediainfo",
@@ -127,13 +127,13 @@
                     "input.$": "$.input",
                     "data.$": "$.data"
                 },
-                "StateMachineArn": "${AudioStateMachine}"
+                "StateMachineArn": "${IngestAudioStateMachine}"
             },
             "Next": "Update record"
         },
         "Start document ingest (nested)": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution.sync",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
                 "Input": {
                     "operation": "run-docinfo",
@@ -143,7 +143,7 @@
                     "input.$": "$.input",
                     "data.$": "$.data"
                 },
-                "StateMachineArn": "${DocumentStateMachine}"
+                "StateMachineArn": "${IngestDocumentStateMachine}"
             },
             "Next": "Update record"
         },
@@ -152,7 +152,7 @@
         },
         "Update record": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestMainLambda.Arn}",
             "Parameters": {
                 "operation": "update-record",
                 "nestedStateOutput.$": "$"
@@ -171,7 +171,7 @@
         },
         "Index ingest results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestMainLambda.Arn}",
             "Parameters": {
                 "operation": "index-ingest-results",
                 "uuid.$": "$.uuid",
@@ -194,7 +194,7 @@
         },
         "Completed": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${IngestMainLambda.Arn}",
             "Parameters": {
                 "operation": "job-completed",
                 "uuid.$": "$.uuid",

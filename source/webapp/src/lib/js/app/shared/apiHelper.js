@@ -2,165 +2,486 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
-import AppUtils from './appUtils.js';
+import AuthHttpRequest from './authHttpRequest.js';
+
+const {
+  ApiEndpoint,
+  ApiOps,
+  KnowledgeGraph,
+  Shoppable,
+} = SolutionManifest;
 
 const ENDPOINTS = {
-  Asset: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Assets}`,
-  Analysis: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Analysis}`,
-  Search: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Search}`,
-  Execution: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Execution}`,
-  AttachIot: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.AttachPolicy}`,
-  FaceCollections: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.FaceCollections}`,
-  FaceCollection: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.FaceCollection}`,
-  Faces: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Faces}`,
-  Face: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Face}`,
-  CustomLabelModels: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomLabelModels}`,
-  CustomVocabularies: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomVocabularies}`,
-  CustomLanguageModels: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomLanguageModels}`,
-  CustomEntityRecognizers: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.CustomEntityRecognizers}`,
-  Stats: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Stats}`,
-  Users: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.Users}`,
-  AIOptionsSettings: `${SolutionManifest.ApiEndpoint}/${SolutionManifest.ApiOps.AIOptionsSettings}`,
+  Asset: `${ApiEndpoint}/${ApiOps.Assets}`,
+  Analysis: `${ApiEndpoint}/${ApiOps.Analysis}`,
+  Search: `${ApiEndpoint}/${ApiOps.Search}`,
+  Execution: `${ApiEndpoint}/${ApiOps.Execution}`,
+  AttachIot: `${ApiEndpoint}/${ApiOps.AttachPolicy}`,
+  FaceCollections: `${ApiEndpoint}/${ApiOps.FaceCollections}`,
+  FaceCollection: `${ApiEndpoint}/${ApiOps.FaceCollection}`,
+  Faces: `${ApiEndpoint}/${ApiOps.Faces}`,
+  Face: `${ApiEndpoint}/${ApiOps.Face}`,
+  CustomLabelModels: `${ApiEndpoint}/${ApiOps.CustomLabelModels}`,
+  CustomVocabularies: `${ApiEndpoint}/${ApiOps.CustomVocabularies}`,
+  CustomLanguageModels: `${ApiEndpoint}/${ApiOps.CustomLanguageModels}`,
+  CustomEntityRecognizers: `${ApiEndpoint}/${ApiOps.CustomEntityRecognizers}`,
+  Stats: `${ApiEndpoint}/${ApiOps.Stats}`,
+  Users: `${ApiEndpoint}/${ApiOps.Users}`,
+  AIOptionsSettings: `${ApiEndpoint}/${ApiOps.AIOptionsSettings}`,
+  FaceIndexer: `${ApiEndpoint}/${ApiOps.FaceIndexer}`,
+  Tokenize: `${ApiEndpoint}/${ApiOps.Tokenize}`,
+  Summarize: `${ApiEndpoint}/${ApiOps.Summarize}`,
+  Genre: `${ApiEndpoint}/${ApiOps.Genre}`,
+  Sentiment: `${ApiEndpoint}/${ApiOps.Sentiment}`,
+  TVRatings: `${ApiEndpoint}/${ApiOps.TVRatings}`,
+  Theme: `${ApiEndpoint}/${ApiOps.Theme}`,
+  Taxonomy: `${ApiEndpoint}/${ApiOps.Taxonomy}`,
+  Custom: `${ApiEndpoint}/${ApiOps.Custom}`,
 };
+
+let GRAPH_ENDPOINT;
+let GRAPH_APIKEY;
+if (KnowledgeGraph && KnowledgeGraph.Endpoint && KnowledgeGraph.ApiKey) {
+  GRAPH_ENDPOINT = `${KnowledgeGraph.Endpoint}/graph`;
+  GRAPH_APIKEY = KnowledgeGraph.ApiKey;
+}
+
+let SHOPPABLE_ENDPOINT;
+let SHOPPABLE_APIKEY;
+if (Shoppable && Shoppable.Endpoint && Shoppable.ApiKey) {
+  SHOPPABLE_ENDPOINT = `${Shoppable.Endpoint}/shoppable`;
+  SHOPPABLE_APIKEY = Shoppable.ApiKey;
+}
+
+const _authHttpRequest = new AuthHttpRequest();
 
 export default class ApiHelper {
   /* record related methods */
   static async scanRecords(query) {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.Asset, query);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.Asset,
+      query
+    );
   }
 
   static async getRecord(uuid) {
-    return AppUtils.authHttpRequest('GET', `${ENDPOINTS.Asset}/${uuid}`);
+    return _authHttpRequest.send(
+      'GET',
+      `${ENDPOINTS.Asset}/${uuid}`
+    );
   }
 
   static async purgeRecord(uuid) {
-    return AppUtils.authHttpRequest('DELETE', `${ENDPOINTS.Asset}/${uuid}`);
+    return _authHttpRequest.send(
+      'DELETE',
+      `${ENDPOINTS.Asset}/${uuid}`
+    );
   }
 
   /* aiml results */
   static async getAnalysisResults(uuid) {
-    return AppUtils.authHttpRequest('GET', `${ENDPOINTS.Analysis}/${uuid}`);
+    return _authHttpRequest.send(
+      'GET',
+      `${ENDPOINTS.Analysis}/${uuid}`
+    );
   }
 
   /* iot */
   static async attachIot() {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.AttachIot);
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.AttachIot
+    );
   }
 
   /* search method */
   static async search(query) {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.Search, query);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.Search,
+      query
+    );
   }
 
   static async searchInDocument(docId, query) {
-    return AppUtils.authHttpRequest('GET', `${ENDPOINTS.Search}/${docId}`, query);
+    return _authHttpRequest.send(
+      'GET',
+      `${ENDPOINTS.Search}/${docId}`,
+      query
+    );
   }
 
   /* workflow related methods */
   static async startIngestWorkflow(body, query) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.Asset, query, body);
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.Asset,
+      query,
+      body
+    );
   }
 
   static async startAnalysisWorkflow(uuid, body, query) {
-    return AppUtils.authHttpRequest('POST', `${ENDPOINTS.Analysis}/${uuid}`, query, body);
+    return _authHttpRequest.send(
+      'POST',
+      `${ENDPOINTS.Analysis}/${uuid}`,
+      query,
+      body
+    );
   }
 
   static async startWorkflow(body, query) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.Asset, query, body);
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.Asset,
+      query,
+      body
+    );
   }
 
   static async getRekognitionFaceCollections() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.FaceCollections);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.FaceCollections
+    );
   }
 
   static async getRekognitionCustomLabelModels() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.CustomLabelModels);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.CustomLabelModels
+    );
   }
 
   static async getTranscribeCustomVocabulary() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.CustomVocabularies);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.CustomVocabularies
+    );
   }
 
   static async getTranscribeCustomLanguageModels() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.CustomLanguageModels);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.CustomLanguageModels
+    );
   }
 
   static async getComprehendCustomEntityRecognizers() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.CustomEntityRecognizers);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.CustomEntityRecognizers
+    );
   }
 
   /* stats */
   static async getStats(query) {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.Stats, query);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.Stats,
+      query
+    );
   }
 
   /* face collection */
   static async getFaceCollections() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.FaceCollections);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.FaceCollections
+    );
   }
 
   static async createFaceCollection(collectionId) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.FaceCollection, undefined, {
-      collectionId,
-    });
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.FaceCollection,
+      undefined,
+      {
+        collectionId,
+      }
+    );
   }
 
   static async deleteFaceCollection(collectionId) {
-    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.FaceCollection, {
-      collectionId,
-    });
+    return _authHttpRequest.send(
+      'DELETE',
+      ENDPOINTS.FaceCollection,
+      {
+        collectionId,
+      }
+    );
   }
 
   static async getFacesInCollection(collectionId, options) {
-    const token = (options.token)
-      ? encodeURIComponent(options.token)
-      : undefined;
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.Faces, {
-      ...options,
-      token,
-      collectionId,
-    });
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.FaceIndexer,
+      {
+        ...options,
+        collectionId,
+      }
+    );
   }
 
   static async deleteFaceFromCollection(collectionId, faceId) {
-    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.Face, {
-      collectionId,
-      faceId,
-    });
-  }
-
-  static async indexFaceToCollection(collectionId, options) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.Face, undefined, {
-      ...options,
-      collectionId,
-    });
+    return _authHttpRequest.send(
+      'DELETE',
+      ENDPOINTS.FaceIndexer,
+      {
+        collectionId,
+        faceId,
+      }
+    );
   }
 
   /* user management */
   static async getUsers() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.Users);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.Users
+    );
   }
 
   static async addUsers(users) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.Users, undefined, users);
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.Users,
+      undefined,
+      users
+    );
   }
 
   static async deleteUser(user) {
-    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.Users, {
-      user,
-    });
+    return _authHttpRequest.send(
+      'DELETE',
+      ENDPOINTS.Users,
+      {
+        user,
+      }
+    );
   }
 
   /* manage aiOptions settings */
   static async getGlobalAIOptions() {
-    return AppUtils.authHttpRequest('GET', ENDPOINTS.AIOptionsSettings);
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.AIOptionsSettings
+    );
   }
 
   static async setGlobalAIOptions(aiOptions) {
-    return AppUtils.authHttpRequest('POST', ENDPOINTS.AIOptionsSettings, undefined, aiOptions);
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.AIOptionsSettings,
+      undefined,
+      aiOptions
+    );
   }
 
   static async deleteGlobalAIOptions() {
-    return AppUtils.authHttpRequest('DELETE', ENDPOINTS.AIOptionsSettings);
+    return _authHttpRequest.send(
+      'DELETE',
+      ENDPOINTS.AIOptionsSettings
+    );
+  }
+
+  static async graph(query) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': GRAPH_APIKEY,
+    };
+
+    let tries = 4;
+    while (tries--) {
+      try {
+        const response = await _authHttpRequest.send(
+          'GET',
+          GRAPH_ENDPOINT,
+          query,
+          '',
+          headers
+        );
+        return response;
+      } catch (e) {
+        console.log(`== ApiHelper.graph: #${tries}`);
+        console.error(e);
+      }
+    }
+
+    return undefined;
+  }
+
+  // FaceIndexer
+  static async batchGetFaces(faceIds) {
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.FaceIndexer,
+      {
+        faceIds: faceIds.join(','),
+      }
+    );
+  }
+
+  static async updateFaceTaggings(faceTags, optionalUuid) {
+    const query = {};
+
+    if (optionalUuid) {
+      query.uuid = optionalUuid;
+    }
+
+    return _authHttpRequest.send(
+      'POST',
+      `${ENDPOINTS.FaceIndexer}/update`,
+      query,
+      faceTags
+    );
+  }
+
+  static async indexFaceV2(payload) {
+    return _authHttpRequest.send(
+      'POST',
+      `${ENDPOINTS.FaceIndexer}/index`,
+      undefined,
+      payload
+    );
+  }
+
+  static async importFaceCollection(payload) {
+    return _authHttpRequest.send(
+      'POST',
+      `${ENDPOINTS.FaceIndexer}/import`,
+      undefined,
+      payload
+    );
+  }
+
+  // GenAI use cases
+  static async tokenize(options) {
+    return _authHttpRequest.send(
+      'POST',
+      ENDPOINTS.Tokenize,
+      undefined,
+      options
+    );
+  }
+
+  static async genaiPrompt(endpoint, options) {
+    return _authHttpRequest.send(
+      'POST',
+      endpoint,
+      undefined,
+      options
+    );
+  }
+
+  static async promptSummarize(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Summarize,
+      options
+    );
+  }
+
+  static async promptGenre(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Genre,
+      options
+    );
+  }
+
+  static async promptSentiment(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Sentiment,
+      options
+    );
+  }
+
+  static async promptTVRatings(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.TVRatings,
+      options
+    );
+  }
+
+  static async promptTheme(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Theme,
+      options
+    );
+  }
+
+  static async promptTaxonomy(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Taxonomy,
+      options
+    );
+  }
+
+  static async promptCustom(options) {
+    return ApiHelper.genaiPrompt(
+      ENDPOINTS.Custom,
+      options
+    );
+  }
+
+  // shoppable backend api
+  static async getProductDetails(query) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': SHOPPABLE_APIKEY,
+    };
+
+    const _query = {
+      op: 'GetProductDetails',
+      ...query,
+    };
+
+    return _authHttpRequest.send(
+      'GET',
+      SHOPPABLE_ENDPOINT,
+      _query,
+      '',
+      headers
+    );
+  }
+
+  static async previewOrders(query, body) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': SHOPPABLE_APIKEY,
+    };
+
+    const _query = {
+      op: 'PreviewOrders',
+      ...query,
+    };
+
+    return _authHttpRequest.send(
+      'POST',
+      SHOPPABLE_ENDPOINT,
+      _query,
+      body,
+      headers
+    );
+  }
+
+  static async confirmOrders(query, body) {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-api-key': SHOPPABLE_APIKEY,
+    };
+
+    const _query = {
+      op: 'ConfirmOrders',
+      ...query,
+    };
+
+    return _authHttpRequest.send(
+      'POST',
+      SHOPPABLE_ENDPOINT,
+      _query,
+      body,
+      headers
+    );
   }
 }

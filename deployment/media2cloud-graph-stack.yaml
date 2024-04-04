@@ -1,0 +1,1394 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Media2Cloud Graph Stack - create Amazon Neptune Serverless resources for knowledge graph use case. Version %%VERSION%%
+
+Mappings:
+    Workflow:
+        GraphCustomResources:
+            Package: "%%PKG_CUSTOM_RESOURCES%%"
+            Name: customresources-graph
+        GraphIndexer:
+            Package: "%%PKG_GRAPH_INDEXER%%"
+            Name: graph-indexer
+        GraphApi:
+            Package: "%%PKG_GRAPH_API%%"
+            Name: graph-api
+        # Handle events from the following state machines
+        StateMachine:
+            IngestMain: ingest-main
+            AnalysisMain: analysis-main
+            AssetRemoval: asset-removal
+            UpdateFaceIndexer: update-face-indexer
+    Layer:
+        Gremlin:
+            Package: "%%LAYER_GREMLIN%%"
+            Name: gremlin
+    Neptune:
+        DBClusterIdentifier:
+            Suffix: graph
+        DBInstance:
+            Class: db.serverless
+        Engine:
+            Name: neptune
+            Version: 1.2.1.0
+        Capacity:
+            Minimum: 1
+            Maximum: 32
+    APIGW:
+        Stage:
+            Name: demo
+        Build:
+            Version: "%%VERSION%%"
+    Node:
+        Runtime:
+            Version: nodejs20.x
+
+Parameters:
+    S3Bucket:
+        Type: String
+        Description: S3Bucket
+    KeyPrefix:
+        Type: String
+        Description: KeyPrefix
+    SolutionId:
+        Type: String
+        Description: SolutionId
+    SolutionLowerCaseId:
+        Type: String
+        Description: SolutionLowerCaseId
+    ResourcePrefix:
+        Type: String
+        Description: ResourcePrefix
+    CustomUserAgent:
+        Type: String
+        Description: CustomUserAgent
+    CidrBlock:
+        Type: String
+        Description: CidrBlock
+    AwsSdkLayer:
+        Type: String
+        Description: AwsSdkLayer
+    CoreLibLayer:
+        Type: String
+        Description: CoreLibLayer
+    SolutionUuid:
+        Type: String
+        Description: SolutionUuid
+    IngestBucket:
+        Type: String
+        Description: IngestBucket
+    ProxyBucket:
+        Type: String
+        Description: ProxyBucket
+    # Workflow event bus
+    UnifiedStateMachineStatusBusName:
+        Type: String
+        Description: UnifiedStateMachineStatusBusName
+
+Resources:
+    ################################################################################
+    #
+    # Private VPC for Amazon Neptune Graph
+    #
+    ################################################################################
+    NeptuneVPC:
+        Type: AWS::EC2::VPC
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W60
+                        reason: Not using flow log
+        Properties:
+            CidrBlock: !Ref CidrBlock
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    VpcEndpointSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Explicitly assigned with predefined names to track
+        Properties:
+            VpcId: !Ref NeptuneVPC
+            GroupName: Media2Cloud Knowledge Graph Security Group
+            GroupDescription: !Sub Neptune and VPCE security group for ${NeptuneVPC}
+            SecurityGroupIngress:
+                -
+                    IpProtocol: tcp
+                    Description: VPC Endpoints
+                    FromPort: 443
+                    ToPort: 443
+                    SourceSecurityGroupId: !GetAtt NeptuneVPC.DefaultSecurityGroup
+                    SourceSecurityGroupOwnerId: !Ref AWS::AccountId
+                -
+                    IpProtocol: tcp
+                    Description: Neptune Cluster
+                    FromPort: 8182
+                    ToPort: 8182
+                    SourceSecurityGroupId: !GetAtt NeptuneVPC.DefaultSecurityGroup
+                    SourceSecurityGroupOwnerId: !Ref AWS::AccountId
+            SecurityGroupEgress:
+                -
+                    IpProtocol: tcp
+                    Description: VPC Endpoints (Egress rule)
+                    FromPort: 443
+                    ToPort: 443
+                    DestinationSecurityGroupId: !GetAtt NeptuneVPC.DefaultSecurityGroup
+                -
+                    IpProtocol: tcp
+                    Description: Neptune Cluster (Egress rule)
+                    FromPort: 8182
+                    ToPort: 8182
+                    DestinationSecurityGroupId: !GetAtt NeptuneVPC.DefaultSecurityGroup
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    PrivateSubnet01:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref NeptuneVPC
+            AvailabilityZone: !Select
+                - 0
+                - !GetAZs ""
+            CidrBlock: !Select
+                - 0
+                - !Cidr
+                    - !GetAtt NeptuneVPC.CidrBlock
+                    - 3
+                    - 8
+            MapPublicIpOnLaunch: false
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph (az-1)
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    PrivateSubnet02:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref NeptuneVPC
+            AvailabilityZone: !Select
+                - 1
+                - !GetAZs ""
+            CidrBlock: !Select
+                - 1
+                - !Cidr
+                    - !GetAtt NeptuneVPC.CidrBlock
+                    - 3
+                    - 8
+            MapPublicIpOnLaunch: false
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph (az-2)
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    PrivateSubnet03:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref NeptuneVPC
+            AvailabilityZone: !Select
+                - 2
+                - !GetAZs ""
+            CidrBlock: !Select
+                - 2
+                - !Cidr
+                    - !GetAtt NeptuneVPC.CidrBlock
+                    - 3
+                    - 8
+            MapPublicIpOnLaunch: false
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph (az-3)
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    #
+    # RouteTable is created for Gateway endpoints (S3 and DynamoDB)
+    # For services that support PrivateLink such as Transcribe, use Interface
+    # endpoint instead.
+    #
+    PrivateRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref NeptuneVPC
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Route Table for S3 Gateway endponit
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    PrivateSubnet01RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref PrivateSubnet01
+            RouteTableId: !Ref PrivateRouteTable
+
+    PrivateSubnet02RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref PrivateSubnet02
+            RouteTableId: !Ref PrivateRouteTable
+
+    PrivateSubnet03RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            SubnetId: !Ref PrivateSubnet03
+            RouteTableId: !Ref PrivateRouteTable
+
+    S3Endpoint:
+        Type: AWS::EC2::VPCEndpoint
+        Properties:
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # Read objects on IngestBucket
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action: s3:ListBucket
+                        Resource: !Sub arn:aws:s3:::${IngestBucket}
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action: s3:GetObject
+                        Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                    # Read/write objects on ProxyBucket
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action: s3:ListBucket
+                        Resource: !Sub arn:aws:s3:::${ProxyBucket}
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action:
+                            - s3:GetObject
+                            - s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+            VpcEndpointType: Gateway
+            ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+            VpcId: !Ref NeptuneVPC
+            RouteTableIds:
+                - !Ref PrivateRouteTable
+
+    CloudWatchLogEndpoint:
+        Type: AWS::EC2::VPCEndpoint
+        Properties:
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action:
+                            - logs:CreateLogGroup
+                            - logs:CreateLogStream
+                            - logs:PutLogEvents
+                        Resource: "*"
+            VpcEndpointType: Interface
+            ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+            VpcId: !Ref NeptuneVPC
+            PrivateDnsEnabled: true
+            SubnetIds:
+                - !Ref PrivateSubnet01
+                - !Ref PrivateSubnet02
+                - !Ref PrivateSubnet03
+
+    XrayEndpoint:
+        Type: AWS::EC2::VPCEndpoint
+        Properties:
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Principal: "*"
+                        Action:
+                            - xray:PutTraceSegments
+                            - xray:PutTelemetryRecords
+                            - xray:GetSamplingRules
+                            - xray:GetSamplingTargets
+                            - xray:GetSamplingStatisticSummaries
+                        Resource: "*"
+            VpcEndpointType: Interface
+            ServiceName: !Sub com.amazonaws.${AWS::Region}.xray
+            VpcId: !Ref NeptuneVPC
+            PrivateDnsEnabled: true
+            SubnetIds:
+                - !Ref PrivateSubnet01
+                - !Ref PrivateSubnet02
+                - !Ref PrivateSubnet03
+
+    ################################################################################
+    #
+    # Custom Resources to create Amazon Neptune Serverless cluster and instances
+    #
+    ################################################################################
+    GraphCustomResourcesLogGroup:
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Type: AWS::Logs::LogGroup
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphCustomResources
+                    - Name
+            RetentionInDays: 7
+
+    GraphCustomResourcesRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+                - arn:aws:iam::aws:policy/NeptuneFullAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-graph
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            ## CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt GraphCustomResourcesLogGroup.Arn
+
+    GraphCustomResourcesLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphCustomResources
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Custom resource to create Amazon Neptune Serverless
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 256
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt GraphCustomResourcesRole.Arn
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - GraphCustomResources
+                        - Package
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    ################################################################################
+    #
+    # Amazon Neptune Serverless resources
+    # * DBSubnetGroup
+    # * DBCluster
+    # * DBInstance (x2)
+    #
+    ################################################################################
+    NeptuneDBSubnetGroup:
+        Type: AWS::Neptune::DBSubnetGroup
+        Properties: 
+            DBSubnetGroupDescription: Media2Cloud Knowledge Graph Subnet Group
+            DBSubnetGroupName: !Sub ${ResourcePrefix}-subnet-group
+            SubnetIds:
+                - !Ref PrivateSubnet01
+                - !Ref PrivateSubnet02
+                - !Ref PrivateSubnet03
+            Tags:
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    NeptuneDBCluster:
+        Type: Custom::NeptuneDBCluster
+        Properties:
+            ServiceToken: !GetAtt GraphCustomResourcesLambda.Arn
+            Data:
+                DBClusterIdentifier: !Sub
+                    - ${ResourcePrefix}-${name}
+                    - name: !FindInMap
+                        - Neptune
+                        - DBClusterIdentifier
+                        - Suffix
+                Engine: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Name
+                EngineVersion: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Version
+                DeletionProtection: false
+                StorageEncrypted: true
+                ServerlessV2ScalingConfiguration:
+                    MinCapacity: !FindInMap
+                        - Neptune
+                        - Capacity
+                        - Minimum
+                    MaxCapacity: !FindInMap
+                        - Neptune
+                        - Capacity
+                        - Maximum
+                DBSubnetGroupName: !Ref NeptuneDBSubnetGroup
+                AvailabilityZones:
+                    - !Select
+                        - 0
+                        - !GetAZs ""
+                    - !Select
+                        - 1
+                        - !GetAZs ""
+                    - !Select
+                        - 2
+                        - !GetAZs ""
+                VpcSecurityGroupIds:
+                    - !GetAtt NeptuneVPC.DefaultSecurityGroup
+                Tags:
+                    -
+                        Key: SolutionId
+                        Value: !Ref SolutionId
+                    -
+                        Key: ResourcePrefix
+                        Value: !Ref ResourcePrefix
+
+    NeptuneDBInstance01:
+        Type: Custom::NeptuneDBInstance
+        Properties:
+            ServiceToken: !GetAtt GraphCustomResourcesLambda.Arn
+            Data:
+                DBClusterIdentifier: !GetAtt NeptuneDBCluster.DBClusterIdentifier
+                DBInstanceIdentifier: !Sub ${NeptuneDBCluster.DBClusterIdentifier}-01
+                DBInstanceClass: !FindInMap
+                    - Neptune
+                    - DBInstance
+                    - Class
+                Engine: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Name
+                EngineVersion: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Version
+                MultiAZ: false
+                StorageEncrypted: true
+                Tags:
+                    -
+                        Key: SolutionId
+                        Value: !Ref SolutionId
+                    -
+                        Key: ResourcePrefix
+                        Value: !Ref ResourcePrefix
+
+    NeptuneDBInstance02:
+        Type: Custom::NeptuneDBInstance
+        Properties:
+            ServiceToken: !GetAtt GraphCustomResourcesLambda.Arn
+            Data:
+                DBClusterIdentifier: !GetAtt NeptuneDBCluster.DBClusterIdentifier
+                DBInstanceIdentifier: !Sub ${NeptuneDBCluster.DBClusterIdentifier}-02
+                DBInstanceClass: !FindInMap
+                    - Neptune
+                    - DBInstance
+                    - Class
+                Engine: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Name
+                EngineVersion: !FindInMap
+                    - Neptune
+                    - Engine
+                    - Version
+                MultiAZ: false
+                StorageEncrypted: true
+                Tags:
+                    -
+                        Key: SolutionId
+                        Value: !Ref SolutionId
+                    -
+                        Key: ResourcePrefix
+                        Value: !Ref ResourcePrefix
+
+    ################################################################################
+    #
+    # AWS Lambda Layers
+    # * Gremlin
+    #
+    ################################################################################
+    GremlinLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Layer
+                    - Gremlin
+                    - Name
+            CompatibleArchitectures:
+                - x86_64
+            CompatibleRuntimes:
+                - !FindInMap
+                    - Node
+                    - Runtime
+                    - Version
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Layer
+                        - Gremlin
+                        - Package
+            Description: !Sub (${ResourcePrefix}) Gremlin NodeJS layer
+            LicenseInfo: Apache-2.0
+
+    ################################################################################
+    #
+    # Graph Indexer State Machine
+    #
+    ################################################################################
+    GraphIndexerLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphIndexer
+                    - Name
+            RetentionInDays: 7
+
+    GraphIndexerRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Wildcard character required for ec2:CreateNetworkInterface, DeleteNetworkInterface, and DescribeNetworkInterfaces to run lambda within VPC
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-graph-indexer
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt GraphIndexerLogGroup.Arn
+                            # VPC endpoint
+                            -
+                                Effect: Allow
+                                Action:
+                                    - ec2:CreateNetworkInterface
+                                    - ec2:DeleteNetworkInterface
+                                    - ec2:DescribeNetworkInterfaces
+                                Resource: "*"
+                            # S3
+                            -
+                                Effect: Allow
+                                Action: s3:GetObject
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}/*
+                            -
+                                Effect: Allow
+                                Action:
+                                    - s3:GetObject
+                                    - s3:PutObject
+                                Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
+                            # Amazon Neptune
+                            -
+                                Effect: Allow
+                                Action:
+                                    - neptune-db:ReadDataViaQuery
+                                    - neptune-db:WriteDataViaQuery
+                                    - neptune-db:DeleteDataViaQuery
+                                Resource: !Sub arn:aws:neptune-db:${AWS::Region}:${AWS::AccountId}:${NeptuneDBCluster.DBClusterIdentifier}/*
+                                Condition:
+                                    StringEquals:
+                                        neptune-db:QueryLanguage: Gremlin
+
+    GraphIndexerLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W89
+                        reason: Workflow not using VPC
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphIndexer
+                    - Name
+            Description: !Sub (${SolutionLowerCaseId}) Graph Indexer state machine lambda
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 1739
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt GraphIndexerRole.Arn
+            VpcConfig:
+                SubnetIds:
+                    - !Ref PrivateSubnet01
+                    - !Ref PrivateSubnet02
+                    - !Ref PrivateSubnet03
+                SecurityGroupIds:
+                    - !GetAtt NeptuneVPC.DefaultSecurityGroup
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - GraphIndexer
+                        - Package
+            Layers:
+                - !Ref CoreLibLayer
+                - !Ref GremlinLayer
+                - !Ref AwsSdkLayer
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
+                    ENV_NEPTUNE_ENDPOINT: !GetAtt NeptuneDBCluster.Endpoint
+                    ENV_NEPTUNE_ENDPOINT_RO: !GetAtt NeptuneDBCluster.ReaderEndpoint
+
+    GraphIndexerStateMachineServiceRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: !Sub states.${AWS::Region}.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-graph-indexer-role
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: lambda:InvokeFunction
+                                Resource: !GetAtt GraphIndexerLambda.Arn
+
+    GraphIndexerStateMachine:
+        Type: AWS::StepFunctions::StateMachine
+        Properties:
+            StateMachineName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphIndexer
+                    - Name
+            StateMachineType: STANDARD
+            RoleArn: !GetAtt GraphIndexerStateMachineServiceRole.Arn
+            TracingConfiguration:
+                Enabled: true
+            DefinitionString:
+                !Sub |-
+                    {
+                        "StartAt": "Index results",
+                        "States": {
+                            "Index results": {
+                                "Type": "Task",
+                                "Resource": "${GraphIndexerLambda.Arn}",
+                                "End": true
+                            }
+                        }
+                    }
+            Tags:
+                -
+                    Key: Name
+                    Value: Media2Cloud Knowledge Graph
+                -
+                    Key: SolutionId
+                    Value: !Ref SolutionId
+                -
+                    Key: ResourcePrefix
+                    Value: !Ref ResourcePrefix
+
+    ################################################################################
+    #
+    # APIGW: front Amazon Neptune cluster with the Gremlin Query API Lambda
+    # * API Lambda /graph resources
+    # * Rest API
+    # * Deployment
+    # * Api Key (usage tracker)
+    # * Usage Plan
+    #
+    ################################################################################
+    GraphApiLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/lambda/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphApi
+                    - Name
+            RetentionInDays: 7
+
+    GraphApiRole:
+        Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: Wildcard character required for ec2:CreateNetworkInterface, DeleteNetworkInterface, and DescribeNetworkInterfaces to run lambda within VPC
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: lambda.amazonaws.com
+            Path: /
+            ManagedPolicyArns:
+                - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+            Policies:
+                -
+                    PolicyName: graph-api-policy
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            # CloudWatch Logs
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt GraphApiLogGroup.Arn
+                            # VPC endpoint
+                            -
+                                Effect: Allow
+                                Action:
+                                    - ec2:CreateNetworkInterface
+                                    - ec2:DeleteNetworkInterface
+                                    - ec2:DescribeNetworkInterfaces
+                                Resource: "*"
+                            # Amazon Neptune
+                            -
+                                Effect: Allow
+                                Action: neptune-db:ReadDataViaQuery
+                                Resource: !Sub arn:aws:neptune-db:${AWS::Region}:${AWS::AccountId}:${NeptuneDBCluster.DBClusterIdentifier}/*
+                                Condition:
+                                    StringEquals:
+                                        neptune-db:QueryLanguage: Gremlin
+
+    GraphApiLambda:
+        Type: AWS::Lambda::Function
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W92
+                        reason: Workflow not limiting simultaneous executions
+        Properties:
+            FunctionName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphApi
+                    - Name
+            Description: !Sub (${ResourcePrefix}) /graph api endpoint lambda
+            Runtime: !FindInMap
+                - Node
+                - Runtime
+                - Version
+            MemorySize: 1739
+            Timeout: 900
+            Handler: index.handler
+            Role: !GetAtt GraphApiRole.Arn
+            VpcConfig:
+                SubnetIds:
+                    - !Ref PrivateSubnet01
+                    - !Ref PrivateSubnet02
+                    - !Ref PrivateSubnet03
+                SecurityGroupIds:
+                    - !GetAtt NeptuneVPC.DefaultSecurityGroup
+            Code:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Workflow
+                        - GraphApi
+                        - Package
+            Layers:
+                - !Ref CoreLibLayer
+                - !Ref GremlinLayer
+                - !Ref AwsSdkLayer
+            TracingConfig:
+                Mode: Active
+            Environment:
+                Variables:
+                    ENV_EXPECTED_BUCKET_OWNER: !Ref AWS::AccountId
+                    ENV_CUSTOM_USER_AGENT: !Ref CustomUserAgent
+                    ENV_SOLUTION_UUID: !Ref SolutionUuid
+                    ENV_SOLUTION_ID: !Ref SolutionId
+                    ENV_RESOURCE_PREFIX: !Ref ResourcePrefix
+                    ENV_NEPTUNE_ENDPOINT_RO: !GetAtt NeptuneDBCluster.ReaderEndpoint
+
+    ApiRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: apigateway.amazonaws.com
+            Path: /
+            Policies:
+                -
+                    PolicyName: imdb-api-role-policy
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: lambda:InvokeFunction
+                                Resource: !GetAtt GraphApiLambda.Arn
+
+    RestApi:
+        Type: AWS::ApiGateway::RestApi
+        Properties:
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph api endpoint
+            DisableExecuteApiEndpoint: false
+            EndpointConfiguration:
+                Types:
+                    - REGIONAL
+            Body:
+                openapi: 3.0.1
+                info:
+                    title: !Sub ${ResourcePrefix}-graph-api
+                    description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph api endpoint
+                    version: !FindInMap
+                        - APIGW
+                        - Build
+                        - Version
+                paths:
+                    /graph:
+                        get:
+                            parameters:
+                                # x-api-key (track usage)
+                                -
+                                    name: x-api-key
+                                    in: header
+                                    required: true
+                                    schema:
+                                        type: string
+                            responses:
+                                "200":
+                                    description: 200 response
+                                    content:
+                                        application/json:
+                                            schema:
+                                                $ref: "#/components/schemas/Empty"
+                            security:
+                                - sigv4: []
+                                - api_key: []
+                            x-amazon-apigateway-integration:
+                                credentials: !GetAtt ApiRole.Arn
+                                httpMethod: POST
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GraphApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_templates
+                                timeoutInMillis: 29000
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                        options:
+                            responses:
+                                "200":
+                                    description: 200 response
+                                    content:
+                                        application/json:
+                                            schema:
+                                                $ref: "#/components/schemas/Empty"
+                            x-amazon-apigateway-integration:
+                                credentials: !GetAtt ApiRole.Arn
+                                httpMethod: POST
+                                uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GraphApiLambda.Arn}/invocations
+                                responses:
+                                    default:
+                                        statusCode: "200"
+                                passthroughBehavior: when_no_templates
+                                contentHandling: CONVERT_TO_TEXT
+                                type: aws_proxy
+                components:
+                    schemas:
+                        Empty:
+                            title: Empty Schema
+                            type: object
+                    securitySchemes:
+                        sigv4:
+                            type: apiKey
+                            name: Authorization
+                            in: header
+                            x-amazon-apigateway-authtype: awsSigv4
+                        api_key:
+                            type: apiKey
+                            name: x-api-key
+                            in: header
+                x-amazon-apigateway-policy:
+                    Version: "2012-10-17"
+                    Statement:
+                        -
+                            Effect: Allow
+                            Principal: "*"
+                            Action: execute-api:Invoke
+                            Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*
+
+    APIGWLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /apigateway/media2cloud/${ResourcePrefix}-graph-api
+            RetentionInDays: 7
+
+    Deployment:
+        Type: AWS::ApiGateway::Deployment
+        Properties:
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph deployment
+            RestApiId: !Ref RestApi
+            StageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+            StageDescription:
+                Description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph stage
+                LoggingLevel: ERROR
+                AccessLogSetting:
+                    DestinationArn: !GetAtt APIGWLogGroup.Arn
+                    Format: $context.identity.sourceIp $context.identity.caller $context.identity.user [$context.requestTime] \"$context.httpMethod $context.resourcePath $context.protocol\" $context.status $context.responseLength $context.requestId
+                MethodSettings:
+                    -
+                        ResourcePath: /~1graph
+                        HttpMethod: OPTIONS
+                    -
+                        ResourcePath: /~1graph
+                        HttpMethod: GET
+
+    GraphOPTIONSOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt GraphApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/OPTIONS/graph
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    GraphGETOperation:
+        Type: AWS::Lambda::Permission
+        Properties:
+            Action: lambda:InvokeFunction
+            FunctionName: !GetAtt GraphApiLambda.Arn
+            Principal: apigateway.amazonaws.com
+            SourceArn: !Sub
+                - arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RestApi}/${stageName}/GET/graph
+                - stageName: !FindInMap
+                    - APIGW
+                    - Stage
+                    - Name
+
+    ApiKey:
+        Type: AWS::ApiGateway::ApiKey
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W28
+                        reason: Explicitly assigned with predefined names to track
+        Properties:
+            Name: !Sub ${ResourcePrefix}-graph-apikey
+            Value: !Ref SolutionUuid
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph API Key
+            Enabled: true
+
+    UsagePlan:
+        DependsOn: Deployment
+        Type: AWS::ApiGateway::UsagePlan
+        Properties:
+            UsagePlanName: !Sub ${ResourcePrefix}-graph-api-usage-plan
+            Description: !Sub (${ResourcePrefix}) Media2Cloud Knowledge Graph Usage Plan
+            ApiStages:
+                -
+                    ApiId: !Ref RestApi
+                    Stage: !FindInMap
+                        - APIGW
+                        - Stage
+                        - Name
+            Quota:
+                Limit: 50000
+                Offset: 0
+                Period: DAY
+            Throttle:
+                BurstLimit: 1000
+                RateLimit: 3000.0
+
+    UsagePlanKey:
+        Type: AWS::ApiGateway::UsagePlanKey
+        Properties:
+            KeyType: API_KEY
+            KeyId: !Ref ApiKey
+            UsagePlanId: !Ref UsagePlan
+
+    ################################################################################
+    #
+    # EventBridge: Integrate to workflow events to run Graph Indexer state machine
+    #
+    ################################################################################
+    RunGraphIndexerStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub /aws/events/${GraphIndexerStateMachine.Name}
+            RetentionInDays: 7
+
+    RunGraphIndexerStateMachineRole:
+        Type: AWS::IAM::Role
+        Properties:
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    -
+                        Effect: Allow
+                        Action: sts:AssumeRole
+                        Principal:
+                            Service: events.amazonaws.com
+            Path: !Sub /${ResourcePrefix}/
+            Policies:
+                -
+                    PolicyName: !Sub ${ResourcePrefix}-RunGraphIndexerStateMachineRole
+                    PolicyDocument:
+                        Version: "2012-10-17"
+                        Statement:
+                            -
+                                Effect: Allow
+                                Action: states:StartExecution
+                                Resource: !GetAtt GraphIndexerStateMachine.Arn
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogGroup
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: !GetAtt RunGraphIndexerStateMachineLogGroup.Arn
+
+    RunGraphIndexerStateMachineEvent:
+        Type: AWS::Events::Rule
+        Properties:
+            Name: !Sub ${ResourcePrefix}-RunGraphIndexerStateMachine
+            Description: Run Graph Indexer State Machine when Ingest, Analysis, or AssetRemoval state machine is completed
+            EventBusName: !Ref UnifiedStateMachineStatusBusName
+            EventPattern:
+                source:
+                    - aws.states
+                region:
+                    - !Ref AWS::Region
+                detail-type:
+                    - Step Functions Execution Status Change
+                detail:
+                    status:
+                        - SUCCEEDED
+                    stateMachineArn:
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - IngestMain
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - AnalysisMain
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - AssetRemoval
+                        - !Sub
+                            - arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${ResourcePrefix}-${name}
+                            - name: !FindInMap
+                                - Workflow
+                                - StateMachine
+                                - UpdateFaceIndexer
+            State: ENABLED
+            Targets:
+                -
+                    Id: !Sub ${ResourcePrefix}-LogEvents
+                    Arn: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${RunGraphIndexerStateMachineLogGroup}
+                -
+                    Id: !Sub Id-${GraphIndexerStateMachine.Name}
+                    Arn: !GetAtt GraphIndexerStateMachine.Arn
+                    RoleArn: !GetAtt RunGraphIndexerStateMachineRole.Arn
+
+Outputs:
+    # VPC
+    NeptuneVPC:
+        Value: !Ref NeptuneVPC
+        Description: NeptuneVPC
+    SubnetIds:
+        Value: !Join
+            - ","
+            - - !Ref PrivateSubnet01
+              - !Ref PrivateSubnet02
+              - !Ref PrivateSubnet03
+
+        Description: SubnetIds
+    SecurityGroupIds:
+        Value: !Join
+            - ","
+            - - !GetAtt NeptuneVPC.DefaultSecurityGroup
+        Description: SecurityGroupIds
+    # DB cluster outputs
+    NeptuneDBClusterIdentifier:
+        Description: NeptuneDBClusterIdentifier
+        Value: !GetAtt NeptuneDBCluster.DBClusterIdentifier
+    NeptuneDBClusterAZs:
+        Description: NeptuneDBClusterAZs
+        Value: !GetAtt NeptuneDBCluster.AvailabilityZones
+    NeptuneVpcSecurityGroupIds:
+        Description: NeptuneVpcSecurityGroupIds
+        Value: !GetAtt NeptuneDBCluster.VpcSecurityGroupIds
+    # DB instance01 outputs
+    NeptuneDBInstanceIdentifier01:
+        Description: NeptuneDBInstanceIdentifier01
+        Value: !GetAtt NeptuneDBInstance01.DBInstanceIdentifier
+    NeptuneDBInstance01SubnetIds:
+        Description: NeptuneDBInstance01SubnetIds
+        Value: !GetAtt NeptuneDBInstance01.SubnetIdentifiers
+    NeptuneDBInstance01SubnetAZs:
+        Description: NeptuneDBInstance01SubnetAZs
+        Value: !GetAtt NeptuneDBInstance01.SubnetAvailabilityZones
+    NeptuneDBInstance01VpcId:
+        Description: NeptuneDBInstance01VpcId
+        Value: !GetAtt NeptuneDBInstance01.VpcId
+    NeptuneDBInstance01VpcSecurityGroupIds:
+        Description: NeptuneDBInstance01VpcSecurityGroupIds
+        Value: !GetAtt NeptuneDBInstance01.VpcSecurityGroupIds
+    # DB instance02 outputs
+    NeptuneDBInstanceIdentifier02:
+        Description: NeptuneDBInstanceIdentifier02
+        Value: !GetAtt NeptuneDBInstance02.DBInstanceIdentifier
+    NeptuneDBInstance02SubnetIds:
+        Description: NeptuneDBInstance02SubnetIds
+        Value: !GetAtt NeptuneDBInstance02.SubnetIdentifiers
+    NeptuneDBInstance02SubnetAZs:
+        Description: NeptuneDBInstance02SubnetAZs
+        Value: !GetAtt NeptuneDBInstance02.SubnetAvailabilityZones
+    NeptuneDBInstance02VpcId:
+        Description: NeptuneDBInstance02VpcId
+        Value: !GetAtt NeptuneDBInstance02.VpcId
+    NeptuneDBInstance02VpcSecurityGroupIds:
+        Description: NeptuneDBInstance02VpcSecurityGroupIds
+        Value: !GetAtt NeptuneDBInstance02.VpcSecurityGroupIds
+    NeptuneWriteEndpoint:
+        Description: NeptuneWriteEndpoint
+        Value: !GetAtt NeptuneDBCluster.Endpoint
+    NeptuneReadEndpoint:
+        Description: NeptuneReadEndpoint
+        Value: !GetAtt NeptuneDBCluster.ReaderEndpoint
+    # GraphIndexer state machine
+    GraphIndexerStateMachineName:
+        Value: !GetAtt GraphIndexerStateMachine.Name
+        Description: GraphIndexerStateMachineName
+    GraphIndexerStateMachineArn:
+        Value: !GetAtt GraphIndexerStateMachine.Arn
+        Description: GraphIndexerStateMachineArn
+    GraphIndexerLambdaArn:
+        Value: !GetAtt GraphIndexerLambda.Arn
+        Description: GraphIndexerLambdaArn
+    # APIGW
+    GraphApiLambdaArn:
+        Value: !GetAtt GraphApiLambda.Arn
+        Description: GraphApiLambdaArn
+    ApiId:
+        Value: !Ref RestApi
+        Description: ApiId
+    ApiEndpoint:
+        Value: !Sub
+            - https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/${stageName}
+            - stageName: !FindInMap
+                - APIGW
+                - Stage
+                - Name
+        Description: ApiEndpoint
+    DeploymentId:
+        Value: !Ref Deployment
+        Description: DeploymentId
+    StageName:
+        Value: !FindInMap
+            - APIGW
+            - Stage
+            - Name
+        Description: StageName
+    ApiKey:
+        Value: !Ref SolutionUuid
+        Description: ApiKey
+    ApiKeyId:
+        Value: !Ref ApiKey
+        Description: ApiKeyId
+    UsagePlanId:
+        Value: !Ref UsagePlan
+        Description: UsagePlanId

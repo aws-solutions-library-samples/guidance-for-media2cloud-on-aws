@@ -1,35 +1,33 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  SFNClient,
+  SendTaskSuccessCommand,
+  SendTaskFailureCommand,
+  TaskTimedOut,
+  TaskDoesNotExist,
+} = require('@aws-sdk/client-sfn');
 const {
   JobStatusError,
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 const BacklogStatusChangeEvent = require('./backlog/backlogStatusChangeEvent');
 const RekognitionStatusChangeEvent = require('./backlog/rekognitionStatusChangeEvent');
+const TextractStatusChangeEvent = require('./backlog/textractStatusChangeEvent');
 const TranscribeStatusChangeEvent = require('./backlog/transcribeStatusChangeEvent');
 const ComprehendStatusChangeEvent = require('./backlog/comprehendStatusChangeEvent');
 const CustomLabelsStatusChangeEvent = require('./backlog/customLabelsStatusChangeEvent');
 
 const CATEGORY_REKOGNITION = 'rekognition:';
+const CATEGORY_TEXTRACT = 'textract:';
 const CATEGORY_TRANSCRIBE = 'transcribe:';
 const CATEGORY_COMPREHEND = 'comprehend:';
 const CATEGORY_CUSTOM = 'custom:';
 
-const EXCEPTION_TASK_TIMEOUT = 'TaskTimedOut';
-const EXCEPTION_TASK_NOTEXIST = 'TaskDoesNotExist';
-const IGNORED_EXECEPTION_LIST = [
-  EXCEPTION_TASK_TIMEOUT,
-  EXCEPTION_TASK_NOTEXIST,
-];
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class CloudWatchStatus {
   constructor(event, context) {
@@ -84,6 +82,8 @@ class CloudWatchStatus {
     if (this.source === BacklogStatusChangeEvent.SourceType) {
       if (this.detail.serviceApi.indexOf(CATEGORY_REKOGNITION) === 0) {
         instance = new RekognitionStatusChangeEvent(this);
+      } else if (this.detail.serviceApi.indexOf(CATEGORY_TEXTRACT) === 0) {
+        instance = new TextractStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_TRANSCRIBE) === 0) {
         instance = new TranscribeStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_COMPREHEND) === 0) {
@@ -99,36 +99,68 @@ class CloudWatchStatus {
   }
 
   async sendTaskSuccess() {
-    return (new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    })).sendTaskSuccess({
-      output: JSON.stringify(this.stateData.toJSON()),
+    const output = JSON.stringify(this.stateData.toJSON());
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new SendTaskSuccessCommand({
+      output,
       taskToken: this.token,
-    }).promise()
+    });
+
+    return stepfunctionClient.send(command)
       .catch((e) => {
-        if (IGNORED_EXECEPTION_LIST.indexOf(e.code) >= 0) {
+        if (e instanceof TaskTimedOut
+        || e instanceof TaskDoesNotExist) {
           return undefined;
         }
-        console.log(`[ERR]: sendTaskSuccess: ${e.code}: ${e.message}`, JSON.stringify(this.stateData.toJSON()));
+        console.error(
+          'ERR:',
+          'CloudWatchStatus.sendTaskSuccess:',
+          `${command.constructor.name}:`,
+          e.$metadata.httpStatusCode,
+          e.name,
+          e.message,
+          output
+        );
         throw e;
       });
   }
 
   async sendTaskFailure(error) {
-    return (new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    })).sendTaskFailure({
-      taskToken: this.token,
-      error: error.name,
+    const message = {
+      error: error.name || error.code,
       cause: error.message,
-    }).promise()
+    };
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new SendTaskFailureCommand({
+      ...message,
+      taskToken: this.token,
+    });
+
+    return stepfunctionClient.send(command)
       .catch((e) => {
-        if (e.code === EXCEPTION_TASK_TIMEOUT) {
+        if (e instanceof TaskTimedOut
+        || e instanceof TaskDoesNotExist) {
           return undefined;
         }
-        console.log(`[ERR]: sendTaskFailure: ${e.code}: ${e.message}`, error.name, error.message);
+        console.error(
+          'ERR:',
+          'CloudWatchStatus.sendTaskFailure:',
+          `${command.constructor.name}:`,
+          e.$metadata.httpStatusCode,
+          e.name,
+          e.message,
+          JSON.stringify(message)
+        );
         throw e;
       });
   }

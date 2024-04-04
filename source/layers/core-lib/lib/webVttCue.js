@@ -3,8 +3,13 @@
 
 class WebVttCue {
   constructor(begin, end, text, position, factor = 1) {
+    // make sure end time > start time
+    let _end = end;
+    if (end - begin <= 0) {
+      _end = Math.round(begin + (0.1 * factor));
+    }
     this.$begin = begin;
-    this.$end = end;
+    this.$end = _end;
     this.$position = (position) ? ` ${position}` : '';
     this.$text = text;
     this.$factor = factor;

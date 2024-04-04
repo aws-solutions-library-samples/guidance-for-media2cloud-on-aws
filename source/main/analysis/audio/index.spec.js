@@ -64,7 +64,7 @@ const context = {
 
 const event_for_collect_transcribe_results = {
         "uuid": "b72fc9c0-58eb-83ef-42f2-dfceb342798f",
-        "stateMachine": "so0050-0a709c9ee415-analysis-audio",
+        "stateMachine": "so0050-111111111111-analysis-audio",
         "operation": "collect-transcribe-results",
         "overallStatus": "PROCESSING",
         "status": "NO_DATA",
@@ -81,7 +81,7 @@ const event_for_collect_transcribe_results = {
             "enabled": false
           },
           "destination": {
-            "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+            "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
             "prefix": "b72fc9c0-58eb-83ef-42f2-dfceb342798f/surfers/"
           },
           "video": {
@@ -89,7 +89,7 @@ const event_for_collect_transcribe_results = {
             "key": "b72fc9c0-58eb-83ef-42f2-dfceb342798f/surfers/transcode/aiml/surfers.mp4"
           },
           "uuid": "b72fc9c0-58eb-83ef-42f2-dfceb342798f",
-          "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+          "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
           "duration": 34273,
           "attributes": {},
           "audio": {
@@ -163,7 +163,7 @@ const event_for_index_transcribe_results = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -171,7 +171,7 @@ const event_for_index_transcribe_results = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -235,7 +235,7 @@ const event_start_transcribe_and_wait = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "key": "JUMANJI_Interview/JUMANJI_Interview.mp4",
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
       "aiOptions": {
@@ -273,7 +273,7 @@ const event_start_transcribe_and_wait = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "duration": 284653,
@@ -321,7 +321,7 @@ const  event_StateCollectTranscribeResults = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -329,7 +329,7 @@ const  event_StateCollectTranscribeResults = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -403,7 +403,7 @@ const  event_StateIndexTranscribeResults = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -411,7 +411,7 @@ const  event_StateIndexTranscribeResults = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -486,7 +486,7 @@ const event_StateStartSentiment = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -494,7 +494,7 @@ const event_StateStartSentiment = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -571,7 +571,7 @@ const event_StateIndexSentimentResults = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -579,7 +579,7 @@ const event_StateIndexSentimentResults = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -662,7 +662,7 @@ const event_StateStartKeyphrase = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -670,7 +670,7 @@ const event_StateStartKeyphrase = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -747,7 +747,7 @@ const event_StateIndexKeyphraseResults = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -755,7 +755,7 @@ const event_StateIndexKeyphraseResults = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -838,7 +838,7 @@ const event_StateStartEntity = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -846,7 +846,7 @@ const event_StateStartEntity = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -923,7 +923,7 @@ const event_StateIndexEntityResults = {
         "enabled": false
       },
       "destination": {
-        "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-west-2-proxy",
         "prefix": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/"
       },
       "video": {
@@ -931,7 +931,7 @@ const event_StateIndexEntityResults = {
         "key": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8/JUMANJI_Interview/transcode/aiml/JUMANJI_Interview.mp4"
       },
       "uuid": "ae67fe18-c8f8-7cff-662a-d8ea2bacd5c8",
-      "bucket": "so0050-0a709c9ee415-193234372883-us-west-2-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-west-2-ingest",
       "duration": 284653,
       "attributes": {},
       "audio": {
@@ -1013,7 +1013,7 @@ const event_StateIndexEntityResults = {
             ENV_SOLUTION_ID: 'Test_ENV_Variable',
             ENV_RESOURCE_PREFIX: 'Test_ENV_Variable',
             ENV_SOLUTION_UUID: 'Test_ENV_Variable',
-            ENV_ANONYMIZED_USAGE: 'Test_ENV_Variable',
+            ENV_ANONYMOUS_USAGE: 'Test_ENV_Variable',
             ENV_IOT_HOST: 'Test_ENV_Variable',
             ENV_IOT_TOPIC: 'Test_ENV_Variable',
             ENV_PROXY_BUCKET: 'Test_ENV_Variable',

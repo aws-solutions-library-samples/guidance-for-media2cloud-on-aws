@@ -5,9 +5,15 @@ import Localization from '../../../../../../shared/localization.js';
 import AnalysisTypes from '../../../../../../shared/analysis/analysisTypes.js';
 import BaseComprehendTab from './baseComprehendTab.js';
 
+const {
+  Messages: {
+    EntityTab: TITLE,
+  },
+} = Localization;
+
 export default class EntityTab extends BaseComprehendTab {
-  constructor(previewComponent, defaultTab = false) {
-    super(Localization.Messages.EntityTab, previewComponent, defaultTab);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
   }
 
   async createTimelineButtons(type) {

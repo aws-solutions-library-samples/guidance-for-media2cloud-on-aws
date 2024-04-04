@@ -9,18 +9,21 @@
     "test": "jest --coverage",
     "build:clean": "rm -rf dist && mkdir -p dist/nodejs/node_modules/service-backlog-lib",
     "build:copy": "cp -rv index.js package.json lib dist/nodejs/node_modules/service-backlog-lib",
-    "build:install": "cd dist/nodejs/node_modules/service-backlog-lib && npm install --omit=dev --omit=optional",
+    "build:install": "cd dist/nodejs/node_modules/service-backlog-lib && npm install --omit=dev",
     "build": "npm-run-all -s build:clean build:copy build:install",
     "zip": "cd dist && zip -rq"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
+  "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "jest": "^29.3.1",
-    "aws-sdk": "2.1531.0",
-    "aws-sdk-mock": "5.8.0"
-  },
-  "license": "Apache-2.0"
+    "@aws-sdk/client-comprehend": "^3.540.0",
+    "@aws-sdk/client-dynamodb": "^3.540.0",
+    "@aws-sdk/client-eventbridge": "^3.540.0",
+    "@aws-sdk/client-mediaconvert": "^3.540.0",
+    "@aws-sdk/client-rekognition": "^3.540.0",
+    "@aws-sdk/client-sfn": "^3.540.0",
+    "@aws-sdk/client-textract": "^3.540.0",
+    "@aws-sdk/client-transcribe": "^3.540.0",
+    "@aws-sdk/util-dynamodb": "^3.540.0",
+    "aws-sdk-client-mock": "^2.2.0"
+  }
 }

@@ -57,14 +57,11 @@ class StateMessage {
   }
 
   get overallStatus() {
-    if (this.status.indexOf(Statuses.Error) >= 0) {
-      return Statuses.Error;
-    }
-    if (this.status === Statuses.AnalysisCompleted) {
-      return Statuses.Completed;
-    }
-
-    return Statuses.Processing;
+    return (this.status.indexOf(Statuses.Error) >= 0)
+      ? Statuses.Error
+      : (this.status === Statuses.AnalysisCompleted)
+        ? Statuses.Completed
+        : Statuses.Processing;
   }
 
   get status() {
@@ -103,7 +100,7 @@ class StateMessage {
 
   setProgress(val) {
     this.status = Statuses.InProgress;
-    this.progress = Math.min(100, Number.parseInt(val, 10));
+    this.progress = Math.min(100, Number(val));
   }
 
   setFailed(e) {

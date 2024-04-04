@@ -3,30 +3,47 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../shared/localization.js';
-import CognitoConnector from '../../../shared/cognitoConnector.js';
-import AppUtils from '../../../shared/appUtils.js';
-import mxSpinner from '../../../mixins/mxSpinner.js';
-import BaseTabPlugins from '../../../shared/baseTabPlugins.js';
+import {
+  GetUserSession,
+} from '../../../shared/cognito/userSession.js';
+import Spinner from '../../../shared/spinner.js';
+import BaseTab from '../../../shared/baseTab.js';
 import BaseCategorySlideComponent from './baseCategorySlideComponent.js';
 import BasePreviewSlideComponent from './basePreviewSlideComponent.js';
 
-const ERR_DELETE_MEDIA_NOT_ALLOWED = Localization.Alerts.DeleteMediaNotAllowed;
+const {
+  Messages: {
+    ProcessingTab: MSG_PROCESSING_TAB,
+    MediaInProcess: MSG_MEDIA_INPROCESS,
+    MediaError: MSG_MEDIA_ERROR,
+    RemoveMedia: MSG_REMOVE_MEDIA,
+  },
+  Alerts: {
+    DeleteMediaNotAllowed: ERR_DELETE_MEDIA_NOT_ALLOWED,
+  },
+  Buttons: {
+    Close: BTN_CLOSE,
+  },
+} = Localization;
 
-export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
-  constructor(defaultTab, tabName, plugins) {
-    super(tabName, {
-      selected: !!(defaultTab),
+export default class BaseMediaTab extends BaseTab {
+  constructor(title, options = {}) {
+    super(title, {
       fontSize: '1.1rem',
-    }, plugins);
+      ...options,
+    });
+
     this.$ids = {
       ...super.ids,
       carousel: {
-        container: `media-${AppUtils.randomHexstring()}`,
+        container: `media-${this.id}`,
       },
     };
+
     this.$categorySlideComponent = undefined;
     this.$previewSlideComponent = undefined;
-    this.$canWrite = CognitoConnector.getSingleton().canWrite();
+
+    Spinner.useSpinner();
   }
 
   get categorySlideComponent() {
@@ -38,19 +55,27 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
   }
 
   get canWrite() {
-    return this.$canWrite;
+    const session = GetUserSession();
+    return session.canWrite();
   }
 
-  async show() {
+  loading(enabled) {
+    return Spinner.loading(enabled);
+  }
+
+  async show(hashtag) {
     if (!this.initialized) {
+      const container = $('<div/>')
+        .addClass('row no-gutters');
+      this.tabContent.append(container);
+
       const carousel = await this.createCarousel();
-      const row = $('<div/>').addClass('row no-gutters')
-        .append(carousel)
-        .append(this.createLoading());
-      this.tabContent.append(row);
+      container.append(carousel);
     }
-    await this.categorySlideComponent.show();
-    return super.show();
+
+    await this.categorySlideComponent.show(hashtag);
+
+    return super.show(hashtag);
   }
 
   async createCarousel() {
@@ -70,12 +95,11 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
       return undefined;
     });
     this.categorySlideComponent.on(BaseCategorySlideComponent.Events.Media.Selected, async (event, media, optionalSearchResults) => {
-      switch (media.overallStatus) {
-        case SolutionManifest.Statuses.Processing:
-          return this.showProcessingDialog(media);
-        case SolutionManifest.Statuses.Error:
-          return this.showErrorDialog(media);
-        default: //do nothing
+      if (media.overallStatus === SolutionManifest.Statuses.Processing) {
+        return this.showProcessingDialog(media);
+      }
+      if (media.overallStatus === SolutionManifest.Statuses.Error) {
+        return this.showErrorDialog(media);
       }
       this.loading(true);
       await this.previewSlideComponent.setMedia(media, optionalSearchResults);
@@ -111,14 +135,13 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
 
     carousel.on('slide.bs.carousel', async (event) => {
       const id = $(event.relatedTarget).prop('id');
-      switch (id) {
-        case this.previewSlideComponent.slideId:
-          return this.previewSlideComponent.show();
-        case this.categorySlideComponent.slideId:
-          return this.categorySlideComponent.show();
-        default:
-          return undefined;
+      if (id === this.previewSlideComponent.slideId) {
+        return this.previewSlideComponent.show();
       }
+      if (id === this.categorySlideComponent.slideId) {
+        return this.categorySlideComponent.show();
+      }
+      return undefined;
     });
     return carousel;
   }
@@ -128,22 +151,22 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
   }
 
   async showProcessingDialog(media) {
-    const message = Localization.Messages.MediaInProcess
+    const message = MSG_MEDIA_INPROCESS
       .replace('{{BASENAME}}', media.basename)
-      .replace('{{PROCESSINGTAB}}', Localization.Messages.ProcessingTab);
+      .replace('{{PROCESSINGTAB}}', MSG_PROCESSING_TAB);
     return this.showDialog(media.basename, message);
   }
 
   async showErrorDialog(media) {
-    const message = Localization.Messages.MediaError
+    const message = MSG_MEDIA_ERROR
       .replace('{{BASENAME}}', media.basename)
-      .replace('{{PROCESSINGTAB}}', Localization.Messages.ProcessingTab);
+      .replace('{{PROCESSINGTAB}}', MSG_PROCESSING_TAB);
     return this.showDialog(media.basename, message);
   }
 
   async showRemoveMediaDialog(media) {
     let confirmed = false;
-    const message = Localization.Messages.RemoveMedia
+    const message = MSG_REMOVE_MEDIA
       .replace('{{BASENAME}}', media.basename);
     const yes = $('<button/>').addClass('btn btn-sm btn-outline-danger')
       .append('Yes, remove it');
@@ -165,7 +188,7 @@ export default class BaseMediaTab extends mxSpinner(BaseTabPlugins) {
       const close = $('<button/>').addClass('btn btn-sm btn-primary')
         .attr('type', 'button')
         .attr('data-dismiss', 'modal')
-        .append(Localization.Buttons.Close);
+        .append(BTN_CLOSE);
       const modal = $('<div/>').addClass('modal-dialog')
         .attr('role', 'document')
         .append($('<div/>').addClass('modal-content')

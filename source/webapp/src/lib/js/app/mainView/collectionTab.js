@@ -2,74 +2,112 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../shared/localization.js';
-import AppUtils from '../shared/appUtils.js';
 import VideoTab from './collection/videoTab.js';
 import PhotoTab from './collection/photoTab.js';
 import PodcastTab from './collection/podcastTab.js';
 import DocumentTab from './collection/documentTab.js';
 import SearchTab from './collection/searchTab.js';
-import RecommendTab from './collection/recommendTab.js';
 import BaseTab from '../shared/baseTab.js';
 
+const {
+  Messages: {
+    CollectionTab: TITLE,
+    VideoTab: MSG_VIDEO_TAB,
+    PhotoTab: MSG_PHOTO_TAB,
+    PodcastTab: MSG_PODCAST_TAB,
+    DocumentTab: MSG_DOCUMENT_TAB,
+    SearchTab: MSG_SEARCH_TAB,
+  },
+} = Localization;
+
+/* remove all spaces */
+const [
+  VIDEO_TAB,
+  PHOTO_TAB,
+  PODCAST_TAB,
+  DOCUMENT_TAB,
+  SEARCH_TAB,
+  RECOMMEND_TAB,
+] = [
+  MSG_VIDEO_TAB,
+  MSG_PHOTO_TAB,
+  MSG_PODCAST_TAB,
+  MSG_DOCUMENT_TAB,
+  MSG_SEARCH_TAB,
+].map((x) =>
+  x.replaceAll(' ', ''));
+
+const ORDERED_CONTROLLERS = [
+  VIDEO_TAB,
+  PHOTO_TAB,
+  PODCAST_TAB,
+  DOCUMENT_TAB,
+  SEARCH_TAB,
+  RECOMMEND_TAB,
+];
+
 export default class CollectionTab extends BaseTab {
-  constructor(defaultTab = false) {
-    super(Localization.Messages.CollectionTab, {
-      selected: defaultTab,
-    });
+  constructor() {
+    super(TITLE);
 
     this.$ids = {
       ...super.ids,
-      plugins: `plugins-${AppUtils.randomHexstring()}`,
-      tablist: `tablist-${AppUtils.randomHexstring()}`,
-      tabcontent: `tabcontent-${AppUtils.randomHexstring()}`,
+      tablist: `tablist-${this.id}`,
+      tabcontent: `tabcontent-${this.id}`,
     };
 
-    // reserve an area for sub-tab(s) to add additional menu item.
-    const plugins = $('<div/>').attr('id', this.$ids.plugins);
-
-    this.$tabControllers = [
-      new VideoTab(true, plugins),
-      new PhotoTab(false, plugins),
-      new PodcastTab(false, plugins),
-      new DocumentTab(false, plugins),
-      new SearchTab(false, plugins),
-    ];
-    if (RecommendTab.canSupport()) {
-      this.$tabControllers.push(new RecommendTab(false, plugins));
-    }
-    this.$tabControllers = this.$tabControllers
-      .reduce((acc, cur) => ({
-        ...acc,
-        [cur.tabId]: cur,
-      }), {});
-    this.$plugins = plugins;
+    this.$tabControllers = {
+      [VIDEO_TAB]: new VideoTab(),
+      [PHOTO_TAB]: new PhotoTab(),
+      [PODCAST_TAB]: new PodcastTab(),
+      [DOCUMENT_TAB]: new DocumentTab(),
+      [SEARCH_TAB]: new SearchTab(),
+    };
   }
 
   get ids() {
     return this.$ids;
   }
 
-  get plugins() {
-    return this.$plugins;
-  }
-
   get tabControllers() {
     return this.$tabControllers;
   }
 
-  async show() {
+  async show(hashtag) {
+    const {
+      current,
+      next,
+    } = this.parseHashtag(hashtag);
+
     if (!this.initialized) {
-      const navbar = $('<nav/>').addClass('navbar navbar-expand-lg navbar-light bg-light')
+      const navbar = $('<nav/>')
+        .addClass('navbar navbar-expand-lg navbar-light bg-light')
         .append(this.createTabToggle())
-        .append(this.createTabItems())
-        .append(this.plugins);
+        .append(this.createTabItems());
       this.tabContent.append(navbar);
       this.tabContent.append(this.createTabContents());
-      /* initialize the first shown tab */
-      const id = this.tabContent.find('.tab-pane.active.show').first().attr('aria-labelledby');
-      this.tabControllers[id].show();
     }
-    return super.show();
+
+    let activeController = this.tabControllers[current];
+    if (!activeController) {
+      const tabId = this.tabContent
+        .find('.tab-pane.active.show')
+        .attr('aria-labelledby');
+
+      if (tabId) {
+        activeController = Object.values(this.tabControllers)
+          .find((tabController) =>
+            tabController.tabId === tabId);
+      }
+    }
+
+    if (activeController) {
+      await activeController.show(next);
+    } else {
+      await this.tabControllers[VIDEO_TAB].show('');
+    }
+
+    return super.show(hashtag);
   }
 
   createTabToggle() {
@@ -86,25 +124,37 @@ export default class CollectionTab extends BaseTab {
 
   createTabItems() {
     const id = this.ids.tablist;
-    const navbar = $('<div/>').addClass('navbar-nav w-100')
-      .attr('role', 'tablist');
+    const container = $('<div/>')
+      .addClass('collapse navbar-collapse')
+      .attr('id', id);
 
-    Object.values(this.tabControllers).forEach((controller) => {
-      navbar.append(controller.tabLink);
+    const navbar = $('<div/>')
+      .addClass('navbar-nav w-100')
+      .attr('role', 'tablist');
+    container.append(navbar);
+
+    ORDERED_CONTROLLERS.forEach((name) => {
+      const tabController = this.tabControllers[name];
+      if (tabController !== undefined) {
+        navbar.append(tabController.tabLink);
+      }
     });
 
-    return $('<div/>').addClass('collapse navbar-collapse')
-      .attr('id', id)
-      .append(navbar);
+    return container;
   }
 
   createTabContents() {
-    const tabContents = $('<div/>').addClass('tab-content')
+    const tabContents = $('<div/>')
+      .addClass('tab-content')
       .attr('id', this.ids.tabcontent);
 
-    Object.values(this.tabControllers).forEach((controller) => {
-      tabContents.append(controller.tabContent);
+    ORDERED_CONTROLLERS.forEach((name) => {
+      const tabController = this.tabControllers[name];
+      if (tabController !== undefined) {
+        tabContents.append(tabController.tabContent);
+      }
     });
+
     return tabContents;
   }
 }

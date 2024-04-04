@@ -1,16 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
-const BacklogJob = require('../backlogJob');
+const {
+  TextractClient,
+  StartDocumentAnalysisCommand,
+  StartDocumentTextDetectionCommand,
+} = require('@aws-sdk/client-textract');
 const {
   Solution: {
     Metrics: {
@@ -18,12 +13,18 @@ const {
     },
   },
 } = require('../../shared/defs');
+const xraysdkHelper = require('../../shared/xraysdkHelper');
+const retryStrategyHelper = require('../../shared/retryStrategyHelper');
+const {
+  M2CException,
+} = require('../../shared/error');
+const BacklogJob = require('../backlogJob');
 
 class TextractBacklogJob extends BacklogJob {
   static get ServiceApis() {
     return {
-      StartDocumentAnalysis: 'textract:startDocumentAnalysis',
-      StartDocumentTextDetection: 'textract:startDocumentTextDetection',
+      StartDocumentAnalysis: 'textract:startdocumentanalysis',
+      StartDocumentTextDetection: 'textract:startdocumenttextdetection',
     };
   }
 
@@ -47,23 +48,28 @@ class TextractBacklogJob extends BacklogJob {
     return Object.values(TextractBacklogJob.ServiceApis).indexOf(serviceApi) >= 0;
   }
 
-  getTextractInstance() {
-    return new AWS.Textract({
-      apiVersion: '2018-06-27',
-      customUserAgent: CustomUserAgent,
-    });
-  }
-
-  bindToFunc(serviceApi) {
-    const textract = this.getTextractInstance();
-    switch (serviceApi) {
-      case TextractBacklogJob.ServiceApis.StartDocumentAnalysis:
-        return textract.startDocumentAnalysis.bind(textract);
-      case TextractBacklogJob.ServiceApis.StartDocumentTextDetection:
-        return textract.startDocumentTextDetection.bind(textract);
-      default:
-        return undefined;
+  async startJob(serviceApi, serviceParams) {
+    let command;
+    if (serviceApi === TextractBacklogJob.ServiceApis.StartDocumentAnalysis) {
+      command = new StartDocumentAnalysisCommand(serviceParams);
+    } else if (serviceApi === TextractBacklogJob.ServiceApis.StartDocumentTextDetection) {
+      command = new StartDocumentTextDetectionCommand(serviceParams);
+    } else {
+      console.error(
+        'ERR:',
+        'TextractBacklogJob.startJob:',
+        'not supported:',
+        serviceApi
+      );
+      throw new M2CException(`${serviceApi} not supported`);
     }
+
+    const textractClient = xraysdkHelper(new TextractClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    return textractClient.send(command);
   }
 
   async startAndRegisterJob(id, serviceApi, params) {
@@ -80,8 +86,13 @@ class TextractBacklogJob extends BacklogJob {
     return super.fetchAndStartJobs('textract', previousJob);
   }
 
-  noMoreQuotasException(code) {
-    return (code === 'LimitExceededException');
+  noMoreQuotasException(name) {
+    const errors = [
+      'LimitExceededException',
+      'ProvisionedThroughputExceededException',
+      'ThrottlingException',
+    ];
+    return errors.includes(name);
   }
 }
 

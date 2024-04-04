@@ -1,21 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  unmarshall,
+} = require('@aws-sdk/util-dynamodb');
+
 const RekognitionBacklogJob = require('../client/rekognition');
 const TranscribeBacklogJob = require('../client/transcribe');
 const ComprehendBacklogJob = require('../client/comprehend');
 const TextractBacklogJob = require('../client/textract');
 const MediaConvertBacklogJob = require('../client/mediaconvert');
 const CustomBacklogJob = require('../client/custom');
+const {
+  M2CException,
+} = require('../shared/error');
 
 const EVENT_SOURCE = 'aws:dynamodb';
 const EVENT_INSERT = 'INSERT';
@@ -75,7 +73,7 @@ class BacklogTableStream {
   sanityCheck() {
     const record = ((this.event || {}).Records || [])[0] || {};
     if (!record.dynamodb || record.eventSource !== EVENT_SOURCE) {
-      throw new Error('invalid record');
+      throw new M2CException('invalid record');
     }
   }
 
@@ -90,7 +88,7 @@ class BacklogTableStream {
     if (this.eventName === EVENT_MODIFY) {
       return this.onMODIFY();
     }
-    throw new Error(`invalid event, ${this.eventName}`);
+    throw new M2CException(`invalid event, ${this.eventName}`);
   }
 
   async onINSERT() {
@@ -106,40 +104,34 @@ class BacklogTableStream {
     let instance;
     if (RekognitionBacklogJob.isService(serviceApi)) {
       instance = new RekognitionBacklogJob();
-    }
-    else if (TranscribeBacklogJob.isService(serviceApi)) {
+    } else if (TranscribeBacklogJob.isService(serviceApi)) {
       instance = new TranscribeBacklogJob();
-    }
-    else if (ComprehendBacklogJob.isService(serviceApi)) {
+    } else if (ComprehendBacklogJob.isService(serviceApi)) {
       instance = new ComprehendBacklogJob();
-    }
-    else if (TextractBacklogJob.isService(serviceApi)) {
+    } else if (TextractBacklogJob.isService(serviceApi)) {
       instance = new TextractBacklogJob();
-    }
-    else if (MediaConvertBacklogJob.isService(serviceApi)) {
+    } else if (MediaConvertBacklogJob.isService(serviceApi)) {
       instance = new MediaConvertBacklogJob();
-    }
-    else if (CustomBacklogJob.isService(serviceApi)) {
+    } else if (CustomBacklogJob.isService(serviceApi)) {
       instance = new CustomBacklogJob();
     }
-    else {
-      instance = undefined;
-    }
+
     if (!instance) {
       return undefined;
     }
+
     const jobs = await instance.fetchAndStartJobs(serviceApi, this.oldImage);
     console.log(`onREMOVE: ${jobs.started.length}/${jobs.notStarted.length}/${jobs.total} [Started/NotStarted/TotalInQueue]\n${JSON.stringify(jobs, null, 2)}`);
     return jobs;
   }
 
   unmarshallData() {
-    this.keys = AWS.DynamoDB.Converter.unmarshall(this.dynamodb.Keys);
+    this.keys = unmarshall(this.dynamodb.Keys);
     if (this.dynamodb.OldImage) {
-      this.oldImage = AWS.DynamoDB.Converter.unmarshall(this.dynamodb.OldImage);
+      this.oldImage = unmarshall(this.dynamodb.OldImage);
     }
     if (this.dynamodb.NewImage) {
-      this.newImage = AWS.DynamoDB.Converter.unmarshall(this.dynamodb.NewImage);
+      this.newImage = unmarshall(this.dynamodb.NewImage);
     }
   }
 }

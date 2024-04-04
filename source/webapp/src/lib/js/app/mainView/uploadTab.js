@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../shared/localization.js';
-import AppUtils from '../shared/appUtils.js';
 import mxAlert from '../mixins/mxAlert.js';
 import DropzoneSlideComponent from './upload/dropzoneSlideComponent.js';
 import AttributeSlideComponent from './upload/attributeSlideComonent.js';
@@ -10,20 +9,32 @@ import AnalysisSlideComponent from './upload/analysisSlideComponent.js';
 import FinalizeSlideComponent from './upload/finalizeSlideComponent.js';
 import BaseTab from '../shared/baseTab.js';
 
+const {
+  Messages: {
+    UploadTab: TITLE,
+  },
+  Alerts: {
+    Oops: OOPS,
+  },
+} = Localization;
+
+const HASHTAG = TITLE.replaceAll(' ', '');
+
 export default class UploadTab extends mxAlert(BaseTab) {
-  constructor(defaultTab = false) {
-    super(Localization.Messages.UploadTab, {
-      selected: defaultTab,
+  constructor() {
+    super(TITLE, {
+      hashtag: HASHTAG,
     });
+
     this.$ids = {
       ...super.ids,
       carousel: {
-        container: `upload-${AppUtils.randomHexstring()}`,
+        container: `upload-${this.id}`,
         slides: {
-          dropzone: `upload-slide-${AppUtils.randomHexstring()}`,
-          attributes: `upload-slide-${AppUtils.randomHexstring()}`,
-          analysis: `upload-slide-${AppUtils.randomHexstring()}`,
-          finalize: `upload-slide-${AppUtils.randomHexstring()}`,
+          dropzone: `upload-dropzone-${this.id}`,
+          attributes: `upload-attributes-${this.id}`,
+          analysis: `upload-analysis-${this.id}`,
+          finalize: `upload-finalize-${this.id}`,
         },
       },
     };
@@ -53,13 +64,13 @@ export default class UploadTab extends mxAlert(BaseTab) {
     return this.$finalizeComponent;
   }
 
-  async show() {
+  async show(hashtag) {
     if (!this.initialized) {
       const row = $('<div/>').addClass('row no-gutters')
         .append(await this.createCarousel());
       this.tabContent.append(row);
     }
-    return super.show();
+    return super.show(hashtag);
   }
 
   async hide() {
@@ -91,6 +102,16 @@ export default class UploadTab extends mxAlert(BaseTab) {
       .attr('data-interval', false)
       .attr('id', this.ids.carousel.container)
       .append(inner);
+
+    /*
+    carousel.on('slide.bs.carousel', async (event) => {
+      const id = $(event.relatedTarget).prop('id');
+      if (id === this.analysisComponent.slideId) {
+        this.analysisComponent.reloadAnalysisSettings();
+      }
+      return true;
+    });
+    */
 
     return $('<div/>').addClass('col-9 col-sm-9 col-md-9 mx-auto mt-4')
       .append(carousel);
@@ -201,7 +222,13 @@ export default class UploadTab extends mxAlert(BaseTab) {
   }
 
   async showAlert(message, duration) {
-    return super.showMessage(this.tabContent, 'danger', Localization.Alerts.Oops, message, duration);
+    return super.showMessage(
+      this.tabContent,
+      'danger',
+      OOPS,
+      message,
+      duration
+    );
   }
 
   async clearComponentData() {

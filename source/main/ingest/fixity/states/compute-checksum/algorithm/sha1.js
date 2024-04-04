@@ -39,54 +39,53 @@ class SHA1Lib extends BaseLib {
 
     this.bytesRead = 0;
 
-    const responseData = await new Promise((resolve, reject) => {
-      const rusha = new Rusha(HEAP_SIZE);
-      rusha.resetState();
+    const rusha = new Rusha(HEAP_SIZE);
+    rusha.resetState();
 
-      if (this.intermediateHash) {
-        const buf = Buffer.from(this.intermediateHash.heap, 'base64');
-        const state = {
-          offset: this.intermediateHash.offset,
-          /* convert Base64 Buffer back to ArrayBuffer */
-          heap: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-        };
-        rusha.setState(state);
-      }
+    if (this.intermediateHash) {
+      const buf = Buffer.from(this.intermediateHash.heap, 'base64');
+      const state = {
+        offset: this.intermediateHash.offset,
+        /* convert Base64 Buffer back to ArrayBuffer */
+        heap: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+      };
+      rusha.setState(state);
+    }
 
-      const [
-        start,
-        end,
-      ] = this.calculateByteRange();
-      const stream = CommonUtils.createReadStream(src.bucket, src.key, {
-        Range: `bytes=${start}-${end}`,
-      });
+    const [
+      start,
+      end,
+    ] = this.calculateByteRange();
 
-      stream.on('error', e =>
-        reject(e));
+    const range = {
+      Range: `bytes=${start}-${end}`,
+    };
 
-      stream.on('data', async (data) => {
-        this.bytesRead += data.length;
-        rusha.append(data);
-      });
+    const stream = await CommonUtils.createReadStream(
+      src.bucket,
+      src.key,
+      range
+    );
 
-      stream.on('end', async () => {
-        if ((this.byteStart + this.bytesRead) >= this.fileSize) {
-          this.computed = rusha.end();
-          this.setChecksumCompleted();
-        } else {
-          const state = rusha.getState();
-          this.intermediateHash = {
-            offset: state.offset,
-            /* convert ArrayBuffer to Base64 Buffer string */
-            heap: Buffer.from(state.heap).toString('base64'),
-          };
-          this.setChecksumInProgress();
-        }
-        resolve(this.stateData.toJSON());
-      });
-    });
+    for await (const chunk of stream) {
+      this.bytesRead += chunk.length;
+      rusha.append(chunk);
+    }
 
-    return responseData;
+    if ((this.byteStart + this.bytesRead) >= this.fileSize) {
+      this.computed = rusha.end();
+      this.setChecksumCompleted();
+    } else {
+      const state = rusha.getState();
+      this.intermediateHash = {
+        offset: state.offset,
+        /* convert ArrayBuffer to Base64 Buffer string */
+        heap: Buffer.from(state.heap).toString('base64'),
+      };
+      this.setChecksumInProgress();
+    }
+
+    return this.stateData.toJSON();
   }
 }
 

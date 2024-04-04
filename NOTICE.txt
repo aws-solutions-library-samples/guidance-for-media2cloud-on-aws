@@ -1,22 +1,27 @@
 Media2Cloud Solution
 
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-Licensed under the Apache License Version 2.0 (the "License"). You may not use this file except
-in compliance with the License. A copy of the License is located at http://www.apache.org/licenses/
-or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
-specific language governing permissions and limitations under the License.
+
+Licensed under the Apache License, Version 2.0 (the "License").
+You may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 **********************
 THIRD PARTY COMPONENTS
 **********************
 This software includes third party software subject to the following copyrights:
 
-aws-sdk under the Apache License Version 2.0
-aws-xray-sdk under the Apache License Version 2.0
+AWS SDK under the Apache License Version 2.0
 Amazon Cognito Identity SDK for JavaScript under the Apache License Version 2.0
 AWS IoT SDK for JavaScript under the Apache License Version 2.0
-Elasticsearch Node.js client under the Apache License Version 2.0
 VideoJS under the Apache License Version 2.0
 JQuery under the Massachusetts Institute of Technology (MIT) license
 Bootstrap under the Massachusetts Institute of Technology (MIT) license
@@ -42,21 +47,10 @@ tar-stream under the Massachusetts Institute of Technology (MIT) license
 Jimp under the Massachusetts Institute of Technology (MIT) license
 PDF.JS under the Apache License Version 2.0
 @npcz/magic under the BSD-3-Clause License
-node-webvtt under the Massachusetts Institute of Technology (MIT) license
-@rollup/stream under the Massachusetts Institute of Technology (MIT) license
-glob under the Internet Systems Consortium (ISC) license
-rollup under the Massachusetts Institute of Technology (MIT) license
-terser under the BSD-2-Clause License
-@elastic/elasticsearch under the Apache License Version 2.0
-aws4 under the Massachusetts Institute of Technology (MIT) license
-mime under the Massachusetts Institute of Technology (MIT) license
-rusha under the Massachusetts Institute of Technology (MIT) license
-spark-md5 under the Massachusetts Institute of Technology (MIT) license
-jimp under the Massachusetts Institute of Technology (MIT) license
-pdfjs-dist under the Apache License Version 2.0
-canvas under the Massachusetts Institute of Technology (MIT) license
-amazon-cognito-identity-js under the Apache License Version 2.0
-aws-iot-device-sdk under the Apache License Version 2.0
-cropperjs under the Massachusetts Institute of Technology (MIT) license
-crypto-js under the Massachusetts Institute of Technology (MIT) license
-
+TinkerPop3 (Gremlin JS) under the Apache License Version 2.0
+OpenSearch Node.js client under the Apache License Version 2.0
+winkNLP under the Massachusetts Institute of Technology (MIT) license
+OWL-ViT (short for Vision Transformer for Open-World Localization) model under the Apache License Version 2.0
+CLIP (Contrastive Language-Image Pretraining) under the Massachusetts Institute of Technology (MIT) license
+FAISS under the Massachusetts Institute of Technology (MIT) license
+BLIP (Bootstrapping Language-Image Pre-training for Unified Vision-Language Understanding and Generation) under BSD 3-Clause "New" or "Revised" License

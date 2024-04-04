@@ -79,7 +79,7 @@ await backlog.startLabelDetection(uniqueId, params);
 
 ```
 
-The backlog client library implements the following services / APIs; however, the Media2Cloud uses only a subset of the APIs, indicated in the _Enabled?_ field.
+The backlog client library implements the following services / APIs; however, the Media2Cloud V3 solution uses only a subset of the APIs, indicated in the _Enabled?_ field.
 
 | Service | API | Comments | Enabled? |
 | :------ | :-- | :------- | :----------- |

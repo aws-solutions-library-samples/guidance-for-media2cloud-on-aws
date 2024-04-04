@@ -1,0 +1,20 @@
+{
+  "name": "videojs-contrib-ads-bundle",
+  "version": "2.0.0",
+  "description": "package videojs and videojs-contrib-ads for browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"bundle exists\" && exit 0",
+    "build:clean": "rm -rf dist && mkdir -p dist/js dist/css",
+    "build:copyvideojs": "cp -v ./node_modules/video.js/dist/video.min.js ./dist/js/video.js && cp -v ./node_modules/video.js/dist/video-js.min.css ./dist/css/video-js.min.css",
+    "build:copyvideoads": "cp -v ./node_modules/videojs-contrib-ads/dist/videojs.ads.min.js ./dist/js/videojs.ads.js && cp -v ./node_modules/videojs-contrib-ads/dist/videojs.ads.css ./dist/css/videojs.ads.css",
+    "build:copyvideojsoverlay": "cp -v ./node_modules/videojs-overlay/dist/videojs-overlay.min.js  ./dist/js/ && cp -v ./node_modules/videojs-overlay/dist/videojs-overlay.css ./dist/css/",
+    "build": "npm-run-all -s build:clean build:copyvideojs build:copyvideoads build:copyvideojsoverlay"
+  },
+  "author": "",
+  "license": "Apache 2.0",
+  "dependencies": {
+    "videojs-contrib-ads": "^7.5.0",
+    "videojs-overlay": "^3.1.0"
+  }
+}

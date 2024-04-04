@@ -1,6 +1,6 @@
 {
   "name": "echarts-js-bundle",
-  "version": "1.0.0",
+  "version": "5.0.0",
   "description": "package echarts from https://github.com/apache/incubator-echarts",
   "main": "index.js",
   "scripts": {
@@ -12,11 +12,7 @@
     "build:postbuild": "rm -rf temp",
     "build": "npm-run-all -s build:clean build:download build:unpack build:copy build:postbuild"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
-  "license": "Apache-2.0",
-  "devDependencies": {},
-  "private": true
+  "author": "",
+  "license": "Apache 2.0",
+  "devDependencies": {}
 }

@@ -8,7 +8,7 @@ const {
   Indexer,
 } = require('core-lib');
 
-const TYPE_VIDEO = 'video';
+const INDEX_CONTENT = Indexer.getContentIndex();
 
 class BaseAnalysisIndexer {
   constructor(stateData, subCategory) {
@@ -35,62 +35,50 @@ class BaseAnalysisIndexer {
   }
 
   async process() {
+    const uuid = this.stateData.uuid;
     const data = this.stateData.data[this.subCategory];
     const bucket = data.bucket;
-    const prefix = data.metadata;
-    if (!prefix) {
+    const path = data.metadata;
+    if (!path) {
       return this.setCompleted();
     }
 
-    let response;
-    const datasets = [];
-    do {
-      response = await CommonUtils.listObjects(bucket, prefix, {
-        ContinuationToken: (response || {}).NextContinuationToken,
-        MaxKeys: 200,
-      }).catch((e) =>
-        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
-      if (response && response.Contents) {
-        const dataset = await Promise.all(response.Contents.map((x) =>
-          this.downloadAndParseMetadata(bucket, x.Key)));
-        datasets.splice(datasets.length, 0, ...dataset);
-      }
-    } while ((response || {}).NextContinuationToken);
+    const datasets = await CommonUtils.download(
+      bucket,
+      path
+    ).then((res) =>
+      this.parseMetadata(
+        JSON.parse(res)
+      ))
+      .catch(() =>
+        undefined);
 
-    if (datasets.length > 0) {
-      const uuid = this.stateData.uuid;
+    if (datasets !== undefined && datasets.length > 0) {
       const indexer = new Indexer();
-      await indexer.indexDocument(this.subCategory, uuid, {
-        type: TYPE_VIDEO,
-        data: datasets,
-      }).catch((e) =>
-        console.error(`[ERR]: indexer.indexDocument: ${uuid}: ${this.subCategory}`, e));
+      await indexer.update(
+        INDEX_CONTENT,
+        this.stateData.uuid,
+        {
+          [this.subCategory]: datasets,
+        }
+      );
     }
+
     return this.setCompleted();
   }
 
-  async downloadAndParseMetadata(bucket, key) {
-    const datasets = await CommonUtils.download(bucket, key, false)
-      .then((res) =>
-        JSON.parse(res.Body))
-      .catch((e) =>
-        console.error(`[ERR]: CommonUtils.download: ${key} ${e.code} ${e.message}`));
-    if (!datasets || !datasets.length) {
-      return undefined;
-    }
-    const name = this.parseIndexName(datasets[0]);
-    const timecodes = datasets.map((x) => ({
-      begin: x.begin,
-      end: x.end,
-    }));
-    return {
-      name,
-      timecodes,
-    };
-  }
-
-  parseIndexName(dataset) {
-    return dataset.name.replace(/_/g, ' ');
+  parseMetadata(data) {
+    return Object.keys(data)
+      .map((name) => ({
+        name,
+        timecodes: data[name]
+          .map((x) => ({
+            begin: x.begin,
+            end: x.end,
+          })),
+      }))
+      .filter((x) =>
+        x.timecodes.length > 0);
   }
 
   setCompleted() {

@@ -1,17 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+  AdminListGroupsForUserCommand,
+  AdminCreateUserCommand,
+  AdminGetUserCommand,
+  AdminAddUserToGroupCommand,
+  AdminDeleteUserCommand,
+  /* exceptions */
+  InternalErrorException,
+  UsernameExistsException,
+  UserNotFoundException,
+} = require('@aws-sdk/client-cognito-identity-provider');
 const {
   Environment,
   CommonUtils,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const BaseOp = require('./baseOp');
 
@@ -19,21 +26,16 @@ const OP_USERS = 'users';
 const STATUS_ADDED = 'added';
 const STATUS_REMOVED = 'removed';
 const STATUS_ERROR = 'error';
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
+const USERPOOL_ID = Environment.Cognito.UserPoolId;
 
 class UsersOp extends BaseOp {
-  static createInstance() {
-    return new AWS.CognitoIdentityServiceProvider({
-      apiVersion: '2016-04-18',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-  }
-
   async onPOST() {
     const op = this.request.pathParameters.operation;
     if (op === OP_USERS) {
       return super.onPOST(await this.onPostUsers());
     }
-    throw new Error('UsersOp.onPOST not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onDELETE() {
@@ -41,7 +43,7 @@ class UsersOp extends BaseOp {
     if (op === OP_USERS) {
       return super.onDELETE(await this.onDeleteUsers());
     }
-    throw new Error('UsersOp.onDELETE not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onGET() {
@@ -49,93 +51,131 @@ class UsersOp extends BaseOp {
     if (op === OP_USERS) {
       return super.onGET(await this.onGetUsers());
     }
-    throw new Error('invalid operation');
+    throw new M2CException('invalid operation');
   }
 
   async onGetUsers() {
-    const idp = UsersOp.createInstance();
-
+    let command;
     let response;
-    const users = [];
+    let users = [];
+
     do {
-      response = await idp.listUsers({
-        UserPoolId: Environment.Cognito.UserPoolId,
+      const cognitoIdpClient = xraysdkHelper(new CognitoIdentityProviderClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      command = new ListUsersCommand({
+        UserPoolId: USERPOOL_ID,
         Limit: 10,
         PaginationToken: (response || {}).PaginationToken,
-      }).promise()
+      });
+
+      response = await cognitoIdpClient.send(command)
         .catch((e) => {
-          console.log(`[ERR]: onGetUsers: listUsers: ${e.code} ${e.message}`);
+          console.error(
+            'ERR:',
+            'UsersOp.onGetUers:',
+            'ListUsersCommand:',
+            e.$metadata.httpStatusCode,
+            e.name,
+            e.message
+          );
           return undefined;
         });
+
       if (response && response.Users.length) {
-        let responses = await Promise.all(response.Users.map((user) =>
-          idp.adminListGroupsForUser({
-            UserPoolId: Environment.Cognito.UserPoolId,
-            Username: user.Username,
-            Limit: 10,
-          }).promise()
-            .then((res) => {
-              const group = res.Groups.sort((a, b) =>
-                a.Precedence - b.Precedence)[0];
-              if (group === undefined) {
+        let responses = await Promise.all(response.Users
+          .map((user) => {
+            command = new AdminListGroupsForUserCommand({
+              UserPoolId: USERPOOL_ID,
+              Username: user.Username,
+              Limit: 10,
+            });
+
+            return cognitoIdpClient.send(command)
+              .then((res) => {
+                const group = res.Groups
+                  .sort((a, b) =>
+                    a.Precedence - b.Precedence)[0];
+                if (group === undefined) {
+                  return undefined;
+                }
+
+                const email = (user.Attributes
+                  .find((x) =>
+                    x.Name === 'email') || {})
+                  .Value;
+                if (email === undefined) {
+                  return undefined;
+                }
+
+                return {
+                  email,
+                  group: group.GroupName,
+                  lastModified: new Date(user.UserLastModifiedDate).getTime(),
+                  username: user.Username,
+                  status: user.UserStatus,
+                  enabled: user.Enabled,
+                };
+              })
+              .catch((e) => {
+                console.error(
+                  'ERR:',
+                  'UsersOp.onGetUers:',
+                  'AdminListGroupsForUserCommand:',
+                  e.$metadata.httpStatusCode,
+                  e.name,
+                  e.message
+                );
                 return undefined;
-              }
-              const email = (user.Attributes.find((x) =>
-                x.Name === 'email') || {}).Value;
-              if (email === undefined) {
-                return undefined;
-              }
-              return {
-                email,
-                group: group.GroupName,
-                lastModified: new Date(user.UserLastModifiedDate).getTime(),
-                username: user.Username,
-                status: user.UserStatus,
-                enabled: user.Enabled,
-              };
-            })
-            .catch((e) => {
-              console.log(`[ERR]: onGetUsers: adminListGroupsForUser: ${user.Username}: ${e.code} ${e.message}`);
-              return undefined;
-            })));
-        responses = responses.flat()
-          .filter((x) => x);
-        users.splice(users.length, 0, ...responses);
+              });
+          }));
+
+        responses = responses
+          .flat()
+          .filter((x) =>
+            x);
+        users = users.concat(responses);
       }
     } while ((response || {}).PaginationToken);
+
     return users;
   }
 
   async onPostUsers() {
     const users = this.request.body || [];
-    const idp = UsersOp.createInstance();
 
-    return Promise.all(users.map((user) =>
-      this.createUserInGroup(idp, {
-        userPoolId: Environment.Cognito.UserPoolId,
-        ...user,
-      })));
+    return Promise.all(users
+      .map((user) =>
+        this.createUserInGroup({
+          userPoolId: USERPOOL_ID,
+          ...user,
+        })));
   }
 
-  async createUserInGroup(idp, user) {
+  async createUserInGroup(user) {
     try {
       if (!CommonUtils.validateEmailAddress(user.email)) {
-        const err = new Error('invalid email address');
-        err.code = 'InvalidParameterError';
-        throw err;
+        throw new M2CException('invalid email address');
       }
+
       let username = user.username;
       if (username === undefined || username.length === 0) {
         username = user.email.split('@').filter(x =>
           x).shift();
       }
       if (!CommonUtils.validateUsername(username)) {
-        const err = new Error('invalid username');
-        err.code = 'InvalidParameterError';
-        throw err;
+        throw new M2CException('invalid username');
       }
 
-      let response = await idp.adminCreateUser({
+      const cognitoIdpClient = xraysdkHelper(new CognitoIdentityProviderClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      let command;
+      command = new AdminCreateUserCommand({
         UserPoolId: user.userPoolId,
         Username: username,
         DesiredDeliveryMediums: [
@@ -151,11 +191,13 @@ class UsersOp extends BaseOp {
             Value: 'true',
           },
         ],
-      }).promise()
+      });
+
+      let response = await cognitoIdpClient.send(command)
         .then((res) =>
           res.User)
         .catch((e) => {
-          if (e.code === 'UsernameExistsException') {
+          if (e instanceof UsernameExistsException) {
             return undefined;
           }
           throw e;
@@ -163,41 +205,49 @@ class UsersOp extends BaseOp {
 
       /* user already exits, gets the user information */
       if (response === undefined) {
-        response = await idp.adminGetUser({
+        command = new AdminGetUserCommand({
           UserPoolId: user.userPoolId,
           Username: username,
-        }).promise()
+        });
+
+        response = await cognitoIdpClient.send(command)
           .catch((e) => {
-            console.log(`[ERR]: adminGetUser: ${username}: ${e.code} - ${e.message}`);
+            console.error(
+              'ERR:',
+              'UsersOp.createUserInGroup:',
+              'AdminGetUserCommand:',
+              e.$metadata.httpStatusCode,
+              e.name,
+              e.message
+            );
             throw e;
           });
       }
 
       if (!response) {
-        const err = new Error(`fail to add user, ${user.email}`);
-        err.code = 'UnknownError';
-        throw err;
+        throw new InternalErrorException(`fail to add user, ${user.email}`);
       }
 
       /* add user to group */
-      await idp.adminAddUserToGroup({
+      command = new AdminAddUserToGroupCommand({
         GroupName: user.group,
         UserPoolId: user.userPoolId,
         Username: response.Username,
-      }).promise();
+      });
 
-      return {
-        email: user.email,
-        group: user.group,
-        status: response.UserStatus,
-        username: response.Username,
-        enabled: response.Enabled,
-        lastModified: new Date(response.UserLastModifiedDate).getTime(),
-      };
+      return cognitoIdpClient.send(command)
+        .then(() => ({
+          email: user.email,
+          group: user.group,
+          status: response.UserStatus,
+          username: response.Username,
+          enabled: response.Enabled,
+          lastModified: new Date(response.UserLastModifiedDate).getTime(),
+        }));
     } catch (e) {
       return {
         status: STATUS_ERROR,
-        error: `${e.code} - ${e.message}`,
+        error: `${e.name} - ${e.message}`,
         email: user.email,
         group: user.group,
       };
@@ -210,26 +260,32 @@ class UsersOp extends BaseOp {
     } = this.request.queryString || {};
 
     try {
-      const idp = UsersOp.createInstance();
-      await idp.adminDeleteUser({
-        UserPoolId: Environment.Cognito.UserPoolId,
+      const cognitoIdpClient = xraysdkHelper(new CognitoIdentityProviderClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      const command = new AdminDeleteUserCommand({
+        UserPoolId: USERPOOL_ID,
         Username: user,
-      }).promise()
+      });
+
+      return cognitoIdpClient.send(command)
+        .then(() => ({
+          user,
+          status: STATUS_REMOVED,
+        }))
         .catch((e) => {
-          if (e.code === 'UserNotFoundException') {
+          if (e instanceof UserNotFoundException) {
             return undefined;
           }
           throw e;
         });
-      return {
-        user,
-        status: STATUS_REMOVED,
-      };
     } catch (e) {
       return {
         user,
         status: STATUS_ERROR,
-        error: `${e.code} - ${e.message}`,
+        error: `${e.name} - ${e.message}`,
       };
     }
   }

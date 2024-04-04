@@ -1,18 +1,36 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  RekognitionClient,
+  ListCollectionsCommand,
+  CreateCollectionCommand,
+  DescribeCollectionCommand,
+  DeleteCollectionCommand,
+  ListFacesCommand,
+  DeleteFacesCommand,
+  DescribeProjectsCommand,
+  DescribeProjectVersionsCommand,
+} = require('@aws-sdk/client-rekognition');
 const PATH = require('path');
 const {
-  Environment,
+  Environment: {
+    Solution: {
+      Metrics: {
+        CustomUserAgent,
+      },
+    },
+    Proxy: {
+      Bucket: ProxyBucket,
+    },
+  },
+  ApiOps: {
+    FaceIndexer: OP_FACEINDEXER,
+  },
   CommonUtils,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const BaseOp = require('./baseOp');
 
@@ -29,27 +47,61 @@ const PROJECT_VERSIONS_INVALID_STATUS = [
   'FAILED',
   'DELETING',
 ];
-/* misc. */
+// misc.
 const DEFAULT_PAGESIZE = 100;
 const PREFIX_FACECOLLECTION = 'face-collection';
 
-class RekognitionOp extends BaseOp {
-  static createInstance() {
-    return new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-  }
+async function _runCommand(command) {
+  const rekognitionClient = xraysdkHelper(new RekognitionClient({
+    customUserAgent: CustomUserAgent,
+    retryStrategy: retryStrategyHelper(),
+  }));
 
+  return rekognitionClient.send(command)
+    .then((res) => {
+      delete res.$metadata;
+      return res;
+    })
+    .catch((e) => {
+      console.warn(
+        'WARN:',
+        'FaceIndexer._runCommand:',
+        `${command.constructor.name}:`,
+        e.$metadata.httpStatusCode,
+        e.name,
+        e.message,
+        JSON.stringify(command.input)
+      );
+      throw e;
+    });
+}
+
+async function _describeCollection(collectionId) {
+  const command = new DescribeCollectionCommand({
+    CollectionId: collectionId,
+  });
+
+  return _runCommand(command)
+    .then((res) => ({
+      name: collectionId,
+      faces: res.FaceCount,
+      modelVersion: res.FaceModelVersion,
+      creationDate: new Date(res.CreationTimestamp),
+    }))
+    .catch(() =>
+      undefined);
+}
+
+class RekognitionOp extends BaseOp {
   async onPOST() {
     const op = this.request.pathParameters.uuid;
     if (op === OP_FACECOLLECTION) {
       return super.onPOST(await this.onPostFaceCollection());
     }
     if (op === OP_FACE) {
-      return super.onPOST(await this.onPostFace());
+      throw new M2CException(`Deprecated. Use /${OP_FACEINDEXER} instead.`);
     }
-    throw new Error('RekognitionOp.onPOST not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onDELETE() {
@@ -58,9 +110,9 @@ class RekognitionOp extends BaseOp {
       return super.onDELETE(await this.onDeleteFaceCollection());
     }
     if (op === OP_FACE) {
-      return super.onDELETE(await this.onDeleteFace());
+      throw new M2CException(`Deprecated. Use /${OP_FACEINDEXER} instead.`);
     }
-    throw new Error('RekognitionOp.onDELETE not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onGET() {
@@ -72,73 +124,71 @@ class RekognitionOp extends BaseOp {
       return super.onGET(await this.onGetFaceCollection());
     }
     if (op === OP_FACES) {
-      return super.onGET(await this.onGetFaces());
+      throw new M2CException(`Deprecated. Use /${OP_FACEINDEXER} instead.`);
+      // return super.onGET(await this.onGetFaces());
     }
     if (op === OP_FACE) {
-      return super.onGET(await this.onGetFace());
+      throw new M2CException(`Deprecated. Use /${OP_FACEINDEXER} instead.`);
+      // return super.onGET(await this.onGetFace());
     }
     if (op === OP_CUSTOMLABELS) {
       return super.onGET(await this.onGetCustomLabelModels());
     }
-    throw new Error('invalid operation');
+    throw new M2CException('invalid operation');
   }
 
   async onGetFaceCollections() {
-    const rekog = RekognitionOp.createInstance();
-
     let response;
-    const collectionIds = [];
+    let command;
+    let collectionIds = [];
     do {
-      response = await rekog.listCollections({
+      command = new ListCollectionsCommand({
         MaxResults: 20,
         NextToken: (response || {}).NextToken,
-      }).promise()
-        .catch(() => undefined);
+      });
+
+      response = await _runCommand(command)
+        .catch(() =>
+          undefined);
+
       if (response && response.CollectionIds.length) {
-        const responses = await Promise.all(response.CollectionIds.map((x) =>
-          rekog.describeCollection({
-            CollectionId: x,
-          }).promise()
-            .then((res) => ({
-              name: x,
-              faces: res.FaceCount,
-              modelVersion: res.FaceModelVersion,
-              creationDate: new Date(res.CreationTimestamp),
-            }))
-            .catch(() => undefined)));
-        collectionIds.splice(collectionIds.length, 0, ...responses.filter((x) => x));
+        const responses = await Promise.all(response.CollectionIds
+          .map((collectionId) =>
+            _describeCollection(collectionId)));
+
+        collectionIds = collectionIds
+          .concat(responses
+            .filter((x) =>
+              x));
       }
     } while ((response || {}).NextToken);
+
     return collectionIds;
   }
 
   async onGetFaceCollection() {
     const qs = this.request.queryString || {};
     if (!CommonUtils.validateFaceCollectionId(qs.collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
-    const rekog = RekognitionOp.createInstance();
-    return rekog.describeCollection({
-      CollectionId: qs.collectionId,
-    }).promise()
-      .then((res) => ({
-        name: qs.collectionId,
-        faces: res.FaceCount,
-        modelVersion: res.FaceModelVersion,
-        creationDate: new Date(res.CreationTimestamp),
-      }));
+
+    return _describeCollection(qs.collectionId);
   }
 
   async onPostFaceCollection() {
-    const params = this.request.body || {};
-    const collectionId = params.collectionId;
+    const {
+      collectionId,
+    } = this.request.body || {};
+
     if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
-    const rekog = RekognitionOp.createInstance();
-    return rekog.createCollection({
+
+    const command = new CreateCollectionCommand({
       CollectionId: collectionId,
-    }).promise()
+    });
+
+    return _runCommand(command)
       .then((res) => ({
         name: collectionId,
         faces: 0,
@@ -146,67 +196,86 @@ class RekognitionOp extends BaseOp {
         creationDate: new Date(),
       }))
       .catch((e) => ({
-        errorCode: e.code,
+        errorCode: e.name,
         errorMessage: e.message,
       }));
   }
 
   async onDeleteFaceCollection() {
-    const qs = this.request.queryString || {};
-    const collectionId = qs.collectionId;
+    const {
+      collectionId,
+    } = this.request.queryString || {};
+
     if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
-    const rekog = RekognitionOp.createInstance();
-    return rekog.deleteCollection({
+
+    const command = new DeleteCollectionCommand({
       CollectionId: collectionId,
-    }).promise()
+    });
+
+    return _runCommand(command)
       .then((res) => ({
-        statusCode: res.StatusCode,
+        statusCode: res.$metadata.httpStatusCode,
       }))
       .catch((e) => ({
-        errorCode: e.code,
+        errorCode: e.name,
         errorMessage: e.message,
       }));
   }
 
   async onGetFaces() {
     const qs = this.request.queryString || {};
+
     const collectionId = qs.collectionId;
     const token = qs.token && decodeURIComponent(qs.token);
     const pageSize = Number(qs.pageSize || DEFAULT_PAGESIZE);
     if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
-    const rekog = RekognitionOp.createInstance();
-    const responses = await rekog.listFaces({
+
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new ListFacesCommand({
       CollectionId: collectionId,
       MaxResults: pageSize,
       NextToken: token,
-    }).promise()
+    });
+
+    const responses = await rekognitionClient.send(command)
       .then((res) => ({
-        faces: res.Faces.map((x) => ({
-          externalImageId: x.ExternalImageId,
-          faceId: x.FaceId,
-        })),
+        faces: res.Faces
+          .map((x) => ({
+            externalImageId: x.ExternalImageId,
+            faceId: x.FaceId,
+          })),
         token: res.NextToken,
       }))
       .catch(() => ({
         faces: [],
       }));
+
     /* check if face images are stored in Proxy bucket */
     if (responses.faces.length) {
-      const bucket = Environment.Proxy.Bucket;
-      responses.faces = await Promise.all(responses.faces.map((face) => {
-        const key = PATH.join(PREFIX_FACECOLLECTION, collectionId, `${face.faceId}.png`);
-        return CommonUtils.headObject(bucket, key)
-          .then(() => ({
-            ...face,
-            key,
-          }))
-          .catch(() => face);
-      }));
+      const bucket = ProxyBucket;
+      responses.faces = await Promise.all(responses.faces
+        .map((face) => {
+          // eslint-disable-next-line
+          // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+          const key = PATH.join(PREFIX_FACECOLLECTION, collectionId, `${face.faceId}.png`);
+          return CommonUtils.headObject(bucket, key)
+            .then(() => ({
+              ...face,
+              key,
+            }))
+            .catch(() =>
+              face);
+        }));
     }
+
     return responses;
   }
 
@@ -216,84 +285,55 @@ class RekognitionOp extends BaseOp {
       faceId,
     } = this.request.queryString || {};
     if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
     if (!CommonUtils.validateUuid(faceId)) {
-      throw new Error('invalid face id');
+      throw new M2CException('invalid face id');
     }
+
+    let command;
     let response;
-    const rekog = RekognitionOp.createInstance();
     do {
-      response = await rekog.listFaces({
+      const rekognitionClient = xraysdkHelper(new RekognitionClient({
+        customUserAgent: CustomUserAgent,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      command = new ListFacesCommand({
         CollectionId: collectionId,
         MaxResults: 100,
         NextToken: (response || {}).NextToken,
-      }).promise()
-        .catch(() => undefined);
-      const found = ((response || {}).Faces || []).find((x) =>
-        x.FaceId === faceId);
+      });
+
+      response = await rekognitionClient.send(command)
+        .catch(() =>
+          undefined);
+
+      const found = ((response || {}).Faces || [])
+        .find((x) =>
+          x.FaceId === faceId);
+
       if (found) {
-        const bucket = Environment.Proxy.Bucket;
-        const key = PATH.join(PREFIX_FACECOLLECTION, collectionId, `${found.faceId}.png`);
+        const bucket = ProxyBucket;
+        const key = PATH.join(
+          PREFIX_FACECOLLECTION,
+          collectionId,
+          `${found.faceId}.png`
+        );
+
         return {
           externalImageId: found.ExternalImageId,
           faceId: found.FaceId,
           key: await CommonUtils.headObject(bucket, key)
-            .then((res) => res.Key)
-            .catch(() => undefined),
+            .then((res) =>
+              res.Key)
+            .catch(() =>
+              undefined),
         };
       }
     } while ((response || {}).NextToken);
-    return {};
-  }
 
-  async onPostFace() {
-    const {
-      collectionId,
-      blob,
-      externalImageId,
-    } = this.request.body || {};
-    if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
-    }
-    if (!CommonUtils.validateFaceCollectionId(externalImageId)) {
-      throw new Error('invalid external image id');
-    }
-    if (!CommonUtils.validateImageBlob(blob)) {
-      throw new Error('invalid blob');
-    }
-    const buf = Buffer.from(blob.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    const rekog = RekognitionOp.createInstance();
-    const response = await rekog.indexFaces({
-      CollectionId: collectionId,
-      ExternalImageId: externalImageId,
-      Image: {
-        Bytes: buf,
-      },
-      DetectionAttributes: [
-        'DEFAULT',
-      ],
-      MaxFaces: 1,
-      QualityFilter: 'AUTO',
-    }).promise()
-      .then((res) => ({
-        externalImageId: res.FaceRecords[0].Face.ExternalImageId,
-        faceId: res.FaceRecords[0].Face.FaceId,
-      }))
-      .catch((e) => ({
-        errorCode: e.code,
-        errorMessage: e.message,
-      }));
-    if ((response || {}).faceId) {
-      const bucket = Environment.Proxy.Bucket;
-      const prefix = PATH.join(PREFIX_FACECOLLECTION, collectionId);
-      const name = `${response.faceId}.png`;
-      const key = await CommonUtils.uploadFile(bucket, prefix, name, buf)
-        .then(() => PATH.join(prefix, name))
-        .catch(() => undefined);
-      response.key = key;
-    }
-    return response;
+    return {};
   }
 
   async onDeleteFace() {
@@ -302,65 +342,110 @@ class RekognitionOp extends BaseOp {
       faceId,
     } = this.request.queryString || {};
     if (!CommonUtils.validateFaceCollectionId(collectionId)) {
-      throw new Error('invalid collection id');
+      throw new M2CException('invalid collection id');
     }
     if (!CommonUtils.validateUuid(faceId)) {
-      throw new Error('invalid face id');
+      throw new M2CException('invalid face id');
     }
-    const bucket = Environment.Proxy.Bucket;
-    const key = PATH.join(PREFIX_FACECOLLECTION, collectionId, `${faceId}.png`);
-    const rekog = RekognitionOp.createInstance();
-    return Promise.all([
-      rekog.deleteFaces({
-        CollectionId: collectionId,
-        FaceIds: [
-          faceId,
-        ],
-      }).promise()
-        .catch(() => undefined),
-      CommonUtils.deleteObject(bucket, key)
-        .catch(() => undefined),
-    ]).then(() => ({
-      faceId,
+    const bucket = ProxyBucket;
+    const key = PATH.join(
+      PREFIX_FACECOLLECTION,
+      collectionId,
+      `${faceId}.png`
+    );
+
+    const promises = [];
+
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
     }));
+
+    const command = new DeleteFacesCommand({
+      CollectionId: collectionId,
+      FaceIds: [
+        faceId,
+      ],
+    });
+
+    promises.push(rekognitionClient.send(command)
+      .catch(() =>
+        undefined));
+
+    promises.push(CommonUtils.deleteObject(bucket, key)
+      .catch(() =>
+        undefined));
+
+    return Promise.all(promises)
+      .then(() => ({
+        faceId,
+      }));
   }
 
   async onGetCustomLabelModels() {
-    const rekog = RekognitionOp.createInstance();
-
+    let command;
     let response;
-    const projectArns = [];
+    let projectArns = [];
+
     do {
-      response = await rekog.describeProjects({
+      const rekognitionClient = xraysdkHelper(new RekognitionClient({
+        customUserAgent: CustomUserAgent,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      command = new DescribeProjectsCommand({
         MaxResults: 100,
         NextToken: (response || {}).NextToken,
-      }).promise().catch(() => undefined);
+      });
+
+      response = await rekognitionClient.send(command)
+        .catch(() =>
+          undefined);
+
       if (response && response.ProjectDescriptions.length) {
         const filtered = response.ProjectDescriptions
-          .filter(x => x.Status === PROJECT_CREATED)
-          .map(x => ({
+          .filter((x) =>
+            x.Status === PROJECT_CREATED)
+          .map((x) => ({
             name: x.ProjectArn,
           }));
-        projectArns.splice(projectArns.length, 0, ...filtered);
+
+        projectArns = projectArns.concat(filtered);
       }
     } while ((response || {}).NextToken);
+
     /* make sure there are runnable project versions */
-    await Promise.all(projectArns.map(projectArn =>
-      rekog.describeProjectVersions({
-        ProjectArn: projectArn.name,
-        MaxResults: 100,
-      }).promise().then(data => {
-        const canUse = data.ProjectVersionDescriptions.find(x0 =>
-          PROJECT_VERSIONS_INVALID_STATUS.find(x1 =>
-            x1 === x0.Status) === undefined) !== undefined;
-        projectArn.canUse = !!(canUse);
-      }).catch(() => {
-        projectArn.canUse = false;
-      })));
-    return projectArns.map(x => ({
-      ...x,
-      name: x.name.substring(x.name.indexOf('/') + 1),
-    }));
+    await Promise.all(projectArns
+      .map((projectArn) => {
+        const rekognitionClient = xraysdkHelper(new RekognitionClient({
+          customUserAgent: CustomUserAgent,
+          retryStrategy: retryStrategyHelper(),
+        }));
+
+        command = new DescribeProjectVersionsCommand({
+          ProjectArn: projectArn.name,
+          MaxResults: 100,
+        });
+
+        return rekognitionClient.send(command)
+          .then((res) => {
+            const canUse = res.ProjectVersionDescriptions
+              .find((x0) =>
+                PROJECT_VERSIONS_INVALID_STATUS
+                  .find((x1) =>
+                    x1 === x0.Status) === undefined) !== undefined;
+            projectArn.canUse = !!(canUse);
+          })
+          .catch(() => {
+            projectArn.canUse = false;
+          });
+      }));
+
+    return projectArns
+      .map((x) => ({
+        ...x,
+        name: x.name.substring(x.name.indexOf('/') + 1),
+      }));
   }
 }
 

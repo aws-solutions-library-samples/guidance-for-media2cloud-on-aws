@@ -1,16 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
-const Retry = require('../shared/retry');
+const {
+  DynamoDBClient,
+  QueryCommand,
+  DeleteItemCommand,
+  PutItemCommand,
+  UpdateItemCommand,
+} = require('@aws-sdk/client-dynamodb');
 const {
   DynamoDB: DDB,
   Solution: {
@@ -19,10 +16,21 @@ const {
     },
   },
 } = require('../shared/defs');
+const xraysdkHelper = require('../shared/xraysdkHelper');
+const retryStrategyHelper = require('../shared/retryStrategyHelper');
+const {
+  marshalling,
+  unmarshalling,
+} = require('../shared/ddbHelper');
+const {
+  M2CException,
+} = require('../shared/error');
 
 const TTL_MIN = 60;
 const TTL_MAX = 172800;
 const TTL_DEFAULT = 86400;
+
+const MAX_ATTEMPTS = 10;
 
 /**
  * Main table: id-serviceApi
@@ -43,7 +51,7 @@ class BacklogTable {
 
   static getTable() {
     if (!DDB.Name) {
-      throw new Error('missing environment variable');
+      throw new M2CException('missing environment variable');
     }
     return {
       name: DDB.Name,
@@ -54,7 +62,7 @@ class BacklogTable {
 
   static getStatusGSI() {
     if (!DDB.Name || !DDB.GSI.Status.Index) {
-      throw new Error('missing environment variable');
+      throw new M2CException('missing environment variable');
     }
     return {
       name: DDB.Name,
@@ -66,7 +74,7 @@ class BacklogTable {
 
   static getJobIdGSI() {
     if (!DDB.Name || !DDB.GSI.JobId.Index) {
-      throw new Error('missing environment variable');
+      throw new M2CException('missing environment variable');
     }
     return {
       name: DDB.Name,
@@ -75,41 +83,91 @@ class BacklogTable {
     };
   }
 
-  static getDocumentClient() {
-    return new AWS.DynamoDB.DocumentClient({
-      apiVersion: '2012-08-10',
-      customUserAgent: CustomUserAgent,
-    });
-  }
-
   static async createItem(params) {
-    const db = BacklogTable.getDocumentClient();
-    return Retry.run(db.put.bind(db), params, 10);
+    const marshalled = marshalling(params);
+
+    const ddbClient = xraysdkHelper(new DynamoDBClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(MAX_ATTEMPTS),
+    }));
+
+    const command = new PutItemCommand(marshalled);
+
+    return ddbClient.send(command)
+      .then((res) => {
+        const unmarshalled = unmarshalling(res);
+        return {
+          ...unmarshalled,
+          $metadata: undefined,
+        };
+      });
   }
 
   static async updateItem(params) {
-    const db = BacklogTable.getDocumentClient();
-    return Retry.run(db.update.bind(db), params, 10);
+    const marshalled = marshalling(params);
+
+    const ddbClient = xraysdkHelper(new DynamoDBClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(MAX_ATTEMPTS),
+    }));
+
+    const command = new UpdateItemCommand(marshalled);
+
+    return ddbClient.send(command)
+      .then((res) => {
+        const unmarshalled = unmarshalling(res);
+        return {
+          ...unmarshalled,
+          $metadata: undefined,
+        };
+      });
   }
 
   static async deleteItem(params) {
-    const db = BacklogTable.getDocumentClient();
-    return Retry.run(db.delete.bind(db), params, 10);
+    const marshalled = marshalling(params);
+
+    const ddbClient = xraysdkHelper(new DynamoDBClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(MAX_ATTEMPTS),
+    }));
+
+    const command = new DeleteItemCommand(marshalled);
+
+    return ddbClient.send(command)
+      .then((res) => {
+        const unmarshalled = unmarshalling(res);
+        return {
+          ...unmarshalled,
+          $metadata: undefined,
+        };
+      });
   }
 
   static async queryItems(params, limit = 10) {
-    const db = BacklogTable.getDocumentClient();
-    const fn = db.query.bind(db);
+    const marshalled = marshalling(params);
+    let lastEvaluatedKey;
+    let items = [];
 
-    let response;
-    const items = [];
     do {
-      response = await Retry.run(fn, {
-        ...params,
-        ExclusiveStartKey: (response || {}).LastEvaluatedKey,
+      const ddbClient = xraysdkHelper(new DynamoDBClient({
+        customUserAgent: CustomUserAgent,
+        retryStrategy: retryStrategyHelper(MAX_ATTEMPTS),
+      }));
+
+      const command = new QueryCommand({
+        ...marshalled,
+        ExclusiveStartKey: lastEvaluatedKey,
       });
-      items.splice(items.length, 0, ...response.Items);
-    } while (response.LastEvaluatedKey && items.length < limit);
+
+      await ddbClient.send(command)
+        .then((res) => {
+          lastEvaluatedKey = res.LastEvaluatedKey;
+
+          const unmarshalled = unmarshalling(res);
+          items = items.concat(unmarshalled.Items);
+        });
+    } while (lastEvaluatedKey && items.length < limit);
+
     return items;
   }
 }

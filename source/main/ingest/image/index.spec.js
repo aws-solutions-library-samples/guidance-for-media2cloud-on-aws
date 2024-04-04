@@ -26,7 +26,7 @@ const event_StateRunImageInfo = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-east-1-ingest",
       "key": "bigtree/bigtree.jpeg",
       "uuid": "6c3d2a4b-4cbb-2563-c693-b4514c0c0a49",
       "aiOptions": {
@@ -64,7 +64,7 @@ const event_StateRunImageInfo = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-east-1-proxy",
         "prefix": "6c3d2a4b-4cbb-2563-c693-b4514c0c0a49/bigtree/"
       },
       "type": "image"

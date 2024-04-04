@@ -1,0 +1,105 @@
+{
+    "Comment": "frame based detection state machine, substate of analysis video workflow. Uses Amazon Rekognition Image APIs",
+    "StartAt": "Detect frame",
+    "States": {
+        "Detect frame": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "detect-frame-iterator",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "Next": "More frames?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More frames?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Reset status for track creation"
+                }
+            ],
+            "Default": "Detect frame"
+        },
+        "Reset status for track creation": {
+            "Type": "Pass",
+            "Parameters": {
+                "operation": "create-track-iterator",
+                "uuid.$": "$.uuid",
+                "data.$": "$.data",
+                "status": "NOT_STARTED",
+                "progress": 0
+            },
+            "Next": "Create frame based track"
+        },
+        "Create frame based track": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "create-track-iterator",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "Next": "More frame based tracks?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More frame based tracks?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Index frame based analysis"
+                }
+            ],
+            "Default": "Create frame based track"
+        },
+        "Index frame based analysis": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "index-analysis-results",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        }
+    }
+}

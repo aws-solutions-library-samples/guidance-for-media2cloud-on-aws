@@ -30,13 +30,13 @@ const event_StateCollectAnalysisResults = {
     "parallelStateOutputs": [
       {
         "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
-        "stateMachine": "so0050-0a709c9ee415-analysis-main",
+        "stateMachine": "so0050-111111111111-analysis-main",
         "operation": "prepare-analysis",
         "overallStatus": "PROCESSING",
         "status": "ANALYSIS_STARTED",
         "progress": 100,
         "input": {
-          "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+          "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
           "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
           "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
           "aiOptions": {
@@ -74,7 +74,7 @@ const event_StateCollectAnalysisResults = {
           },
           "attributes": {},
           "destination": {
-            "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+            "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
             "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
           },
           "video": {
@@ -104,13 +104,13 @@ const event_StateCollectAnalysisResults = {
       },
       {
         "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
-        "stateMachine": "so0050-0a709c9ee415-analysis-main",
+        "stateMachine": "so0050-111111111111-analysis-main",
         "operation": "prepare-analysis",
         "overallStatus": "PROCESSING",
         "status": "ANALYSIS_STARTED",
         "progress": 100,
         "input": {
-          "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+          "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
           "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
           "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
           "aiOptions": {
@@ -148,7 +148,7 @@ const event_StateCollectAnalysisResults = {
           },
           "attributes": {},
           "destination": {
-            "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+            "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
             "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
           },
           "video": {
@@ -178,13 +178,13 @@ const event_StateCollectAnalysisResults = {
       },
       {
         "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
-        "stateMachine": "so0050-0a709c9ee415-analysis-main",
+        "stateMachine": "so0050-111111111111-analysis-main",
         "operation": "prepare-analysis",
         "overallStatus": "PROCESSING",
         "status": "ANALYSIS_STARTED",
         "progress": 100,
         "input": {
-          "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+          "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
           "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
           "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
           "aiOptions": {
@@ -222,7 +222,7 @@ const event_StateCollectAnalysisResults = {
           },
           "attributes": {},
           "destination": {
-            "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+            "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
             "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
           },
           "video": {
@@ -251,18 +251,18 @@ const event_StateCollectAnalysisResults = {
         "data": {}
       },
       {
-        "ExecutionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
-        "Input": "{\"status\":\"NOT_STARTED\",\"progress\":0,\"input\":{\"bucket\":\"so0050-0a709c9ee415-account-number-us-west-2-ingest\",\"key\":\"Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf\",\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"aiOptions\":{\"sentiment\":true,\"textROI\":[false,false,false,false,false,false,false,false,false],\"framebased\":false,\"celeb\":true,\"frameCaptureMode\":0,\"keyphrase\":true,\"label\":true,\"languageCode\":\"en-US\",\"facematch\":false,\"transcribe\":true,\"face\":true,\"customentity\":false,\"person\":true,\"minConfidence\":80,\"textract\":true,\"moderation\":true,\"segment\":true,\"customlabel\":false,\"text\":true,\"entity\":true,\"customLabelModels\":[]},\"attributes\":{},\"destination\":{\"bucket\":\"so0050-0a709c9ee415-account-number-us-west-2-proxy\",\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/\"},\"video\":{\"enabled\":false},\"audio\":{\"enabled\":false},\"image\":{\"enabled\":false},\"document\":{\"enabled\":true,\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/transcode/proxy\",\"numPages\":2},\"request\":{\"timestamp\":1672908611250},\"metrics\":{\"duration\":0,\"requestTime\":1672908611250,\"startTime\":1672908612571}},\"data\":{},\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\"}",
+        "ExecutionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
+        "Input": "{\"status\":\"NOT_STARTED\",\"progress\":0,\"input\":{\"bucket\":\"so0050-111111111111-account-number-us-west-2-ingest\",\"key\":\"Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf\",\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"aiOptions\":{\"sentiment\":true,\"textROI\":[false,false,false,false,false,false,false,false,false],\"framebased\":false,\"celeb\":true,\"frameCaptureMode\":0,\"keyphrase\":true,\"label\":true,\"languageCode\":\"en-US\",\"facematch\":false,\"transcribe\":true,\"face\":true,\"customentity\":false,\"person\":true,\"minConfidence\":80,\"textract\":true,\"moderation\":true,\"segment\":true,\"customlabel\":false,\"text\":true,\"entity\":true,\"customLabelModels\":[]},\"attributes\":{},\"destination\":{\"bucket\":\"so0050-111111111111-account-number-us-west-2-proxy\",\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/\"},\"video\":{\"enabled\":false},\"audio\":{\"enabled\":false},\"image\":{\"enabled\":false},\"document\":{\"enabled\":true,\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/transcode/proxy\",\"numPages\":2},\"request\":{\"timestamp\":1672908611250},\"metrics\":{\"duration\":0,\"requestTime\":1672908611250,\"startTime\":1672908612571}},\"data\":{},\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\"}",
         "InputDetails": {
           "Included": true
         },
         "Name": "673359b3-1020-47b9-a4c6-7e189b6a5cab",
-        "Output": "{\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"stateMachine\":\"so0050-0a709c9ee415-analysis-document\",\"operation\":\"index-analysis-results\",\"overallStatus\":\"PROCESSING\",\"status\":\"COMPLETED\",\"progress\":100,\"input\":{\"bucket\":\"so0050-0a709c9ee415-account-number-us-west-2-ingest\",\"key\":\"Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf\",\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"aiOptions\":{\"sentiment\":true,\"textROI\":[false,false,false,false,false,false,false,false,false],\"framebased\":false,\"celeb\":true,\"frameCaptureMode\":0,\"keyphrase\":true,\"label\":true,\"languageCode\":\"en-US\",\"facematch\":false,\"transcribe\":true,\"face\":true,\"customentity\":false,\"person\":true,\"minConfidence\":80,\"textract\":true,\"moderation\":true,\"segment\":true,\"customlabel\":false,\"text\":true,\"entity\":true,\"customLabelModels\":[]},\"attributes\":{},\"destination\":{\"bucket\":\"so0050-0a709c9ee415-account-number-us-west-2-proxy\",\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/\"},\"video\":{\"enabled\":false},\"audio\":{\"enabled\":false},\"image\":{\"enabled\":false},\"document\":{\"enabled\":true,\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/transcode/proxy\",\"numPages\":2},\"request\":{\"timestamp\":1672908611250},\"metrics\":{\"duration\":0,\"requestTime\":1672908611250,\"startTime\":1672908612571}},\"data\":{\"document\":{\"status\":\"COMPLETED\",\"executionArn\":\"arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab\",\"startTime\":1672908613005,\"endTime\":1672908619938,\"textract\":{\"output\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/raw/20230105T085011/textract/\",\"numOutputs\":1,\"textlist\":\"textlist.json\"}}}}",
+        "Output": "{\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"stateMachine\":\"so0050-111111111111-analysis-document\",\"operation\":\"index-analysis-results\",\"overallStatus\":\"PROCESSING\",\"status\":\"COMPLETED\",\"progress\":100,\"input\":{\"bucket\":\"so0050-111111111111-account-number-us-west-2-ingest\",\"key\":\"Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf\",\"uuid\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097\",\"aiOptions\":{\"sentiment\":true,\"textROI\":[false,false,false,false,false,false,false,false,false],\"framebased\":false,\"celeb\":true,\"frameCaptureMode\":0,\"keyphrase\":true,\"label\":true,\"languageCode\":\"en-US\",\"facematch\":false,\"transcribe\":true,\"face\":true,\"customentity\":false,\"person\":true,\"minConfidence\":80,\"textract\":true,\"moderation\":true,\"segment\":true,\"customlabel\":false,\"text\":true,\"entity\":true,\"customLabelModels\":[]},\"attributes\":{},\"destination\":{\"bucket\":\"so0050-111111111111-account-number-us-west-2-proxy\",\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/\"},\"video\":{\"enabled\":false},\"audio\":{\"enabled\":false},\"image\":{\"enabled\":false},\"document\":{\"enabled\":true,\"prefix\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/transcode/proxy\",\"numPages\":2},\"request\":{\"timestamp\":1672908611250},\"metrics\":{\"duration\":0,\"requestTime\":1672908611250,\"startTime\":1672908612571}},\"data\":{\"document\":{\"status\":\"COMPLETED\",\"executionArn\":\"arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab\",\"startTime\":1672908613005,\"endTime\":1672908619938,\"textract\":{\"output\":\"6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/raw/20230105T085011/textract/\",\"numOutputs\":1,\"textlist\":\"textlist.json\"}}}}",
         "OutputDetails": {
           "Included": true
         },
         "StartDate": 1672908613005,
-        "StateMachineArn": "arn:aws:states:us-west-2:account-number:stateMachine:so0050-0a709c9ee415-analysis-document",
+        "StateMachineArn": "arn:aws:states:us-west-2:account-number:stateMachine:so0050-111111111111-analysis-document",
         "Status": "SUCCEEDED",
         "StopDate": 1672908620622
       }
@@ -274,7 +274,7 @@ const event_StatePrepareAnalysis = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
       "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
       "aiOptions": {
@@ -312,11 +312,11 @@ const event_StatePrepareAnalysis = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
       }
     },
-    "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-main:a4f8decc-f31e-4fdf-8d8b-3f73fb0e778c"
+    "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-main:a4f8decc-f31e-4fdf-8d8b-3f73fb0e778c"
   }
 
 const event_StateJobCompleted = {
@@ -324,7 +324,7 @@ const event_StateJobCompleted = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "Airport to Scala 7 Interno 5 Maps/Airport to Scala 7 Interno 5 Maps.pdf",
       "uuid": "6cbb8b34-4c02-a3bb-a790-ea3d58350097",
       "aiOptions": {
@@ -362,7 +362,7 @@ const event_StateJobCompleted = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6cbb8b34-4c02-a3bb-a790-ea3d58350097/Airport_to_Scala_7_Interno_5_Maps/"
       },
       "video": {
@@ -391,7 +391,7 @@ const event_StateJobCompleted = {
     "data": {
       "document": {
         "status": "COMPLETED",
-        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
+        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-document:673359b3-1020-47b9-a4c6-7e189b6a5cab",
         "startTime": 1672908613005,
         "endTime": 1672908619938,
         "textract": {

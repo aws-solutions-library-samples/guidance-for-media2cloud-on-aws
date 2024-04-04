@@ -1,17 +1,36 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  DynamoDBClient,
+  QueryCommand,
+  PutItemCommand,
+  UpdateItemCommand,
+  DeleteItemCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  marshall,
+} = require('@aws-sdk/util-dynamodb');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
 const BacklogJob = require('./backlogJob');
 const EBHelper = require('../shared/ebHelper');
+const {
+  M2CException,
+} = require('../shared/error');
+
+const ddbMock = mockClient(DynamoDBClient);
+const eventbridgeMock = mockClient(EventBridgeClient);
 
 const mockResponse = {
   jobId: 'jobId',
@@ -19,80 +38,269 @@ const mockResponse = {
     {
       serviceApi: 'mockServiceApi',
       serviceParams: {
-        jobId: 'job1'
+        jobId: 'job1',
       },
-      id: 'item1'
+      id: 'item1',
     }, {
       serviceApi: 'mockServiceApi',
       serviceParams: {
-        jobId: 'job2'
+        jobId: 'job2',
       },
-      id: 'item2'
-    }
+      id: 'item2',
+    },
   ],
   Attributes: {
-    key: 'value'
-  }
+    key: 'value',
+  },
 };
-
-jest.mock('../shared/retry', () => {
-  return {
-    run: jest.fn((fn, params) => {
-      return Promise.resolve(mockResponse);
-    })
-  };
-});
-
 
 describe('Test BacklogJob', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
+
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
+    jest.resetModules(); // Most important - it clears the cache
+    ddbMock.reset();
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  test('Test fetchAndStartJobs', async () => {
+  test('Test createJobItem', async () => {
+    const id = 'id';
+    const serviceApi = 'mockservice:api';
+    const serviceParams = {};
+    const status = 'status';
+    const jobId = 'jobId';
+
+    ddbMock.on(PutItemCommand)
+      .resolves({});
+
     const backlog = new BacklogJob();
-    const prev = {
-      serviceParams: {
-        input: {
-          projectVersionArn: 'arn'
-        }
-      }
+    const response = await backlog.createJobItem(
+      id,
+      serviceApi,
+      serviceParams,
+      status,
+      jobId
+    );
+
+    expect(response.id)
+      .toBe(id);
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.jobId)
+      .toBe(jobId);
+
+    expect(response.status)
+      .toBe(status);
+
+    expect(response.timestamp)
+      .toBeGreaterThan(0);
+
+    expect(response.ttl)
+      .toBeGreaterThan(0);
+  });
+
+  test('Test updateJobId', async () => {
+    const jobId = 'jobId';
+
+    const item = {
+      id: 'id',
+      serviceApi: 'mockservice:api',
     };
 
-    let response = await backlog.fetchAndStartJobs('serviceapi', prev);
-    expect(response.total).toBe(mockResponse.Items.length);
+    const updateResponse = {
+      Attributes: marshall(item),
+    };
 
-    backlog.bindToFunc = jest.fn().mockReturnValue(1); //override error
-    response = await backlog.fetchAndStartJobs('serviceapi', prev);
-    expect(response.total).toBe(mockResponse.Items.length);
+    ddbMock.on(UpdateItemCommand)
+      .resolves(updateResponse);
+
+    const backlog = new BacklogJob();
+    const response = await backlog.updateJobId(
+      item,
+      jobId
+    );
+
+    expect(response.id)
+      .toBe(item.id);
+
+    expect(response.serviceApi)
+      .toBe(item.serviceApi);
   });
 
   test('Test deleteJob', async () => {
-    const backlog = new BacklogJob();
-    const status = 'deleteJobStatus';
-    const output = { jobOutput: 'deleteJobOutput' };
+    const item = {
+      id: 'id',
+      jobId: 'jobId',
+      serviceApi: 'mockservice:api',
+    };
 
-    let response = await backlog.deleteJob('id', status, output);
-    expect(response.status).toBe(status);
-    expect(response).toEqual(expect.objectContaining(output));
-    expect(response).toEqual(expect.objectContaining(mockResponse.Attributes));
+    const queryResponse = {
+      Items: [
+        marshall(item),
+      ],
+    };
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    const deleteResponse = {
+      Attributes: marshall(item),
+    };
+
+    ddbMock.on(DeleteItemCommand)
+      .resolves(deleteResponse);
+
+    const backlog = new BacklogJob();
+    const response = await backlog.deleteJob(
+      item.jobId,
+      'status',
+      {}
+    );
+
+    expect(response.id)
+      .toBe(item.id);
+
+    expect(response.jobId)
+      .toBe(item.jobId);
+
+    expect(response.serviceApi)
+      .toBe(item.serviceApi);
   });
 
-  test('Test startAndRegisterJob failure', async () => {
+  test('Test getJobById', async () => {
+    const item = {
+      id: 'id',
+      jobId: 'jobId',
+      serviceApi: 'mockservice:api',
+    };
+
+    const queryResponse = {
+      Items: [
+        marshall(item),
+      ],
+    };
+
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    const backlog = new BacklogJob();
+    const response = await backlog.getJobById(
+      item.jobId
+    );
+
+    expect(response[0].id)
+      .toBe(item.id);
+
+    expect(response[0].jobId)
+      .toBe(item.jobId);
+
+    expect(response[0].serviceApi)
+      .toBe(item.serviceApi);
+  });
+
+  test('Test getQueuedJobs with queued items', async () => {
+    const prefix = 'mockservice';
+    const prevJob = {};
+
+    const queuedItems = [
+      1, 2,
+    ].map((jobId) => ({
+      serviceApi: `${prefix}:api`,
+      serviceParams: {
+        jobId: `job${jobId}`,
+      },
+      id: `item${jobId}`,
+    }));
+
+    const queryResponse = {
+      Items: queuedItems
+        .map((item) =>
+          marshall(item)),
+    };
+
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    const backlog = new BacklogJob();
+    const response = await backlog.getQueuedJobs(
+      prefix,
+      prevJob
+    );
+
+    expect(response.length)
+      .toBe(queryResponse.Items.length);
+  });
+
+  test('Test getQueuedJobs with no item', async () => {
+    const prefix = 'mockservice';
+    const prevJob = {};
+
+    const queryResponse = {
+      Items: [],
+    };
+
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    const backlog = new BacklogJob();
+    const response = await backlog.getQueuedJobs(
+      prefix,
+      prevJob
+    );
+
+    expect(response.length)
+      .toBe(0);
+  });
+
+  test('Test startAndRegisterJob should fail', async () => {
     const backlog = new BacklogJob();
 
-    await backlog.startAndRegisterJob('id', 'serviceApi', {}).catch(error => {
-      expect(error.message).toBe('subclass to implement bindToFunc');
-    });
+    await backlog.startAndRegisterJob('id', 'serviceApi', {})
+      .catch((error) => {
+        expect(error.name)
+          .toBe('M2CException');
+
+        expect(error.message)
+          .toBe('subclass to implement startJob');
+      });
+  });
+
+  test('Test fetchAndStartJobs should fail', async () => {
+    const item = {
+      id: 'id',
+      jobId: 'jobId',
+      serviceApi: 'mockservice:api',
+    };
+
+    const queryResponse = {
+      Items: [
+        marshall(item),
+      ],
+    };
+    ddbMock.on(QueryCommand)
+      .resolves(queryResponse);
+
+    const backlog = new BacklogJob();
+
+    await backlog.fetchAndStartJobs('id', 'serviceApi', {})
+      .catch((error) => {
+        expect(error.name)
+          .toBe('M2CException');
+
+        expect(error.message)
+          .toBe('subclass to implement startJob');
+      });
   });
 });
 
@@ -100,15 +308,34 @@ describe('Test EBHelper', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
+    jest.resetModules(); // Most important - it clears the cache
+    eventbridgeMock.reset();
   });
 
-  test('Test send failure', async () => {
-    await EBHelper.send().catch(error => {
-      expect(error.message).toBe('message not defined');
-    });
+  test('Test send succeeded', async () => {
+    const message = 'testSendMessage';
+
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves(message);
+
+    const response = await EBHelper.send(message);
+
+    expect(response)
+      .toBe(message);
+  });
+
+  test('Test send failed', async () => {
+    await EBHelper.send()
+      .catch((error) => {
+        expect(error.name)
+          .toBe('M2CException');
+
+        expect(error.message)
+          .toBe('message not defined');
+      });
   });
 });

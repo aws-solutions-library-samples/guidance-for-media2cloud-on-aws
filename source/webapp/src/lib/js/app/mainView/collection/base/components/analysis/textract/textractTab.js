@@ -4,9 +4,15 @@
 import Localization from '../../../../../../shared/localization.js';
 import BaseAnalysisTab from '../base/baseAnalysisTab.js';
 
+const {
+  Messages: {
+    TextractTab: TITLE,
+  },
+} = Localization;
+
 export default class TextractTab extends BaseAnalysisTab {
-  constructor(previewComponent, defaultTab = false) {
-    super(Localization.Messages.TextractTab, previewComponent, defaultTab);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
   }
 
   async createContent() {

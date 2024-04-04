@@ -1,0 +1,10 @@
+{
+    "StartAt": "Index results",
+    "States": {
+        "Index results": {
+            "Type": "Task",
+            "Resource": "${GraphIndexerLambda.Arn}",
+            "End": true
+        }
+    }
+}

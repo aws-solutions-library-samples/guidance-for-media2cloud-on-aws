@@ -1,6 +1,6 @@
 ## Tutorial 3: Automating ingest and analysis workflow with Amazon EventBridge
 
-Amazon S3 supports [numbers of event notification](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-how-to-event-types-and-destinations.html) mechanisms. In this tutorial, we will focus on using Amazon EventBridge service to automate the ingest and analysis workflow of Media2Cloud such that when we upload a file to the Amazon S3 ingest bucket, it automatically starts the process. The diagram below illustrates the sequences of the event-driven approach.
+Amazon S3 supports [numbers of event notification](https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-how-to-event-types-and-destinations.html) mechanisms. In this tutorial, we will focus on using Amazon EventBridge service to automate the ingest and analysis workflow of Guidance for Media2Cloud on AWS such that when we upload a file to the Amazon S3 ingest bucket, it automatically starts the process. The diagram below illustrates the sequences of the event-driven approach.
 
 ![Auto ingest and analysis workflow](./images/ingest-analysis-automation.png)
 
@@ -57,7 +57,7 @@ Copy and paste the following JSON document to a text editor and save it as `Medi
 
 Make sure to replace
 * `{ingest-bucket}` to the [ingest bucket name obtained in the previous tutorial](./2-using-media2cloud-restful-api.md#find-the-ingest-bucket-from-the-cloudformation-stack) and
-* `{region}` to the AWS region such as `us-east-1` you are running the Media2Cloud
+* `{region}` to the AWS region such as `us-east-1` you are running the Guidance for Media2Cloud on AWS
 
 
 ```json

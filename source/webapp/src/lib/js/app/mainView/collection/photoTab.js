@@ -6,9 +6,15 @@ import PhotoCategorySlideComponent from './photo/photoCategorySlideComponent.js'
 import PhotoPreviewSlideComponent from './photo/photoPreviewSlideComponent.js';
 import BaseMediaTab from './base/baseMediaTab.js';
 
+const {
+  Messages: {
+    PhotoTab: TITLE,
+  },
+} = Localization;
+
 export default class PhotoTab extends BaseMediaTab {
-  constructor(defaultTab, plugins) {
-    super(defaultTab, Localization.Messages.PhotoTab, plugins);
+  constructor(options) {
+    super(TITLE, options);
     this.$categorySlideComponent = new PhotoCategorySlideComponent();
     this.$previewSlideComponent = new PhotoPreviewSlideComponent();
   }

@@ -4,18 +4,25 @@
 import StoreDefinitions from './storeDefs.js';
 import BaseStore from './baseStore.js';
 
-export default class FaceStore extends BaseStore {
+/* singleton implementation */
+let _singleton;
+
+class FaceStore extends BaseStore {
   constructor() {
     super(StoreDefinitions.Stores.Faces);
-  }
-
-  static getSingleton() {
-    if (!(window.AWSomeNamespace || {}).FaceStoreSingleton) {
-      window.AWSomeNamespace = {
-        ...window.AWSomeNamespace,
-        FaceStoreSingleton: new FaceStore(),
-      };
-    }
-    return window.AWSomeNamespace.FaceStoreSingleton;
+    _singleton = this;
   }
 }
+
+const GetFaceStore = () => {
+  if (_singleton === undefined) {
+    const notused_ = new FaceStore();
+  }
+
+  return _singleton;
+};
+
+export {
+  GetFaceStore,
+  FaceStore,
+};

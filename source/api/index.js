@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+const {
+  M2CException,
+} = require('core-lib');
 const ApiRequest = require('./lib/apiRequest');
 
 const REQUIRED_ENVS = [
@@ -21,7 +24,7 @@ exports.handler = async (event, context) => {
     const missing = REQUIRED_ENVS.filter(x =>
       process.env[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing enviroment variables, ${missing.join(', ')}`);
+      throw new M2CException(`missing enviroment variables, ${missing.join(', ')}`);
     }
 
     const request = new ApiRequest(event, context);
@@ -42,7 +45,7 @@ exports.handler = async (event, context) => {
         return processor.onDELETE().catch(e =>
           processor.onError(e));
       default:
-        throw new Error(`${request.method} not supported`);
+        throw new M2CException(`${request.method} not supported`);
     }
   } catch (e) {
     console.error(`fatal: exports.onRequest = ${e.message} ${e.stack}`);

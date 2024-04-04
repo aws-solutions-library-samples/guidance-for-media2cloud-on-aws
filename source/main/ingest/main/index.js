@@ -17,7 +17,7 @@ const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_TOPIC',
   'ENV_INGEST_BUCKET',
@@ -33,22 +33,17 @@ exports.handler = async (event, context) => {
     if (missing.length) {
       throw new IngestError(`missing enviroment variables, ${missing.join(', ')}`);
     }
-    let modified;
-    if (event.nestedStateOutput === undefined) {
-      modified = event;
-    }
-    else if (event.nestedStateOutput.ExecutionArn) {
-      modified = {
-        ...JSON.parse(event.nestedStateOutput.Output),
-        operation: event.operation,
-      };
-    }
-    else {
-      modified = {
-        ...event.nestedStateOutput,
-        operation: event.operation,
-      };
-    }
+    const modified = (event.nestedStateOutput === undefined)
+      ? event
+      : (event.nestedStateOutput.ExecutionArn)
+        ? {
+          ...event.nestedStateOutput.Output,
+          operation: event.operation,
+        }
+        : {
+          ...event.nestedStateOutput,
+          operation: event.operation,
+        };
 
     const stateData = new StateData(Environment.StateMachines.Ingest, modified, context);
 

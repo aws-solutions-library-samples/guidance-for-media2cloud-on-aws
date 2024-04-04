@@ -2,23 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Segment,
+    },
+  },
 } = require('core-lib');
 const BaseAnalysisIndexer = require('../shared/baseAnalysisIndexer');
 
-const SUBCATEGORY = AnalysisTypes.Rekognition.Segment;
-
 class IndexSegmentIterator extends BaseAnalysisIndexer {
   constructor(stateData) {
-    super(stateData, SUBCATEGORY);
+    super(stateData, Segment);
   }
 
   get [Symbol.toStringTag]() {
     return 'IndexSegmentIterator';
-  }
-
-  parseIndexName(dataset) {
-    return dataset.type.replace(/_/g, ' ');
   }
 }
 

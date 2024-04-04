@@ -27,7 +27,7 @@ const event_RunMediainfo = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-east-1-ingest",
       "key": "speech/speech.mp3",
       "uuid": "60aa12c0-b046-1db7-b9e2-3a3aac69b500",
       "aiOptions": {
@@ -65,7 +65,7 @@ const event_RunMediainfo = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-east-1-proxy",
         "prefix": "60aa12c0-b046-1db7-b9e2-3a3aac69b500/speech/"
       },
       "type": "audio"
@@ -93,13 +93,13 @@ const event_RunMediainfo = {
 
 const event_StartTranscode = {
     "uuid": "60aa12c0-b046-1db7-b9e2-3a3aac69b500",
-    "stateMachine": "so0050-0a9ab6b1a00f-ingest-main",
+    "stateMachine": "so0050-111111111111-ingest-main",
     "operation": "run-mediainfo",
     "overallStatus": "PROCESSING",
     "status": "COMPLETED",
     "progress": 100,
     "input": {
-      "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-ingest",
+      "bucket": "so0050-111111111111-000000000000-us-east-1-ingest",
       "key": "speech/speech.mp3",
       "uuid": "60aa12c0-b046-1db7-b9e2-3a3aac69b500",
       "aiOptions": {
@@ -137,7 +137,7 @@ const event_StartTranscode = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a9ab6b1a00f-193234372883-us-east-1-proxy",
+        "bucket": "so0050-111111111111-000000000000-us-east-1-proxy",
         "prefix": "60aa12c0-b046-1db7-b9e2-3a3aac69b500/speech/"
       },
       "type": "audio",

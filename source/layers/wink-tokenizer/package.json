@@ -1,0 +1,23 @@
+{
+  "name": "wink-tokenizer-layer",
+  "version": "5.3.0",
+  "description": "lambda layer of wink-tokenizer packages",
+  "main": "index.js",
+  "private": true,
+  "author": "aws-mediaent-sa-emea",
+  "license": "MIT",
+  "scripts": {
+    "pretest": "npm install",
+    "test": "echo \"layer wrapping wink-tokenizer packages, skipping unit test.\"",
+    "build:clean": "rm -rf dist && mkdir -p dist/nodejs",
+    "build:copy": "cp -rv package.json dist/nodejs",
+    "build:install": "cd dist/nodejs && npm install --omit=dev",
+    "build": "npm-run-all -s build:clean build:copy build:install",
+    "zip": "cd dist && zip -rq"
+  },
+  "dependencies": {
+    "wink-eng-lite-web-model": "^1.6.0",
+    "wink-nlp": "^2.2.0",
+    "wink-tokenizer": "^5.3.0"
+  }
+}

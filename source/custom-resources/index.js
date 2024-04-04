@@ -13,6 +13,10 @@ exports.handler = async (event, context) => {
     const resource = event.ResourceType.split(':').pop();
     let handler;
     switch (resource) {
+      // version compatibility statement
+      case 'CheckVersionCompatibilityStatement':
+        handler = require('./lib/versionCompatibility').CheckVersionCompatibilityStatement;
+        break;
       /* SNS */
       case 'EmailSubscribe':
         handler = require('./lib/sns/index').EmailSubscribe;
@@ -20,9 +24,6 @@ exports.handler = async (event, context) => {
       /* Web */
       case 'CopyWebContent':
         handler = require('./lib/web/index').CopyWebContent;
-        break;
-      case 'UpdateManifest':
-        handler = require('./lib/web/index').UpdateManifest;
         break;
       case 'CreateSolutionManifest':
         handler = require('./lib/web/index').UpdateManifest;
@@ -33,10 +34,6 @@ exports.handler = async (event, context) => {
         break;
       case 'ConfigureBucketNotification':
         handler = require('./lib/s3/index').ConfigureBucketNotification;
-        break;
-      /* string */
-      case 'StringManipulation':
-        handler = require('./lib/string/index').StringManipulation;
         break;
       /* mediaconvert */
       case 'MediaConvertEndpoint':
@@ -53,17 +50,6 @@ exports.handler = async (event, context) => {
       case 'RegisterUser':
         handler = require('./lib/cognito/index').RegisterUser;
         break;
-      /* sagemaker */
-      case 'ConfigureWorkteam':
-        handler = require('./lib/groundTruth/index').ConfigureWorkteam;
-        break;
-      /* rekognition */
-      case 'CreateFaceCollection':
-        handler = require('./lib/rekognition').CreateFaceCollection;
-        break;
-      case 'CreateCustomVocabulary':
-        handler = require('./lib/transcribe').CreateCustomVocabulary;
-        break;
       case 'CreateSolutionUuid':
         handler = require('./lib/solution').CreateSolutionUuid;
         break;
@@ -73,16 +59,30 @@ exports.handler = async (event, context) => {
       case 'CreateIndex':
         handler = require('./lib/elasticsearch').CreateIndex;
         break;
-      case 'CreatePipeline':
-        handler = require('./lib/elastictranscoder').CreatePipeline;
-        break;
       /* cloudfront */
       case 'InvalidateCache':
         handler = require('./lib/cloudfront').InvalidateCache;
         break;
-      /* sagemaker */
-      case 'DescribeSageMakerEndpoint':
-        handler = require('./lib/sagemaker').DescribeSageMakerEndpoint;
+      /* neptune */
+      case 'NeptuneDBCluster':
+        handler = require('./lib/neptune').NeptuneDBCluster;
+        break;
+      case 'NeptuneDBInstance':
+        handler = require('./lib/neptune').NeptuneDBInstance;
+        break;
+      // codebuild
+      case 'StartBuild':
+        handler = require('./lib/codebuild').StartBuild;
+        break;
+      case 'PostBuild':
+        handler = require('./lib/codebuild').PostBuild;
+        break;
+      case 'StartBuildDelayResponse':
+        handler = require('./lib/codebuild').StartBuildDelayResponse;
+        break;
+      // ecr
+      case 'ECRDescribeImages':
+        handler = require('./lib/ecr').ECRDescribeImages;
         break;
       default:
         break;
@@ -93,6 +93,13 @@ exports.handler = async (event, context) => {
     }
     response = await handler(event, context);
     console.log(`response = ${JSON.stringify(response, null, 2)}`);
+
+    // Workaround: for AWS::CloudFormation::WaitCondition not able to update stack
+    // Delay response and let other resource such as CodeBuild to send the response.
+    if (response.DELAYRESPONSE !== undefined
+    && response.DELAYRESPONSE === '1') {
+      return response;
+    }
 
     return cfResponse.send(response);
   } catch (e) {

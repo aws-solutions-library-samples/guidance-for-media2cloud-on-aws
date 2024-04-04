@@ -6,12 +6,22 @@ import BaseMediaTab from './base/baseMediaTab.js';
 import SearchCategorySlideComponent from './search/searchCategorySlideComponent.js';
 import SearchPreviewSlideComponent from './search/searchPreviewSlideComponent.js';
 
+const {
+  Messages: {
+    SearchTab: TITLE,
+  },
+} = Localization;
+
 export default class SearchTab extends BaseMediaTab {
-  constructor(defaultTab, plugins) {
-    super(defaultTab, Localization.Messages.Search, plugins);
+  constructor(options) {
+    super(TITLE, options);
+
     this.$categorySlideComponent = new SearchCategorySlideComponent();
     this.$previewSlideComponent = new SearchPreviewSlideComponent();
-    this.$tabLink.addClass('ml-auto');
-    this.$tabLink.find('a').addClass('search-border');
+
+    this.$tabLink
+      .addClass('ml-auto');
+    this.$tabLink.find('a')
+      .addClass('search-border');
   }
 }

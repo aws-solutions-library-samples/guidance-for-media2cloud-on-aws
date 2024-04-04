@@ -3,8 +3,18 @@
 
 const {
   StateData,
-  AnalysisError,
-  AnalysisTypes,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+      Face,
+      FaceMatch,
+      Label,
+      Moderation,
+      Text,
+    },
+    AutoFaceIndexer,
+  },
+  M2CException,
 } = require('core-lib');
 const DetectCelebIterator = require('./iterators/detect-celeb');
 const DetectFaceIterator = require('./iterators/detect-face');
@@ -12,20 +22,15 @@ const DetectFaceMatchIterator = require('./iterators/detect-face-match');
 const DetectLabelIterator = require('./iterators/detect-label');
 const DetectModerationIterator = require('./iterators/detect-moderation');
 const DetectTextIterator = require('./iterators/detect-text');
-/* run celeb and facematch detection based on face results */
+// run celeb and facematch detection based on face results
 const DetectIdentityComboIterator = require('./iterators/detect-identity-combo');
-
-const SUBCATEGORY_CELEB = AnalysisTypes.Rekognition.Celeb;
-const SUBCATEGORY_FACE = AnalysisTypes.Rekognition.Face;
-const SUBCATEGORY_FACEMATCH = AnalysisTypes.Rekognition.FaceMatch;
-const SUBCATEGORY_LABEL = AnalysisTypes.Rekognition.Label;
-const SUBCATEGORY_MODERATION = AnalysisTypes.Rekognition.Moderation;
-const SUBCATEGORY_TEXT = AnalysisTypes.Rekognition.Text;
+// run auto face indexer logic
+const AutoFaceIndexerIterator = require('./iterators/auto-face-indexer');
 
 class StateDetectFrameIterator {
   constructor(stateData) {
     if (!(stateData instanceof StateData)) {
-      throw new AnalysisError('stateData not StateData object');
+      throw new M2CException('stateData not StateData object');
     }
     this.$stateData = stateData;
   }
@@ -40,38 +45,37 @@ class StateDetectFrameIterator {
 
   async process() {
     const data = this.stateData.data;
+
     let iterator;
-    if (data[SUBCATEGORY_LABEL]) {
+    if (data[Label]) {
       iterator = new DetectLabelIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_MODERATION]) {
+    } else if (data[Moderation]) {
       iterator = new DetectModerationIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_TEXT]) {
+    } else if (data[Text]) {
       iterator = new DetectTextIterator(this.stateData);
-    }
-    /* use combo detection */
-    else if (data[SUBCATEGORY_FACE] && (data[SUBCATEGORY_CELEB] || data[SUBCATEGORY_FACEMATCH])) {
+    // auto face indexer
+    } else if (data[AutoFaceIndexer] && data[Celeb] && data[FaceMatch]) {
+      iterator = new AutoFaceIndexerIterator(this.stateData);
+    // use combo detection
+    } else if (data[Face] && (data[Celeb] || data[FaceMatch])) {
       iterator = new DetectIdentityComboIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_CELEB]) {
-      iterator = new DetectCelebIterator(this.stateData)
-    }
-    /* no combo detection */
-    else if (data[SUBCATEGORY_FACE]) {
+    // no combo detection
+    } else if (data[Celeb]) {
+      iterator = new DetectCelebIterator(this.stateData);
+    } else if (data[Face]) {
       iterator = new DetectFaceIterator(this.stateData);
-    }
-    else if (data[SUBCATEGORY_FACEMATCH]) {
+    } else if (data[FaceMatch]) {
       iterator = new DetectFaceMatchIterator(this.stateData);
+    } else {
+      const message = `iterator for ${Object.keys(data).join(', ')} not supported`;
+      console.error(
+        'ERR:',
+        'StateDetectFrameIterator.process:',
+        message
+      );
+      throw M2CException(message);
     }
-    else {
-      iterator = undefined;
-    }
-    if (!iterator) {
-      const e = `iterator '${Object.keys(data).join(',')}' not impl`;
-      console.error(e);
-      throw new AnalysisError(e);
-    }
+
     return iterator.process();
   }
 }

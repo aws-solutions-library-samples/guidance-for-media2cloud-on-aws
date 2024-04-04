@@ -5,41 +5,59 @@ import Localization from '../../../../../../../shared/localization.js';
 import AnalysisTypes from '../../../../../../../shared/analysis/analysisTypes.js';
 import BaseAnalysisTab from '../../base/baseAnalysisTab.js';
 
+const {
+  Messages: {
+    CelebTab: CELEB_TAB,
+    LabelTab: LABEL_TAB,
+    FaceTab: FACE_TAB,
+    FaceMatchTab: FACEMATCH_TAB,
+    ModerationTab: MODERATION_TAB,
+    PersonTab: PERSON_TAB,
+    TextTab: TEXT_TAB,
+    SegmentTab: SEGMENT_TAB,
+    CustomLabelTab: CUSTOMLABEL_TAB,
+  },
+} = Localization;
+
+const {
+  Rekognition: {
+    Celeb,
+    Label,
+    Face,
+    FaceMatch,
+    Moderation,
+    Person,
+    Text,
+    Segment,
+    CustomLabel,
+  },
+} = AnalysisTypes;
+
 export default class BaseRekognitionImageTab extends BaseAnalysisTab {
-  constructor(category, previewComponent, data, defaultTab = false) {
-    let tabName;
-    switch (category) {
-      case AnalysisTypes.Rekognition.Celeb:
-        tabName = Localization.Messages.CelebTab;
-        break;
-      case AnalysisTypes.Rekognition.Label:
-        tabName = Localization.Messages.LabelTab;
-        break;
-      case AnalysisTypes.Rekognition.Face:
-        tabName = Localization.Messages.FaceTab;
-        break;
-      case AnalysisTypes.Rekognition.FaceMatch:
-        tabName = Localization.Messages.FaceMatchTab;
-        break;
-      case AnalysisTypes.Rekognition.Moderation:
-        tabName = Localization.Messages.ModerationTab;
-        break;
-      case AnalysisTypes.Rekognition.Person:
-        tabName = Localization.Messages.PersonTab;
-        break;
-      case AnalysisTypes.Rekognition.Text:
-        tabName = Localization.Messages.TextTab;
-        break;
-      case AnalysisTypes.Rekognition.Segment:
-        tabName = Localization.Messages.SegmentTab;
-        break;
-      case AnalysisTypes.Rekognition.CustomLabel:
-        tabName = Localization.Messages.CustomLabelTab;
-        break;
-      default:
-        tabName = 'Unknown';
+  constructor(category, previewComponent, data) {
+    let title = 'Unknown';
+
+    if (category === Celeb) {
+      title = CELEB_TAB;
+    } else if (category === Label) {
+      title = LABEL_TAB;
+    } else if (category === Face) {
+      title = FACE_TAB;
+    } else if (category === FaceMatch) {
+      title = FACEMATCH_TAB;
+    } else if (category === Moderation) {
+      title = MODERATION_TAB;
+    } else if (category === Person) {
+      title = PERSON_TAB;
+    } else if (category === Text) {
+      title = TEXT_TAB;
+    } else if (category === Segment) {
+      title = SEGMENT_TAB;
+    } else if (category === CustomLabel) {
+      title = CUSTOMLABEL_TAB;
     }
-    super(tabName, previewComponent, defaultTab);
+
+    super(title, previewComponent);
     this.$category = category;
     this.$data = data;
   }

@@ -12,8 +12,10 @@ const TextractBacklogJob = require('./lib/client/textract');
 const TranscribeBacklogJob = require('./lib/client/transcribe');
 const CustomBacklogJob = require('./lib/client/custom');
 const AtomicLockTable = require('./lib/atomic-lock-table');
-const Retry = require('./lib/shared/retry');
 const Environment = require('./lib/shared/defs');
+const xraysdkHelper = require('./lib/shared/xraysdkHelper');
+const retryStrategyHelper = require('./lib/shared/retryStrategyHelper');
+const Errors = require('./lib/shared/error');
 
 module.exports = {
   BacklogTable,
@@ -29,6 +31,8 @@ module.exports = {
     CustomBacklogJob,
   },
   AtomicLockTable,
-  Retry,
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
+  ...Errors,
 };

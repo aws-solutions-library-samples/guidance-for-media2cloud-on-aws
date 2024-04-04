@@ -1,16 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const {
-  Retry,
+  RekognitionClient,
+  StartProjectVersionCommand,
+  DescribeProjectVersionsCommand,
+  DetectCustomLabelsCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
   BacklogClient: {
     CustomBacklogJob,
   },
@@ -21,33 +18,40 @@ const {
       },
     },
   },
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('service-backlog-lib');
 
 class RekogHelper {
-  static getInstance() {
-    return new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: CustomUserAgent,
-    });
-  }
-
   static async startProjectVersion(params) {
-    const rekog = RekogHelper.getInstance();
-    const fn = rekog.startProjectVersion.bind(rekog);
-    return Retry.run(fn, params, 3);
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StartProjectVersionCommand(params);
+    return rekognitionClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
   }
 
   static async describeProjectVersion(projectArn, projectVersionArn) {
-    const params = {
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeProjectVersionsCommand({
       ProjectArn: projectArn,
       MaxResults: 1,
       VersionNames: [
         projectVersionArn.split('/')[3],
       ],
-    };
-    const rekog = RekogHelper.getInstance();
-    const fn = rekog.describeProjectVersions.bind(rekog);
-    const response = await Retry.run(fn, params, 4);
+    });
+
+    const response = await rekognitionClient.send(command);
 
     while (response.ProjectVersionDescriptions.length) {
       const item = response.ProjectVersionDescriptions.shift();
@@ -58,15 +62,25 @@ class RekogHelper {
         };
       }
     }
+
     return {
       status: 'UNKNOWN',
     };
   }
 
   static async detectCustomLabels(params) {
-    const rekog = RekogHelper.getInstance();
-    const fn = rekog.detectCustomLabels.bind(rekog);
-    return Retry.run(fn, params, 3);
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CustomUserAgent,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DetectCustomLabelsCommand(params);
+
+    return rekognitionClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
   }
 
   static async updateProjectVersionTTL(projectVersionArn, ttl) {

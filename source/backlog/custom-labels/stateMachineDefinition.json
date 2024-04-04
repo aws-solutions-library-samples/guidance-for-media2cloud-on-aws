@@ -3,7 +3,7 @@
     "States": {
         "Check project version status": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${BacklogCustomLabelsLambda.Arn}",
             "Parameters": {
                 "operation": "check-project-version-status",
                 "jobTag.$": "$.jobTag",
@@ -70,7 +70,7 @@
         },
         "Start project version": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${BacklogCustomLabelsLambda.Arn}",
             "Parameters": {
                 "operation": "start-project-version",
                 "jobTag.$": "$.jobTag",
@@ -91,7 +91,7 @@
         },
         "Detect custom labels": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${BacklogCustomLabelsLambda.Arn}",
             "Parameters": {
                 "operation": "detect-custom-labels",
                 "jobTag.$": "$.jobTag",

@@ -3,25 +3,19 @@
 
 import StoreDefinitions from './storeDefs.js';
 
-const DATABASE_NAME = 'm2cv3-0';
+const DATABASE_NAME = 'm2cv4';
 const DATABASE_VERSION = 1;
 const RW = 'readwrite';
 
-export default class LocalStoreDB {
+/* singleton implementation */
+let _singleton;
+
+class LocalStoreDB {
   constructor() {
     this.monkeyPatch();
     this.$db = undefined;
-  }
 
-  static getSingleton() {
-    if (!(window.AWSomeNamespace || {}).LocalStoreDBSingleton) {
-      const names = Object.values(StoreDefinitions.Stores);
-      window.AWSomeNamespace = {
-        ...window.AWSomeNamespace,
-        LocalStoreDBSingleton: new LocalStoreDB(names),
-      };
-    }
-    return window.AWSomeNamespace.LocalStoreDBSingleton;
+    _singleton = this;
   }
 
   get db() {
@@ -144,6 +138,37 @@ export default class LocalStoreDB {
     });
   }
 
+  async deleteItemsBy(name, prefix) {
+    /* trick to work with prefix */
+    /* https://hacks.mozilla.org/2014/06/breaking-the-borders-of-indexeddb/ */
+    const store = await this.openStore(name);
+    return new Promise((resolve) => {
+      const query = IDBKeyRange.bound(
+        prefix,
+        `${prefix}\uffff`,
+        false,
+        false
+      );
+      const request = store.openCursor(query);
+
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        console.log(`deleteItemsByPrefix: ${cursor.primaryKey}`);
+        cursor.delete();
+        cursor.continue();
+      };
+
+      request.onerror = (e) => {
+        console.error(`deleteItemsByPrefix.onerror: ${e.message}`);
+        resolve();
+      };
+    });
+  }
+
   async removeExpired(db, name) {
     return new Promise((resolve, reject) => {
       let transaction;
@@ -183,3 +208,18 @@ export default class LocalStoreDB {
     return store.clear();
   }
 }
+
+const GetLocalStoreDB = () => {
+  if (_singleton === undefined) {
+    const notused_ = new LocalStoreDB();
+  }
+
+  return _singleton;
+};
+
+export {
+  GetLocalStoreDB,
+  LocalStoreDB,
+  DATABASE_NAME,
+  DATABASE_VERSION,
+};

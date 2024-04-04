@@ -1,21 +1,27 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  SFNClient,
+  StartExecutionCommand,
+} = require('@aws-sdk/client-sfn');
+const {
+  RekognitionClient,
+  StopProjectVersionCommand,
+} = require('@aws-sdk/client-rekognition');
 const BacklogJob = require('../backlogJob');
 const BacklogTable = require('../../backlog-table');
 const AtomicLockTable = require('../../atomic-lock-table');
-const Retry = require('../../shared/retry');
 const Environment = require('../../shared/defs');
+const xraysdkHelper = require('../../shared/xraysdkHelper');
+const retryStrategyHelper = require('../../shared/retryStrategyHelper');
+const {
+  M2CException,
+} = require('../../shared/error');
 
+const REGION = process.env.AWS_REGION;
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
+const BACKLOG_REKOG_CL_STATEMACHINE_NAME = Environment.StateMachines.BacklogCustomLabels;
 const STATUS_PENDING = 'PENDING';
 
 class CustomBacklogJob extends BacklogJob {
@@ -39,10 +45,11 @@ class CustomBacklogJob extends BacklogJob {
 
   async startJob(serviceApi, serviceParams) {
     if (serviceApi !== CustomBacklogJob.ServiceApis.StartCustomLabelsDetection) {
-      throw new Error(`${serviceApi} not supported`);
+      throw new M2CException(`${serviceApi} not supported`);
     }
     /* #1: acquire lock */
     await AtomicLockTable.acquire(serviceParams.input.projectVersionArn);
+
     /* #2: start execution */
     return this.startExecution(serviceParams)
       .catch(async (e) => {
@@ -58,9 +65,9 @@ class CustomBacklogJob extends BacklogJob {
     return item;
   }
 
-  noMoreQuotasException(code) {
+  noMoreQuotasException(name) {
     /* only handle the atomic lock exception */
-    return (code === 'ConditionalCheckFailedException');
+    return (name === 'ConditionalCheckFailedException');
   }
 
   /* query filtered by projectVersionArn */
@@ -104,17 +111,19 @@ class CustomBacklogJob extends BacklogJob {
       notStarted: [],
       total: items.length,
     };
+
     /* no more item, stop custom labels model */
     if (!items.length && previousJob.serviceParams.input.projectVersionArn) {
       await CustomBacklogJob.stopProjectVersion(previousJob.serviceParams.input.projectVersionArn);
     }
+
     while (items.length) {
       const item = items.shift();
       const response = await this.startJob(item.serviceApi, item.serviceParams)
         .catch(e => e);
       if (response instanceof Error) {
         /* fail to acquire lock, break */
-        if (this.noMoreQuotasException(response.code)) {
+        if (this.noMoreQuotasException(response.name)) {
           break;
         }
         /* try next item if fails to start state machine */
@@ -123,7 +132,9 @@ class CustomBacklogJob extends BacklogJob {
       }
       /* if started, break the loop anyway */
       await this.updateJobId(item, response.JobId)
-        .catch(() => undefined);
+        .catch(() =>
+          undefined);
+
       metrics.started.push(item.id);
       break;
     }
@@ -134,38 +145,51 @@ class CustomBacklogJob extends BacklogJob {
     const accountId = serviceParams.input.projectVersionArn.split(':')[4];
     const stateMachineArn = [
       'arn:aws:states',
-      process.env.AWS_REGION,
+      REGION,
       accountId,
       'stateMachine',
-      Environment.StateMachines.BacklogCustomLabels,
+      BACKLOG_REKOG_CL_STATEMACHINE_NAME,
     ].join(':');
-    const params = {
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StartExecutionCommand({
       stateMachineArn,
       input: JSON.stringify(serviceParams),
       name: serviceParams.jobTag,
-    };
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
-    const fn = step.startExecution.bind(step);
-    return Retry.run(fn, params)
-      .then(data => ({
-        JobId: data.executionArn,
+
+    return stepfunctionClient.send(command)
+      .then((res) => ({
+        JobId: res.executionArn,
       }));
   }
 
   static async stopProjectVersion(projectVersionArn) {
-    const params = {
+    const rekognitionClient = xraysdkHelper(new RekognitionClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StopProjectVersionCommand({
       ProjectVersionArn: projectVersionArn,
-    };
-    const rekog = new AWS.Rekognition({
-      rekognition: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
     });
-    const fn = rekog.stopProjectVersion.bind(rekog);
-    return Retry.run(fn, params)
-      .catch(e => e);
+
+    return rekognitionClient.send(command)
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'CustomBacklogJob.stopProjectVersion:',
+          'StopProjectVersionCommand:',
+          e.$metadata.httpStatusCode,
+          e.name,
+          projectVersionArn
+        );
+        return e;
+      });
   }
 
   static async updateTTL(lockId, ttl) {

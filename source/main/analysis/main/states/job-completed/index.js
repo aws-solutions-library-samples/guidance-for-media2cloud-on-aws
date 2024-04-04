@@ -2,13 +2,46 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  Environment: {
+    Solution: {
+      Metrics: {
+        AnonymousUsage,
+      },
+    },
+    DynamoDB: {
+      Ingest: {
+        Table: IngestTable,
+        PartitionKey: IngestPartitionKey,
+      },
+      AIML: {
+        Table: AnalysisTable,
+        PartitionKey: AnalysisPartitionKey,
+        SortKey: AnalysisSortKey,
+      },
+    },
+  },
   DB,
-  Environment,
   StateData,
   SNS,
   Metrics,
   AnalysisError,
 } = require('core-lib');
+
+const {
+  Statuses: {
+    Completed,
+    AnalysisCompleted,
+  },
+} = StateData;
+
+const INGEST_FIELDS = [
+  'analysis',
+  'bucket',
+  'key',
+  'type',
+  'duration',
+  'fileSize',
+];
 
 class StateJobCompleted {
   constructor(stateData) {
@@ -27,57 +60,89 @@ class StateJobCompleted {
   }
 
   async process() {
+    let promises = [];
+
     const types = Object.keys(this.stateData.data);
 
-    /* update analysis table */
-    await Promise.all(types.map(type =>
-      this.updateAnalysisTableByType(type)));
+    // update analysis table
+    types.forEach((type) =>
+      promises.push(this.updateAnalysisTableByType(type)));
 
-    /* update ingest table */
-    const attrib = await this.updateIngestTable(types);
+    // update ingest table
+    promises.push(this.updateIngestTable(types)
+      .then((res) => {
+        const src = {
+          bucket: res.bucket,
+          key: res.key,
+          type: res.type,
+        };
+        this.stateData.setData('src', src);
+        return res;
+      }));
 
-    this.stateData.setData('src', {
-      bucket: attrib.bucket,
-      key: attrib.key,
-      type: attrib.type,
-    });
-    this.stateData.input.metrics.endTime = new Date().getTime();
-    this.stateData.setCompleted(StateData.Statuses.AnalysisCompleted);
+    await Promise.all(promises);
+    promises = [];
 
-    /* send anonymized data */
-    await this.sendAnonymized();
-    /* send SNS notification */
-    await SNS.send(`analysis: ${this.stateData.uuid}`, this.stateData.toJSON()).catch(() => false);
-    return this.stateData.toJSON();
+    const input = this.stateData.input;
+    if (input.metric === undefined) {
+      input.metric = {};
+    }
+    input.metric.endTime = Date.now();
+    this.stateData.setCompleted(AnalysisCompleted);
+
+    // send anonymous data
+    promises.push(this.sendAnonymous()
+      .catch(() =>
+        false));
+
+    // send sns message
+    const uuid = this.stateData.uuid;
+    const subject = `analysis: ${uuid}`;
+    const message = this.stateData.toJSON();
+    promises.push(SNS.send(subject, message)
+      .catch(() =>
+        false));
+
+    return Promise.all(promises)
+      .then(() =>
+        this.stateData.toJSON());
   }
 
   async updateIngestTable(analyzedCategories) {
-    const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
-    });
-    const attributes = await db.fetch(this.stateData.uuid, undefined, [
-      'analysis',
-      'bucket',
-      'key',
-      'type',
-      'duration',
-      'fileSize',
-    ]);
-
-    let categories = analyzedCategories.concat(attributes.analysis || []);
-    categories = [
-      ...new Set(categories),
-    ];
-
     const uuid = this.stateData.uuid;
-    await db.update(uuid, undefined, {
-      overallStatus: StateData.Statuses.Completed,
-      status: StateData.Statuses.AnalysisCompleted,
-      analysis: categories,
-    }, false);
 
-    return attributes;
+    const db = new DB({
+      Table: IngestTable,
+      PartitionKey: IngestPartitionKey,
+    });
+
+    const fields = await db.fetch(
+      this.stateData.uuid,
+      undefined,
+      INGEST_FIELDS
+    );
+
+    let categories = analyzedCategories;
+    if ((fields.analysis || []).length > 0) {
+      categories = categories.concat(fields.analysis);
+      categories = [
+        ...new Set(categories),
+      ];
+    }
+
+    const updateFields = {
+      overallStatus: Completed,
+      status: AnalysisCompleted,
+      analysis: categories,
+    };
+
+    return db.update(
+      uuid,
+      undefined,
+      updateFields,
+      false
+    ).then(() =>
+      fields);
   }
 
   async updateAnalysisTableByType(type) {
@@ -85,33 +150,37 @@ class StateJobCompleted {
     const data = this.stateData.data[type];
 
     const db = new DB({
-      Table: Environment.DynamoDB.AIML.Table,
-      PartitionKey: Environment.DynamoDB.AIML.PartitionKey,
-      SortKey: Environment.DynamoDB.AIML.SortKey,
+      Table: AnalysisTable,
+      PartitionKey: AnalysisPartitionKey,
+      SortKey: AnalysisSortKey,
     });
+
     return db.update(uuid, type, data);
   }
 
-  async sendAnonymized() {
-    if (!Environment.Solution.Metrics.AnonymizedUsage) {
+  async sendAnonymous() {
+    if (!AnonymousUsage) {
       return undefined;
     }
 
+    const uuid = this.stateData.uuid;
+    const input = this.stateData.input;
     const aiml = {
-      ...this.stateData.input.aiOptions,
+      ...input.aiOptions,
       customVocabulary: undefined,
       faceCollectionId: undefined,
     };
-    const metrics = this.stateData.input.metrics || {};
+    const metrics = input.metrics || {};
 
-    return Metrics.sendAnonymizedData({
-      uuid: this.stateData.uuid,
+    return Metrics.sendAnonymousData({
+      uuid,
       process: 'analysis',
       requestTime: metrics.requestTime,
-      contentDuration: this.stateData.input.duration || 0,
+      contentDuration: input.duration || 0,
       elapsed: metrics.endTime - metrics.startTime,
       aiml,
-    }).catch(e => console.log(`sendAnonymized: ${e.message}`));
+    }).catch((e) =>
+      console.log(`ERR: sendAnonymous: ${e.message}`));
   }
 }
 

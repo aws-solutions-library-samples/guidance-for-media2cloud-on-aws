@@ -32,7 +32,7 @@ For Windows user, follow the instruction [here](http://nginx.org/en/docs/windows
 
 ### NODEJS
 
-While the frontend web applicaiton is written in JQuery, the backend (lambda function) is written in NodeJS v10.x. In order to build the guidance locally, you would need to install NodeJS 10.x or above on your system.
+While the frontend web applicaiton is written in JQuery, the backend (lambda function) is written in NodeJS v20.x. In order to build the solution locally, you would need to install NodeJS 20.x or above on your system.
 
 For MAC user, download and install from [nodejs.org](https://nodejs.org/en/download/). Alternatively, you can also use Homebrew.
 
@@ -48,14 +48,14 @@ Although we are running the webapp locally, we still communicate to the backend 
 
 __
 
-## Step 2: Clone the source code and build the guidance
+## Step 2: Clone the source code and build the solution
 
 Follow the step described in [README](../../README.md).
 
 ```bash
-git clone git@github.com:aws-solutions/media2cloud.git
+git clone git@github.com:aws-solutions-library-samples/guidance-for-media2cloud-on-aws.git
 
-cd ./media2cloud/deployment
+cd ./guidance-for-media2cloud-on-aws/deployment
 
 bash build-s3-dist.sh --bucket YOUR_BUCKET --single-region
 
@@ -125,9 +125,10 @@ __
 Download the **solution-manifest.js** from web bucket and copy it to your local **media2cloud/source/webapp** folder. _(You can find the Web bucket name from the CloudFormations stack,  Outputs tab, **WebBucket**.)_
 
 ```bash
-cd ./media2cloud/source/webapp
 
-aws s3 cp s3://<WEB_BUCKET>/solution-manifest.js .
+cd ./guidance-for-media2cloud-on-aws/source/webapp
+
+aws s3 cp s3://[WEB_BUCKET]/solution-manifest.js .
 
 ```
 
@@ -138,6 +139,7 @@ __
 The only configuration you would need to modify is the **location.root** in the nginx.conf file. Change the **root** to map to your local **media2cloud/source/webapp** source code folder. See the code snippet below.
 
 ```nginx
+
 http {
   ...
   server {
@@ -149,8 +151,8 @@ http {
     error_log   /usr/local/var/log/nginx/error_debug.log debug;
 
     location / {
-      # Make sure to set your root directory to /.../media2cloud/source/webapp
-      root   /Users/<username>/github/media2cloud/source/webapp;
+      # Make sure to set your root directory to /.../guidance-for-media2cloud-on-aws/source/webapp
+      root   /Users/[username]/github/guidance-for-media2cloud-on-aws/source/webapp;
       index  index.html;
     }
   }

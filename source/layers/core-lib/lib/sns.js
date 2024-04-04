@@ -1,16 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  SNSClient,
+  PublishCommand,
+} = require('@aws-sdk/client-sns');
 const Environment = require('./environment');
+const xraysdkHelper = require('./xraysdkHelper');
+const retryStrategyHelper = require('./retryStrategyHelper');
+
+const SNS_TOPIC = Environment.SNS.Topic;
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class SNS {
   static trimSubject(subject) {
@@ -19,27 +19,46 @@ class SNS {
       : subject;
   }
 
-  static async send(subject, message, topicArn = Environment.SNS.Topic) {
+  static async send(
+    subject,
+    message,
+    topicArn = SNS_TOPIC
+  ) {
     if (!topicArn) {
       return false;
     }
 
-    const params = {
-      TopicArn: topicArn,
-      Subject: SNS.trimSubject(subject),
-      Message: (typeof message === 'string')
-        ? message
-        : JSON.stringify(message, null, 2),
-    };
+    let payload = message;
+    if (!(typeof payload === 'string'
+    || payload instanceof Buffer)) {
+      payload = JSON.stringify(payload);
+    }
 
-    const sns = new AWS.SNS({
-      apiVersion: '2010-03-31',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
+    const trimmed = SNS.trimSubject(subject);
+
+    const snsClient = xraysdkHelper(new SNSClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new PublishCommand({
+      TopicArn: topicArn,
+      Subject: trimmed,
+      Message: payload,
     });
-    return sns.publish(params).promise()
-      .then(() => true)
+
+    return snsClient.send(command)
+      .then(() =>
+        true)
       .catch((e) => {
-        console.error(e);
+        console.error(
+          'ERR:',
+          'SNS.send:',
+          'snsClient.send:',
+          e.$metadata.httpStatusCode,
+          e.name,
+          payload
+        );
         return false;
       });
   }

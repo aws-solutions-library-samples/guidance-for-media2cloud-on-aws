@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const StateMessage = require('./stateMessage');
-const {
-  mxCommonUtils,
-  mxNeat,
-} = require('./mxCommonUtils');
-
-class X extends mxCommonUtils(mxNeat(class {})) {}
+const CommonUtils = require('./commonUtils');
 
 /**
  * @class StateData
@@ -45,6 +40,8 @@ class StateData extends StateMessage {
       ...event,
     };
 
+    this.$context = context;
+
     this.$accountId = context.invokedFunctionArn.split(':')[4];
     const fn = (typeof context.getRemainingTimeInMillis === 'function')
       ? context.getRemainingTimeInMillis
@@ -64,6 +61,10 @@ class StateData extends StateMessage {
 
   get event() {
     return this.$event;
+  }
+
+  get context() {
+    return this.$context;
   }
 
   get accountId() {
@@ -134,7 +135,7 @@ class StateData extends StateMessage {
   }
 
   toJSON() {
-    return X.neat({
+    return CommonUtils.neat({
       ...super.toJSON(),
       input: this.input,
       data: this.data || {},

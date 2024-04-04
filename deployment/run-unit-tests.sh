@@ -10,32 +10,17 @@ echo "Running unit tests"
 echo "------------------------------------------------------------------------------"
 echo "Installing Testing Dependencies"
 echo "------------------------------------------------------------------------------"
-pushd ../source
-npm install -g \
-  aws-sdk \
-  aws-sdk-mock \
-  browserify \
-  chai \
-  eslint \
-  eslint-config-airbnb-base \
-  eslint-plugin-import \
-  mocha \
-  nock \
-  npm-run-all \
-  sinon \
-  sinon-chai \
-  uglify-es
+pushd ..
+npm install -g jest
+npm install --include=dev
 popd
 
 
 #
 # Testing lambda packages
 #
-PACKAGES=(
-  "layers/core-lib" 
-  "layers/mediainfo" 
-  "main/ingest/document" 
-  "layers/service-backlog-lib/"
+PACKAGES=(\
+  "api" \
 )
 
 for package in "${PACKAGES[@]}"; do
@@ -52,6 +37,8 @@ done
 # Testing lambda layers
 #
 LAYERS=(\
+  "core-lib" \
+  "service-backlog-lib" \
   "mediainfo" \
 )
 

@@ -1,16 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const {
-  Retry,
+  SFNClient,
+  DescribeExecutionCommand,
+} = require('@aws-sdk/client-sfn');
+const {
   BacklogClient: {
     CustomBacklogJob,
   },
@@ -24,6 +19,8 @@ const {
       },
     },
   },
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('service-backlog-lib');
 
 class CustomLabelsStateMachineStatus {
@@ -62,22 +59,36 @@ class CustomLabelsStateMachineStatus {
   async process() {
     /* mesh state machine output that gets passsed to EventBridge */
     const state = States.DetectCustomLabels;
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
       customUserAgent: CustomUserAgent,
-    });
-    const fn = step.describeExecution.bind(step);
-    const output = await Retry.run(fn, {
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new DescribeExecutionCommand({
       executionArn: this.executionArn,
-    }).then(data =>
-      ((data.output)
-        ? {
-          stateMachineOutput: ((JSON.parse(data.output) || {}).output || {})[state],
+    });
+
+    const response = await stepfunctionClient.send(command)
+      .then((res) => {
+        if (res.output) {
+          const parsed = JSON.parse(res.output) || {};
+          return {
+            stateMachineOutput: (parsed.output || {})[state],
+          };
         }
-        : undefined))
-      .catch(() => undefined);
+        return undefined;
+      })
+      .catch(() =>
+        undefined);
+
     const backlog = new CustomBacklogJob();
-    return backlog.deleteJob(this.executionArn, this.status, output);
+
+    return backlog.deleteJob(
+      this.executionArn,
+      this.status,
+      response
+    );
   }
 }
 

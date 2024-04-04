@@ -3,7 +3,6 @@
 
 import SolutionManifest from '/solution-manifest.js';
 import Localization from './shared/localization.js';
-import CognitoConnector from './shared/cognitoConnector.js';
 import AppUtils from './shared/appUtils.js';
 import CollectionTab from './mainView/collectionTab.js';
 import UploadTab from './mainView/uploadTab.js';
@@ -12,27 +11,91 @@ import StatsTab from './mainView/statsTab.js';
 import FaceCollectionTab from './mainView/faceCollectionTab.js';
 import SettingsTab from './mainView/settingsTab.js';
 import UserManagementTab from './mainView/userManagementTab.js';
+import {
+  GetUserSession,
+} from './shared/cognito/userSession.js';
 
-const ID_MAIN_CONTAINER = `main-${AppUtils.randomHexstring()}`;
-const ID_MAIN_TOASTLIST = `main-${AppUtils.randomHexstring()}`;
-const ID_MAIN_TABLIST = `main-${AppUtils.randomHexstring()}`;
-const ID_MAIN_TABCONTENT = `main-${AppUtils.randomHexstring()}`;
-const SOLUTION_URL = 'https://aws.amazon.com/solutions/media2cloud/';
+const {
+  Messages: {
+    SolutionName: SOLUTION_NAME,
+    CollectionTab: MSG_COLLECTION_TAB,
+    UploadTab: MSG_UPLOAD_TAB,
+    ProcessingTab: MSG_PROCESSING_TAB,
+    StatsTab: MSG_STATS_TAB,
+    FaceCollectionTab: MSG_FACECOLLECTION_TAB,
+    SettingsTab: MSG_SETTINGS_TAB,
+    UserManagementTab: MSG_USERMANAGEMENT_TAB,
+  },
+  Tooltips: {
+    Logout: TOOLTIP_LOGOUT,
+    VisitSolutionPage: TOOLTIP_SOLUTION_PAGE,
+  },
+} = Localization;
+
+const [
+  COLLECTION_TAB,
+  UPLOAD_TAB,
+  PROCESSING_TAB,
+  STATS_TAB,
+  FACECOLLECTION_TAB,
+  SETTINGS_TAB,
+  USERMANAGEMENT_TAB,
+] = [
+  MSG_COLLECTION_TAB,
+  MSG_UPLOAD_TAB,
+  MSG_PROCESSING_TAB,
+  MSG_STATS_TAB,
+  MSG_FACECOLLECTION_TAB,
+  MSG_SETTINGS_TAB,
+  MSG_USERMANAGEMENT_TAB,
+].map((x) =>
+  x.replaceAll(' ', ''));
+
+const ORDERED_CONTROLLERS = [
+  COLLECTION_TAB,
+  UPLOAD_TAB,
+  PROCESSING_TAB,
+  STATS_TAB,
+  FACECOLLECTION_TAB,
+  SETTINGS_TAB,
+  USERMANAGEMENT_TAB,
+];
+
+const RANDOM_ID = AppUtils.randomHexstring();
+const ID_MAIN_CONTAINER = `main-${RANDOM_ID}`;
+const ID_MAIN_TOASTLIST = `main-toast-${RANDOM_ID}`;
+const ID_MAIN_TABLIST = `main-tabs-${RANDOM_ID}`;
+const ID_MAIN_TABCONTENT = `main-content-${RANDOM_ID}`;
+
+const SOLUTION_URL = 'https://aws.amazon.com/solutions/guidance/media2cloud-on-aws/';
 const SOLUTION_ICON = '/images/m2c-short-white.png';
+
+function parseHashtag(hashtag = '') {
+  let tag = hashtag;
+
+  if (tag[0] === '#') {
+    tag = tag.slice(1);
+  }
+
+  const components = tag.split('/');
+  const current = components[0];
+  const next = components.slice(1).join('/');
+
+  return {
+    current,
+    next,
+  };
+}
 
 export default class MainView {
   constructor() {
-    this.$view = $('<div/>').attr('id', ID_MAIN_CONTAINER);
-    this.$cognito = CognitoConnector.getSingleton();
+    this.$view = $('<div/>')
+      .attr('id', ID_MAIN_CONTAINER);
     this.$tabControllers = this.initTabControllersByGroup();
   }
 
   get view() {
     return this.$view;
-  }
-
-  get cognito() {
-    return this.$cognito;
   }
 
   get tabControllers() {
@@ -41,55 +104,69 @@ export default class MainView {
 
   initTabControllersByGroup() {
     const tabControllers = {};
+
+    const session = GetUserSession();
+
     /* read only access */
-    if (this.cognito.canRead()) {
-      tabControllers.collection = new CollectionTab(true);
-      tabControllers.processing = new ProcessingTab();
-      tabControllers.stats = new StatsTab();
+    if (session.canRead()) {
+      tabControllers[COLLECTION_TAB] = new CollectionTab();
+      tabControllers[PROCESSING_TAB] = new ProcessingTab();
+      tabControllers[STATS_TAB] = new StatsTab();
     }
     /* read/write access */
-    if (this.cognito.canWrite()) {
-      tabControllers.upload = new UploadTab();
-      tabControllers.faceCollection = new FaceCollectionTab();
-      tabControllers.settings = new SettingsTab();
+    if (session.canWrite()) {
+      tabControllers[UPLOAD_TAB] = new UploadTab();
+      tabControllers[FACECOLLECTION_TAB] = new FaceCollectionTab();
+      tabControllers[SETTINGS_TAB] = new SettingsTab();
     }
     /* read/write/modify access */
-    if (this.cognito.canModify()) {
-      tabControllers.userManagement = new UserManagementTab();
+    if (session.canModify()) {
+      tabControllers[USERMANAGEMENT_TAB] = new UserManagementTab();
     }
 
-    return [
-      tabControllers.collection,
-      tabControllers.upload,
-      tabControllers.processing,
-      tabControllers.stats,
-      tabControllers.faceCollection,
-      tabControllers.settings,
-      tabControllers.userManagement,
-    ].filter((x) =>
-      x !== undefined);
+    return tabControllers;
   }
 
   appendTo(parent) {
     return parent.append(this.view);
   }
 
-  async show() {
+  async show(hashtag) {
     await this.hide();
-    const navbar = $('<nav/>').addClass('navbar navbar-expand-lg navbar-dark bg-dark')
+
+    const navbar = $('<nav/>')
+      .addClass('navbar navbar-expand-lg navbar-dark bg-dark')
       .append(this.createLogo())
       .append(this.createNavToggle())
       .append(this.createTabItems())
       .append(this.createLogoutIcon());
     this.view.append(navbar);
+
     this.view.append(this.createTabContents());
     this.view.append(this.createPadding());
     this.view.append(this.createToastLayer());
-    return this.tabControllers[0].show();
+
+    return this._show(hashtag);
+  }
+
+  async _show(hashtag) {
+    const {
+      current,
+      next,
+    } = parseHashtag(hashtag);
+
+    let name = current;
+    if (this.tabControllers[name] === undefined) {
+      name = COLLECTION_TAB;
+    }
+
+    return this.tabControllers[name].show(next);
   }
 
   async hide() {
-    return Promise.all(this.tabControllers.map(tab => tab.hide()));
+    return Promise.all(Object.values(this.tabControllers)
+      .map((tab) =>
+        tab.hide()));
   }
 
   createLogo() {
@@ -98,14 +175,14 @@ export default class MainView {
       .attr('target', '_blank')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
-      .attr('title', Localization.Tooltips.VisitSolutionPage)
+      .attr('title', TOOLTIP_SOLUTION_PAGE)
       .css('font-size', '1rem');
 
     solutionLink.tooltip();
     return solutionLink.append($('<img/>').addClass('d-inline-block align-top')
       .attr('src', SOLUTION_ICON)
       .attr('height', 48)
-      .attr('alt', Localization.Messages.SolutionName));
+      .attr('alt', SOLUTION_NAME));
   }
 
   createNavToggle() {
@@ -122,36 +199,63 @@ export default class MainView {
 
   createTabItems() {
     const id = ID_MAIN_TABLIST;
-    const navbar = $('<div/>').addClass('navbar-nav')
+
+    const container = $('<div/>')
+      .addClass('collapse navbar-collapse')
+      .attr('id', id);
+
+    const navbar = $('<div/>')
+      .addClass('navbar-nav')
       .attr('role', 'tablist');
-    this.tabControllers.forEach(tab => navbar.append(tab.tabLink));
-    return $('<div/>').addClass('collapse navbar-collapse')
-      .attr('id', id)
-      .append(navbar);
+    container.append(navbar);
+
+    ORDERED_CONTROLLERS.forEach((name) => {
+      const tab = this.tabControllers[name];
+      if (tab !== undefined) {
+        navbar.append(tab.tabLink);
+      }
+    });
+
+    return container;
   }
 
   createLogoutIcon() {
-    const logout = $('<button/>').addClass('btn btn-sm btn-link text-white')
+    const session = GetUserSession();
+
+    const logout = $('<button/>')
+      .addClass('btn btn-sm btn-link text-white')
       .attr('type', 'button')
       .attr('data-toggle', 'tooltip')
       .attr('data-placement', 'bottom')
-      .attr('title', `${this.cognito.user.username}, ${Localization.Tooltips.Logout}`)
+      .attr('title', `${(session || {}).username}, ${TOOLTIP_LOGOUT}`)
       .css('font-size', '1rem')
-      .html($('<i/>').addClass('fas fa-user-circle')
-        .css('font-size', '2rem'));
-    logout.tooltip();
-    logout.off('click').click(() => {
-      this.cognito.signOut();
+      .tooltip();
+
+    logout.on('click', async () => {
+      await session.signOut();
       return window.location.reload();
     });
+
+    const userIcon = $('<i/>')
+      .addClass('fas fa-user-circle')
+      .css('font-size', '2rem');
+    logout.html(userIcon);
+
     return logout;
   }
 
   createTabContents() {
-    const tabContents = $('<div/>').addClass('tab-content')
+    const tabContents = $('<div/>')
+      .addClass('tab-content')
       .attr('id', ID_MAIN_TABCONTENT);
-    this.tabControllers.forEach(tab =>
-      tabContents.append(tab.tabContent));
+
+    ORDERED_CONTROLLERS.forEach((name) => {
+      const tab = this.tabControllers[name];
+      if (tab !== undefined) {
+        tabContents.append(tab.tabContent);
+      }
+    });
+
     return tabContents;
   }
 

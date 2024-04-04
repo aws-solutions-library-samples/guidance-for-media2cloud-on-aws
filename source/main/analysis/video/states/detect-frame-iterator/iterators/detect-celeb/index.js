@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  RecognizeCelebritiesCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
   AnalysisTypes,
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
@@ -19,17 +22,29 @@ class DetectCelebIterator extends BaseDetectFrameIterator {
   }
 
   async detectFrame(bucket, key, frameNo, timestamp) {
-    const fn = this.rekog.recognizeCelebrities.bind(this.rekog);
     const params = this.makeParams(bucket, key, this.paramOptions);
-    return this.detectFn(fn, params)
-      .then(result =>
-        this.parseCelebResult(result, frameNo, timestamp));
+    const command = new RecognizeCelebritiesCommand(params);
+
+    return this.detectFn(command)
+      .then((res) =>
+        this.parseCelebResult(res, frameNo, timestamp));
   }
 
   parseCelebResult(data, frameNo, timestamp) {
-    return (!data || !data.CelebrityFaces || !data.CelebrityFaces.length)
-      ? undefined
-      : data.CelebrityFaces.map(x => ({
+    if (!data || !data.CelebrityFaces || !data.CelebrityFaces.length) {
+      return undefined;
+    }
+
+    const minConfidence = this.minConfidence;
+    const filtered = data.CelebrityFaces
+      .filter((x) =>
+        x.MatchConfidence >= minConfidence);
+    if (!filtered.length) {
+      return undefined;
+    }
+
+    return filtered
+      .map((x) => ({
         Timestamp: timestamp,
         FrameNumber: frameNo,
         Celebrity: {
@@ -39,17 +54,12 @@ class DetectCelebIterator extends BaseDetectFrameIterator {
       }));
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.Celebrity || {}).Name).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.Celebrity.Name)),
+    ];
   }
 }
 

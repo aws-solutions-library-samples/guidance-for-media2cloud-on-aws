@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
-  SQL,
   AnalysisTypes,
   CommonUtils,
 } = require('core-lib');
@@ -19,23 +18,20 @@ class CreateCelebTrackIterator extends BaseCreateTrackIterator {
     return 'CreateCelebTrackIterator';
   }
 
-  async downloadSelected(bucket, key, name) {
-    const query = `SELECT * FROM S3Object[*].Celebrities[*] s WHERE s.Celebrity.Name = '${SQL.escape(name)}';`;
-    return CommonUtils.selectS3Content(bucket, key, query).catch(() =>
-      this.downloadJson(bucket, key, name));
-  }
-
-  async downloadJson(bucket, key, name) {
-    const data = await CommonUtils.download(bucket, key)
-      .then(x => JSON.parse(x));
-    return ((data || {}).Celebrities || []).filter(x =>
-      ((x.Celebrity || {}).Name === name));
+  filterBy(name, data) {
+    if (!data || !data.Celebrities || !data.Celebrities.length) {
+      return [];
+    }
+    return data.Celebrities
+      .filter((x) =>
+        (x.Celebrity || {}).Name === name);
   }
 
   createTimeseriesData(name, datasets) {
     let desc;
     const timestamps = {};
-    for (let dataset of datasets) {
+    for (let i = 0; i < datasets.length; i++) {
+      const dataset = datasets[i];
       const box = dataset.Celebrity.BoundingBox || (dataset.Celebrity.Face || {}).BoundingBox;
       if (!box) {
         continue;
@@ -46,11 +42,11 @@ class CreateCelebTrackIterator extends BaseCreateTrackIterator {
       const confidence = dataset.Celebrity.Confidence || (dataset.Celebrity.Face || {}).Confidence;
       timestamps[dataset.Timestamp] = timestamps[dataset.Timestamp] || [];
       timestamps[dataset.Timestamp].push({
-        c: Number.parseFloat(confidence.toFixed(2)),
-        w: Number.parseFloat(box.Width.toFixed(4)),
-        h: Number.parseFloat(box.Height.toFixed(4)),
-        l: Number.parseFloat(box.Left.toFixed(4)),
-        t: Number.parseFloat(box.Top.toFixed(4)),
+        c: Number(confidence.toFixed(2)),
+        w: Number(box.Width.toFixed(4)),
+        h: Number(box.Height.toFixed(4)),
+        l: Number(box.Left.toFixed(4)),
+        t: Number(box.Top.toFixed(4)),
       });
     }
     if (!Object.keys(timestamps)) {
@@ -59,11 +55,12 @@ class CreateCelebTrackIterator extends BaseCreateTrackIterator {
     return {
       label: name,
       desc,
-      data: Object.keys(timestamps).map(x => ({
-        x: Number.parseInt(x, 10),
-        y: timestamps[x].length,
-        details: timestamps[x],
-      })),
+      data: Object.keys(timestamps)
+        .map(x => ({
+          x: Number(x),
+          y: timestamps[x].length,
+          details: timestamps[x],
+        })),
     };
   }
 }

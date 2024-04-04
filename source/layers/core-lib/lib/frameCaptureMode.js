@@ -20,4 +20,5 @@ module.exports = {
   MODE_1F_EVERY_1MIN: 1011, // 1 frame every minute
   MODE_1F_EVERY_2MIN: 1012, // 1 frame every 2 minutes
   MODE_1F_EVERY_5MIN: 1013, // 1 frame every 5 minutes
+  MODE_DYNAMIC_FPS: 9999, // Dynamic framerate
 };

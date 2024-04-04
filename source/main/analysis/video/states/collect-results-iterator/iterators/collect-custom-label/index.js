@@ -5,6 +5,7 @@ const PATH = require('path');
 const {
   CommonUtils,
   AnalysisTypes,
+  MapDataVersion,
 } = require('core-lib');
 const BaseCollectResultsIterator = require('../shared/baseCollectResultsIterator');
 
@@ -24,53 +25,84 @@ class CollectCustomLabelIterator extends BaseCollectResultsIterator {
 
   async process() {
     const data = this.stateData.data[this.subCategory];
-    if (data.numOutputs === 0) {
-      return this.setCompleted();
+    const bucket = data.bucket;
+    const key = data.output;
+    const parsed = PATH.parse(key);
+    const prefix = parsed.dir;
+    const name = parsed.base;
+
+    const dataset = await CommonUtils.download(
+      bucket,
+      key
+    ).then((res) =>
+      JSON.parse(res))
+      .catch((e) =>
+        console.error(e));
+    if (dataset && dataset[NAMED_KEY]) {
+      const filtered = this.parseResults(dataset);
+      dataset[NAMED_KEY] = filtered;
+
+      const mapData = {
+        version: MapDataVersion,
+        file: name,
+        data: this.getUniqueNames(filtered),
+      };
+
+      await Promise.all([
+        this.updateFile(
+          bucket,
+          prefix,
+          name,
+          dataset
+        ),
+        this.updateFile(
+          bucket,
+          prefix,
+          MAP_FILENAME,
+          mapData
+        ),
+      ]);
     }
-    data.cursor = 0;
-    do {
-      await this.processResults(data.cursor++);
-    } while (data.cursor < data.numOutputs);
-    /* create mapData file */
-    const prefix = this.makeRawDataPrefix(this.subCategory);
-    const name = MAP_FILENAME;
-    await CommonUtils.uploadFile(data.bucket, prefix, name, this.mapData)
-      .catch(e => console.error(e));
-    return (data.cursor === data.numOutputs)
-      ? this.setCompleted()
-      : this.setProgress(Math.round((data.cursor / data.numOutputs) * 100));
+
+    return this.setCompleted();
   }
 
-  async processResults(idx) {
-    const data = this.stateData.data[this.subCategory];
-    const prefix = this.makeRawDataPrefix(this.subCategory);
-    const name = BaseCollectResultsIterator.makeSequenceFileName(idx);
-    const dataset = await CommonUtils.download(data.bucket, PATH.join(prefix, name), false)
-      .then(x => JSON.parse(x.Body.toString())[NAMED_KEY]);
-    this.mapData = this.mapUniqueNameToSequenceFile(this.mapData || {}, dataset, name);
-    return idx;
+  async updateFile(
+    bucket,
+    prefix,
+    name,
+    data
+  ) {
+    return CommonUtils.uploadFile(
+      bucket,
+      prefix,
+      name,
+      data
+    ).catch((e) =>
+      console.error(e));
+  }
+
+  parseResults(dataset) {
+    const minConfidence = this.minConfidence;
+    return dataset[NAMED_KEY]
+      .filter((x) =>
+        x.CustomLabel
+        && x.CustomLabel.Name);
+  }
+
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.CustomLabel.Name)),
+    ];
   }
 
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory];
-    return PATH.join(
-      super.makeRawDataPrefix(subCategory),
-      data[CUSTOMLABEL_MODELS],
-      '/'
-    );
-  }
-
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.CustomLabel || {}).Name).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return PATH.join(super.makeRawDataPrefix(subCategory), data[CUSTOMLABEL_MODELS], '/');
   }
 }
 

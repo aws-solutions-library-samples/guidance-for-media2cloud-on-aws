@@ -1,22 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  SFNClient,
+  StartExecutionCommand,
+} = require('@aws-sdk/client-sfn');
 const {
   CommonUtils,
   DB,
   Environment,
   StateData,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const JsonProvider = require('./jsonProvider');
 const BaseOp = require('./baseOp');
+
+const REGION = process.env.AWS_REGION;
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class AssetOp extends BaseOp {
   async onGET() {
@@ -28,9 +30,9 @@ class AssetOp extends BaseOp {
     const qs = this.request.queryString || {};
     const token = qs.token && decodeURIComponent(qs.token);
     if (token && !CommonUtils.validateBase64JsonToken(token)) {
-      throw new Error('invalid token');
+      throw new M2CException('invalid token');
     }
-    const pageSize = Number.parseInt(qs.pageSize || Environment.DynamoDB.Ingest.GSI.PageSize, 10);
+    const pageSize = Number(qs.pageSize || Environment.DynamoDB.Ingest.GSI.PageSize);
     const overallStatus = qs.overallStatus && decodeURIComponent(qs.overallStatus);
     const type = qs.type && decodeURIComponent(qs.type);
     /* get records by overallStatus */
@@ -49,31 +51,31 @@ class AssetOp extends BaseOp {
     const params = this.request.body || {};
     const input = params.input;
     if (!input) {
-      throw new Error('input object must be specified');
+      throw new M2CException('input object must be specified');
     }
     if (!(input.uuid || (input.bucket && input.key))) {
-      throw new Error('uuid or bucket and key must be specified');
+      throw new M2CException('uuid or bucket and key must be specified');
     }
     if (input.uuid && !CommonUtils.validateUuid(input.uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
     if ((input.destination || {}).bucket && !CommonUtils.validateBucket(input.destination.bucket)) {
-      throw new Error('invalid destination bucket name');
+      throw new M2CException('invalid destination bucket name');
     }
     if ((input.group) && !CommonUtils.validateGroupName(input.group)) {
-      throw new Error('invalid group name');
+      throw new M2CException('invalid group name');
     }
     if (input.attributes !== undefined) {
       const keys = Object.keys(input.attributes);
       while (keys.length) {
         if (!CommonUtils.validateAttributeKey(keys.shift())) {
-          throw new Error('invalid attribute key name');
+          throw new M2CException('invalid attribute key name');
         }
       }
       const values = Object.values(input.attributes);
       while (values.length) {
         if (!CommonUtils.validateAttributeValue(values.shift())) {
-          throw new Error('invalid attribute key value');
+          throw new M2CException('invalid attribute key value');
         }
       }
     }
@@ -87,15 +89,12 @@ class AssetOp extends BaseOp {
   async onDELETE() {
     const uuid = (this.request.pathParameters || {}).uuid;
     if (!uuid || !CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
-    const db = new DB({
-      Table: Environment.DynamoDB.Ingest.Table,
-      PartitionKey: Environment.DynamoDB.Ingest.PartitionKey,
-    });
-    await db.purge(uuid)
-      .catch((e) =>
-        console.error(`[ERR]: db.purge: ${uuid} ${e.code} ${e.message}`));
+
+    /* start the removal state machine */
+    await this.startAssetRemovalWorkflow(uuid);
+
     return super.onDELETE({
       uuid,
       status: StateData.Statuses.Removed,
@@ -134,7 +133,7 @@ class AssetOp extends BaseOp {
       fetched = await db.fetch(input.uuid, undefined, 'key').catch(() => ({}));
 
       if (input.key && fetched.key && input.key !== fetched.key) {
-        throw new Error(`${input.uuid} is already used for other asset`);
+        throw new M2CException(`${input.uuid} is already used for other asset`);
       }
     } else {
       input.uuid = CommonUtils.uuid4();
@@ -152,31 +151,70 @@ class AssetOp extends BaseOp {
     /* #4: start ingest state machine */
     const arn = [
       'arn:aws:states',
-      process.env.AWS_REGION,
+      REGION,
       this.request.accountId,
       'stateMachine',
       Environment.StateMachines.Main,
     ].join(':');
 
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-    return step.startExecution({
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StartExecutionCommand({
       input: JSON.stringify({
         input,
       }),
       stateMachineArn: arn,
-    }).promise().then(data => ({
-      uuid: input.uuid,
-      status: StateData.Statuses.Started,
-      ...data,
+    });
+
+    return stepfunctionClient.send(command)
+      .then((res) => ({
+        ...res,
+        uuid: input.uuid,
+        status: StateData.Statuses.Started,
+        $metadata: undefined,
+      }));
+  }
+
+  async startAssetRemovalWorkflow(uuid) {
+    const params = {
+      input: {
+        uuid,
+      },
+    };
+
+    const arn = [
+      'arn:aws:states',
+      REGION,
+      this.request.accountId,
+      'stateMachine',
+      Environment.StateMachines.AssetRemoval,
+    ].join(':');
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      retryStrategy: retryStrategyHelper(),
     }));
+
+    const command = new StartExecutionCommand({
+      input: JSON.stringify(params),
+      stateMachineArn: arn,
+    });
+
+    return stepfunctionClient.send(command)
+      .then((res) => ({
+        ...res,
+        uuid,
+        status: StateData.Statuses.Removed,
+        $metadata: undefined,
+      }));
   }
 
   async onGetByUuid(uuid) {
     if (!CommonUtils.validateUuid(uuid)) {
-      throw new Error('invalid uuid');
+      throw new M2CException('invalid uuid');
     }
     const db = new DB({
       Table: Environment.DynamoDB.Ingest.Table,

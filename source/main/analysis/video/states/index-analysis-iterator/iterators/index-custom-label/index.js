@@ -17,15 +17,12 @@ class IndexCustomLabelIterator extends BaseAnalysisIndexer {
     return 'IndexCustomLabelIterator';
   }
 
-  async downloadAndParseMetadata(bucket, key) {
+  parseMetadata(data) {
     const model = this.stateData.data[SUBCATEGORY].customLabelModels;
-    const datasets = await super.downloadAndParseMetadata(bucket, key);
-    return (!datasets)
-      ? datasets
-      : {
-        ...datasets,
-        model,
-      };
+    return {
+      ...super.parseMetadata(data),
+      model,
+    };
   }
 }
 

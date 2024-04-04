@@ -5,6 +5,7 @@ const PATH = require('path');
 const {
   DB,
   CommonUtils,
+  MimeTypeHelper,
   Environment,
   StateData,
   IngestError,
@@ -56,18 +57,28 @@ class StateUpdateRecord {
         response = await CommonUtils.listObjects(bucket, prefix, {
           ContinuationToken: (response || {}).NextContinuationToken,
           MaxKeys: 300,
-        }).catch((e) =>
-          console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+        }).catch((e) => {
+          console.error(
+            'ERR:',
+            'StateUpdateRecord.process:',
+            'CommonUtils.listObjects:',
+            e.name,
+            e.message,
+            prefix
+          );
+          return undefined;
+        });
+
         if (response && response.Contents) {
           while (response.Contents.length) {
             const content = response.Contents.shift();
-            const mime = CommonUtils.getMime(content.Key);
+            const mime = MimeTypeHelper.getMime(content.Key);
             proxies.push({
               ...this.parseObjectProps(content),
               key: content.Key,
               outputType: ot,
               mime,
-              type: CommonUtils.parseMimeType(mime),
+              type: MimeTypeHelper.parseMimeType(mime),
             });
           }
         }
@@ -81,16 +92,26 @@ class StateUpdateRecord {
     }).then((res) =>
       res.Contents.sort((a, b) =>
         b.Size - a.Size).shift())
-      .catch((e) =>
-        console.error(`[ERR]: CommonUtils.listObjects: ${prefix} ${e.code} ${e.message}`));
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'StateUpdateRecord.process:',
+          'CommonUtils.listObjects:',
+          e.name,
+          e.message,
+          prefix
+        );
+        return undefined;
+      });
+
     if (frameCapture) {
-      const mime = CommonUtils.getMime(frameCapture.Key);
+      const mime = MimeTypeHelper.getMime(frameCapture.Key);
       proxies.push({
         ...this.parseObjectProps(frameCapture),
         key: frameCapture.Key,
         outputType: OUTPUT_TYPE_PROXY,
         mime,
-        type: CommonUtils.parseMimeType(mime),
+        type: MimeTypeHelper.parseMimeType(mime),
       });
     }
 

@@ -1,15 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  MediaConvertClient,
+  CreateJobCommand,
+} = require('@aws-sdk/client-mediaconvert');
 const {
   MediaConvert,
   DataAccess,
@@ -19,7 +14,11 @@ const {
     },
   },
 } = require('../../shared/defs');
-
+const xraysdkHelper = require('../../shared/xraysdkHelper');
+const retryStrategyHelper = require('../../shared/retryStrategyHelper');
+const {
+  M2CException,
+} = require('../../shared/error');
 const BacklogJob = require('../backlogJob');
 
 class MediaConvertBacklogJob extends BacklogJob {
@@ -41,22 +40,32 @@ class MediaConvertBacklogJob extends BacklogJob {
     return Object.values(MediaConvertBacklogJob.ServiceApis).indexOf(serviceApi) >= 0;
   }
 
-  getMediaConvertInstance() {
+  async startJob(serviceApi, serviceParams) {
     if (!MediaConvert.Endpoint || !DataAccess.RoleArn) {
-      throw new Error('missing ENV_MEDIACONVERT_HOST or ENV_DATA_ACCESS_ROLE');
+      throw new M2CException('invalid MediaConvert endpoint or data access role');
     }
-    return new AWS.MediaConvert({
-      apiVersion: '2017-08-29',
+
+    let command;
+    if (serviceApi === MediaConvertBacklogJob.ServiceApis.CreateJob) {
+      command = new CreateJobCommand(serviceParams);
+    } else {
+      console.error(
+        'ERR:',
+        'MediaConvertBacklogJob.startJob:',
+        'CreateJobCommand:',
+        'not supported',
+        serviceApi
+      );
+      throw new M2CException(`${serviceApi} not supported`);
+    }
+
+    const mediaconvertClient = xraysdkHelper(new MediaConvertClient({
       customUserAgent: CustomUserAgent,
       endpoint: MediaConvert.Endpoint,
-    });
-  }
+      retryStrategy: retryStrategyHelper(),
+    }));
 
-  bindToFunc(serviceApi) {
-    const mediaconvert = this.getMediaConvertInstance();
-    return (serviceApi === MediaConvertBacklogJob.ServiceApis.CreateJob)
-      ? mediaconvert.createJob.bind(mediaconvert)
-      : undefined;
+    return mediaconvertClient.send(command);
   }
 
   async startAndRegisterJob(id, serviceApi, params) {
@@ -73,10 +82,10 @@ class MediaConvertBacklogJob extends BacklogJob {
     return super.startAndRegisterJob(id, serviceApi, serviceParams);
   }
 
-  noMoreQuotasException(code) {
+  noMoreQuotasException(name) {
     return (
-      (code === 'TooManyRequestsException') ||
-      (code === 'LimitExceededException')
+      (name === 'TooManyRequestsException') ||
+      (name === 'LimitExceededException')
     );
   }
 

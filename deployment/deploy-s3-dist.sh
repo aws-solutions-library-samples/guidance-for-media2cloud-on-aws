@@ -12,6 +12,7 @@ ACCOUNTID=
 SOURCE_DIR="../source"
 TEMPLATE_DIST_DIR="global-s3-assets"
 BUID_DIST_DIR="regional-s3-assets"
+MAIN_TEMPLATE="media2cloud.template"
 
 #
 # @function usage
@@ -48,6 +49,8 @@ where
                               control setting. You could specify 'public-read' if you plan to share the solution
                               with other AWS accounts. Note that it requires your bucket to be configured to permit
                               'public-read' acl settings
+
+  --latest                    [optional] if specified, also deploy the templates to "latest/" folder
 "
   return 0
 }
@@ -76,12 +79,16 @@ while [[ $# -gt 0 ]]; do
       ;;
       -r|--single-region)
       SINGLE_REGION=true
-      shift # key
+      shift # past argument
       ;;
       -a|--acl)
       ACL_SETTING="$2"
       shift # past argument
       shift # past value
+      ;;
+      -l|--latest)
+      DEPLOY_LATEST=true
+      shift # past argument
       ;;
       *)
       shift
@@ -102,7 +109,7 @@ done
   usage && \
   exit 1
 
-ACCOUNTID=$(aws sts get-caller-identity --output json | jq .Account | tr -d \")
+ACCOUNTID=$(aws sts get-caller-identity | jq .Account | tr -d \")
 [ -z "$ACCOUNTID" ] && \
   echo "error: fail to get AWS Account ID" && \
   exit 1
@@ -116,6 +123,9 @@ ACCOUNTID=$(aws sts get-caller-identity --output json | jq .Account | tr -d \")
 [ -z "$ACL_SETTING" ] && \
   ACL_SETTING="bucket-owner-full-control"
 
+[ -z "$DEPLOY_LATEST" ] && \
+  DEPLOY_LATEST=false
+
 #
 # @function copy_to_bucket
 # @description copy solution to regional bucket
@@ -124,22 +134,66 @@ function copy_to_bucket() {
   local source=$1
   local bucket=$2
   local dest=s3://${bucket}/${SOLUTION}/${VERSION}/
+
   # get bucket region and ensure bucket is owned by the same AWS account. LocationConstraint returns null if bucket is in us-east-1 region
-  local location=$(aws s3api get-bucket-location --bucket ${bucket} --expected-bucket-owner ${ACCOUNTID} --output json | jq .LocationConstraint | tr -d \")
+  local location=$(aws s3api get-bucket-location --bucket ${bucket} --expected-bucket-owner ${ACCOUNTID} | jq .LocationConstraint | tr -d \")
   [ -z "$location" ] && \
     echo "Bucket '${bucket}' either doesn't exist or doesn't belong to accountId '${ACCOUNTID}'. exiting..." && \
     exit 1
+
   local region="us-east-1"
   [ "$location" != "null" ] && \
     region=$location
+
+  local latestUrl=""
+  local domain=s3.${region}.amazonaws.com
+  local optionalFlag="--acl ${ACL_SETTING}"
+  if [ "$region" == "us-east-1" ]; then
+    domain=s3.amazonaws.com
+    optionalFlag="${optionalFlag} --region ${region}"
+  fi
+
   # upload artifacts to the regional bucket
   echo "== Deploy '${SOLUTION} ($VERSION)' package from '${source}' to '${dest}' in '${region}' [BEGIN] =="
-  if [ "$region" == "us-east-1" ]; then
-    aws s3 cp $source $dest --recursive --acl ${ACL_SETTING}
-  else
-    aws s3 cp $source $dest --recursive --acl ${ACL_SETTING} --region ${region}
-  fi
+  aws s3 cp $source $dest --recursive $optionalFlag
   echo "== Deploy '${SOLUTION} ($VERSION)' package from '${source}' to '${dest}' in '${region}' [COMPLETED] =="
+
+  # deploy to "latest" folder if specified
+  if [ "$DEPLOY_LATEST" == "true" ]; then
+    latestUrl="https://${bucket}.${domain}/${SOLUTION}/latest/${MAIN_TEMPLATE}"
+
+    echo ""
+    echo "== Also deploying templates to latest/ =="
+
+    local templateSrc=$TEMPLATE_DIST_DIR
+    local templateDest=s3://${bucket}/${SOLUTION}/latest/
+    aws s3 cp $templateSrc $templateDest --recursive $optionalFlag
+
+    echo ""
+  fi
+
+  local url="https://${bucket}.${domain}/${SOLUTION}/${VERSION}/${MAIN_TEMPLATE}"
+  echo "========================================"
+  echo ""
+  echo "HTTPS URL:"
+  echo "$url"
+  echo ""
+  echo "One-click URL to create stack:"
+  echo "https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/quickcreate?templateURL=${url}&stackName=media2cloudv4"
+  echo ""
+
+  if [ "$latestUrl" != "" ]; then
+    echo "== (LATEST URL) =================="
+    echo ""
+    echo "$latestUrl"
+    echo ""
+    echo "One-click URL to create stack:"
+    echo "https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/quickcreate?templateURL=${latestUrl}&stackName=media2cloudv4"
+    echo ""
+  fi
+
+  echo "----------------------------------------"
+  echo ""
 }
 
 if [ "$SINGLE_REGION" != "true" ]; then

@@ -1,16 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
-const Retry = require('./retry');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
 const {
   EventBridge: EB,
   Solution: {
@@ -19,6 +12,11 @@ const {
     },
   },
 } = require('./defs');
+const xraysdkHelper = require('./xraysdkHelper');
+const retryStrategyHelper = require('./retryStrategyHelper');
+const {
+  M2CException,
+} = require('./error');
 
 class EBHelper {
   static async send(
@@ -28,14 +26,17 @@ class EBHelper {
     detailType = EB.DetailType
   ) {
     if (!bus || !source || !detailType) {
-      throw new Error('bus, source, or detailType not defined');
+      throw new M2CException('bus, source, or detailType not defined');
     }
     if (!message) {
-      throw new Error('message not defined');
+      throw new M2CException('message not defined');
     }
-    const detail = (typeof message === 'string')
-      ? message
-      : JSON.stringify(message);
+
+    let detail = message;
+    if (typeof detail !== 'string') {
+      detail = JSON.stringify(detail);
+    }
+
     const params = {
       Entries: [{
         EventBusName: bus,
@@ -44,17 +45,28 @@ class EBHelper {
         Detail: detail,
       }],
     };
-    const eb = new AWS.EventBridge({
-      apiVersion: '2015-10-07',
+
+    const eventbridgeClient = xraysdkHelper(new EventBridgeClient({
       customUserAgent: CustomUserAgent,
-    });
-    console.log(`EBHelper.putEvents = ${JSON.stringify(params, null, 2)}`);
-    return Retry.run(eb.putEvents.bind(eb), params)
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new PutEventsCommand(params);
+
+    return eventbridgeClient.send(command)
+      .then(() =>
+        message)
       .catch((e) => {
-        console.error(`EBHelper.putEvents: ${e.message}`);
+        console.error(
+          'ERR:',
+          'EBHelper.send:',
+          'PutEventsCommand:',
+          e.$metadata.httpStatusCode,
+          e.name,
+          JSON.stringify(params)
+        );
         return undefined;
-      })
-      .then(() => message);
+      });
   }
 }
 

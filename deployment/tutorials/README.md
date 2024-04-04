@@ -1,6 +1,6 @@
 ## Media2Cloud V3 mini workshop series
 
-Welcome to this mini workshop series of Guidance for Media2Cloud on AWS. The workshop consists of four tutorials that we discuss how to use the Media2Cloud programmatically.
+Welcome to this mini workshop series of Media2Cloud V3 solution. The workshop consists of four tutorials that we discuss how to use the Guidance for Media2Cloud on AWS programmatically.
 
 * [Tutorial 1: Creating the Guidance for Media2Cloud on AWS using AWS CloudFormation service](./1-creating-media2cloud-stack.md)
 * [Tutorial 2: Using the Media2Cloud RESTful APIs to ingest and search contents](./2-using-media2cloud-restful-api.md)
@@ -52,5 +52,5 @@ Bonus section in [Tutorial 2: Using the Media2Cloud RESTful APIs to ingest and s
 
 __
 
-Let's start. Next to [Tutorial 1: Creating Guidance for Media2Cloud on AWS using AWS CloudFormation service](./1-creating-media2cloud-stack.md)
+Let's start. Next to [Tutorial 1: Creating the Guidance for Media2Cloud on AWS using AWS CloudFormation service](./1-creating-media2cloud-stack.md)
 

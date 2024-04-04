@@ -1,0 +1,252 @@
+{
+    "Comment": "custom model detection state machine, substate of analysis video workflow. Uses Amazon Rekognition Custom Label feature.",
+    "StartAt": "which advanced feature?",
+    "States": {
+        "which advanced feature?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.data",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.scene",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.segment",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.framesegmentation",
+                            "IsPresent": true
+                        }
+                    ],
+                    "Next": "Run scene embeddings"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.data",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.customlabel",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.customlabel.customLabelModels",
+                            "IsPresent": true
+                        }
+                    ],
+                    "Next": "Start custom model detection and wait"
+                }
+            ],
+            "Default": "Feature not enabled"
+        },
+        "Run scene embeddings": {
+            "Type": "Task",
+            "Resource": "${RunImageEmbeddingsLambda.Arn}",
+            "InputPath": "$.data.scene",
+            "ResultPath": "$.data.scene",
+            "Next": "More scene embeddings?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ClientExecutionTimeoutException",
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 6,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                },
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More scene embeddings?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.data.scene.status",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.data.scene.status",
+                            "StringEquals": "COMPLETED"
+                        }
+                    ],
+                    "Next": "Search frame similarity with faiss"
+                }
+            ],
+            "Default": "Run scene embeddings"
+        },
+        "Search frame similarity with faiss": {
+            "Type": "Task",
+            "Resource": "${SearchFrameSimilarityLambda.Arn}",
+            "InputPath": "$.data.scene",
+            "ResultPath": "$.data.scene",
+            "Next": "Create scene events",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ClientExecutionTimeoutException",
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException"
+                    ],
+                    "IntervalSeconds": 6,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 2
+                },
+                {
+                    "ErrorEquals": [
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 6,
+                    "BackoffRate": 1.5
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Create scene events": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "create-scene-events",
+                "uuid.$": "$.uuid",
+                "input.$": "$.input",
+                "data.$": "$.data",
+                "status": "NOT_STARTED",
+                "progress": 0
+            },
+            "End": true
+        },
+        "Start custom model detection and wait": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Parameters": {
+                "FunctionName": "${AnalysisVideoLambda}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "operation": "start-detection-iterator",
+                    "uuid.$": "$.uuid",
+                    "status": "NOT_STARTED",
+                    "progress": 0,
+                    "data.$": "$.data"
+                }
+            },
+            "TimeoutSeconds": 86400,
+            "Next": "Collect custom model detection results"
+        },
+        "Collect custom model detection results": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "operation": "collect-results-iterator",
+                "data.$": "$.data"
+            },
+            "Next": "Create custom model detection tracks",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "Create custom model detection tracks": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "create-track-iterator",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "Next": "More tracks?",
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+        "More tracks?": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.status",
+                    "StringEquals": "COMPLETED",
+                    "Next": "Index custom model detection results"
+                }
+            ],
+            "Default": "Create custom model detection tracks"
+        },
+        "Index custom model detection results": {
+            "Type": "Task",
+            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Parameters": {
+                "operation": "index-analysis-results",
+                "uuid.$": "$.uuid",
+                "status.$": "$.status",
+                "progress.$": "$.progress",
+                "data.$": "$.data"
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.1
+                }
+            ]
+        },
+
+        "Feature not enabled": {
+            "Type": "Succeed"
+        }
+    }
+}

@@ -73,7 +73,7 @@ function grep_solution_version() {
 }
 
 #
-# REGIONS := these are the regions that supports Media2Cloud solution.
+# REGIONS := these are the regions that supports Guidance for Media2Cloud on AWS.
 #
 REGIONS=( \
   us-east-1 \
@@ -83,20 +83,12 @@ REGIONS=( \
   ca-central-1 \
   eu-west-1 \
   eu-west-2 \
-  eu-west-3 \
-  eu-north-1 \
   eu-central-1 \
-  me-south-1 \
-  ap-east-1 \
   ap-south-1 \
   ap-northeast-1 \
   ap-northeast-2 \
-  ap-northeast-3 \
   ap-southeast-1 \
   ap-southeast-2 \
-  sa-east-1 \
-  cn-north-1 \
-  cn-northwest-1 \
 )
 
 #

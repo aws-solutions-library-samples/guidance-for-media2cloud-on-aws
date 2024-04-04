@@ -14,7 +14,7 @@ class WebVttTrack {
       UnitInMilliseconds: 1,
       UnitInSeconds: 1000,
       Timecode: {
-        Regex: /^(\d{2}):(\d{2}):(\d{2})\.(\d{2,})\s+-->\s+(\d{2}):(\d{2}):(\d{2})\.(\d{2,})(.*)$/, // NOSONAR - must address in future release
+        Regex: /^([0-9]{2}):([0-9]{2}):([0-9]{2})\.([0-9]{2,})\s+-->\s+([0-9]{2}):([0-9]{2}):([0-9]{2})\.([0-9]{2,})(.*)$/,
       },
     };
   }
@@ -94,7 +94,7 @@ class WebVttTrack {
       let line = lines.shift();
 
       /* look for index */
-      if (!/\d+/.test(line)) {
+      if (!/[0-9]+/.test(line)) {
         continue;
       }
 

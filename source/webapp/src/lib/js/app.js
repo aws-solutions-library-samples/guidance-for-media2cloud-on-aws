@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import AppUtils from './app/shared/appUtils.js';
-import LocalStoreDB from './app/shared/localCache/localStoreDB.js';
+import {
+  GetLocalStoreDB,
+} from './app/shared/localCache/index.js';
 import MainView from './app/mainView.js';
-import SignInFlow from './app/signInFlow.js';
+import {
+  SignInFlow,
+  ON_SIGNIN_VIEW_HIDDEN,
+} from './app/signInFlow.js';
 
 const ID_DEMOAPP = '#demo-app';
 
@@ -13,15 +18,20 @@ export default class DemoApp {
     this.$ids = {
       container: `app-${AppUtils.randomHexstring()}`,
     };
-    const view = $('<div/>').attr('id', this.ids.container);
+
+    const view = $('<div/>')
+      .attr('id', this.ids.container);
+
     const signIn = new SignInFlow();
     signIn.appendTo(view);
 
-    signIn.view.on(SignInFlow.Events.View.Hidden, () =>
-      setTimeout(async () => {
+    signIn.view.on(ON_SIGNIN_VIEW_HIDDEN, () =>
+      setTimeout(async () => { // nosemgrep: javascript.lang.security.detect-eval-with-expression.detect-eval-with-expression
         const mainView = new MainView();
         mainView.appendTo(view);
-        mainView.show();
+
+        const hashtag = document.location.hash.slice(1);
+        mainView.show(hashtag);
       }, 10));
     this.$signInFlow = signIn;
     this.$view = view;
@@ -54,13 +64,19 @@ export default class DemoApp {
   }
 
   async openIndexedDB() {
-    return LocalStoreDB.getSingleton().open()
-      .catch(e => console.error(e));
+    const db = GetLocalStoreDB();
+
+    return db.open()
+      .catch((e) =>
+        console.error(e));
   }
 
   async closeIndexedDB() {
-    return LocalStoreDB.getSingleton().close()
-      .catch(e => console.error(e));
+    const db = GetLocalStoreDB();
+
+    return db.close()
+      .catch((e) =>
+        console.error(e));
   }
 }
 
@@ -70,6 +86,19 @@ $(document).ready(async () => {
   await demoApp.show();
 
   $(window).on('unload', async () => {
+    console.log(
+      'unload',
+      'demoApp.hide'
+    );
     await demoApp.hide();
+  });
+
+  $(window).on('popstate', async (e) => {
+    console.log(
+      'popstate',
+      'hash',
+      e.currentTarget.location.hash
+    );
+    location.reload();
   });
 });

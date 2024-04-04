@@ -1,27 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  SFNClient,
+  GetExecutionHistoryCommand,
+} = require('@aws-sdk/client-sfn');
 const {
   Environment,
   StateData,
   IotStatus,
   SNS,
   DB,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
   'ENV_RESOURCE_PREFIX',
   'ENV_SOLUTION_UUID',
-  'ENV_ANONYMIZED_USAGE',
+  'ENV_ANONYMOUS_USAGE',
   'ENV_IOT_HOST',
   'ENV_IOT_HOST',
   'ENV_SNS_TOPIC_ARN',
@@ -34,27 +33,35 @@ const FAILED_STATUSES = [
   'TimeOut',
 ];
 
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
+
 exports.handler = async (event, context) => {
   async function getExecutionError(arn) {
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-
     let response;
-    let executions;
+    let executions = [];
     do {
-      response = await step.getExecutionHistory({
+      const stepfunctionClient = xraysdkHelper(new SFNClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      const command = new GetExecutionHistoryCommand({
         executionArn: arn,
         maxResults: 20,
         reverseOrder: true,
         nextToken: (response || {}).nextToken,
-      }).promise().catch(() => undefined);
+      });
 
-      executions = response.events.filter(x =>
-        FAILED_STATUSES.findIndex(x0 =>
-          x.type.indexOf(x0) >= 0) >= 0);
-    } while ((response || {}).nextToken && !executions);
+      response = await stepfunctionClient.send(command)
+        .catch(() =>
+          undefined);
+
+      executions = ((response || {}).events || [])
+        .filter((x) =>
+          FAILED_STATUSES.findIndex((x0) =>
+            x.type.indexOf(x0) >= 0) >= 0);
+    } while ((response || {}).nextToken && executions.length === 0);
+
     return executions;
   }
 
@@ -85,11 +92,11 @@ exports.handler = async (event, context) => {
   try {
     console.log(`event = ${JSON.stringify(event, null, 2)}; context = ${JSON.stringify(context, null, 2)};`);
     if (!event.detail) {
-      throw new Error('event.detail is missing. Cannot handle this error. exiting...');
+      throw new M2CException('event.detail is missing. Cannot handle this error. exiting...');
     }
     const missing = REQUIRED_ENVS.filter(x => process.env[x] === undefined);
     if (missing.length) {
-      throw new Error(`missing enviroment variables, ${missing.join(', ')}`);
+      throw new M2CException(`missing enviroment variables, ${missing.join(', ')}`);
     }
     const executions = await getExecutionError(event.detail.executionArn);
     let message = parseExecutionError(event.detail.executionArn, executions)
@@ -105,17 +112,11 @@ exports.handler = async (event, context) => {
     const stateMachine = event.detail.executionArn.split(':')[6];
     const uuid = input.uuid || (input.input || {}).uuid;
     const overallStatus = StateData.Statuses.Error;
-    let status;
-    switch (stateMachine) {
-      case Environment.StateMachines.Ingest:
-        status = StateData.Statuses.IngestError;
-        break;
-      case Environment.StateMachines.Analysis:
-        status = StateData.Statuses.AnalysisError;
-        break;
-      default:
-        status = StateData.Statuses.Error;
-    }
+    const status = (stateMachine === Environment.StateMachines.Ingest)
+      ? StateData.Statuses.IngestError
+      : (stateMachine === Environment.StateMachines.Analysis)
+        ? StateData.Statuses.AnalysisError
+        : StateData.Statuses.Error;
 
     if (uuid) {
       /* update status */

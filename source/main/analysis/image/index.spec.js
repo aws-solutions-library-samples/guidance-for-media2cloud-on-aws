@@ -26,7 +26,7 @@ const event_StateIndexAnalysisResults = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "TestingImage/TestingImage.png",
       "uuid": "6c56edc5-a973-3485-c9eb-16292d709749",
       "aiOptions": {
@@ -64,7 +64,7 @@ const event_StateIndexAnalysisResults = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6c56edc5-a973-3485-c9eb-16292d709749/TestingImage/"
       },
       "video": {
@@ -94,7 +94,7 @@ const event_StateIndexAnalysisResults = {
         "status": "COMPLETED",
         "startTime": 1673234983880,
         "endTime": 1673234988372,
-        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-image:98937baf-d231-4012-b0f0-407bb0f0a757",
+        "executionArn": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-image:98937baf-d231-4012-b0f0-407bb0f0a757",
         "rekog-image": {
           "celeb": {
             "output": "6c56edc5-a973-3485-c9eb-16292d709749/TestingImage/raw/20230109T032941/rekog-image/celeb/output.json",
@@ -132,7 +132,7 @@ const event_StateStartImageAnalysis = {
     "status": "NOT_STARTED",
     "progress": 0,
     "input": {
-      "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+      "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
       "key": "TestingImage/TestingImage.png",
       "uuid": "6c56edc5-a973-3485-c9eb-16292d709749",
       "aiOptions": {
@@ -170,7 +170,7 @@ const event_StateStartImageAnalysis = {
       },
       "attributes": {},
       "destination": {
-        "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+        "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
         "prefix": "6c56edc5-a973-3485-c9eb-16292d709749/TestingImage/"
       },
       "video": {
@@ -196,12 +196,12 @@ const event_StateStartImageAnalysis = {
       }
     },
     "stateExecution": {
-      "Id": "arn:aws:states:us-west-2:account-number:execution:so0050-0a709c9ee415-analysis-image:98937baf-d231-4012-b0f0-407bb0f0a757",
+      "Id": "arn:aws:states:us-west-2:account-number:execution:so0050-111111111111-analysis-image:98937baf-d231-4012-b0f0-407bb0f0a757",
       "Input": {
         "status": "NOT_STARTED",
         "progress": 0,
         "input": {
-          "bucket": "so0050-0a709c9ee415-account-number-us-west-2-ingest",
+          "bucket": "so0050-111111111111-account-number-us-west-2-ingest",
           "key": "TestingImage/TestingImage.png",
           "uuid": "6c56edc5-a973-3485-c9eb-16292d709749",
           "aiOptions": {
@@ -239,7 +239,7 @@ const event_StateStartImageAnalysis = {
           },
           "attributes": {},
           "destination": {
-            "bucket": "so0050-0a709c9ee415-account-number-us-west-2-proxy",
+            "bucket": "so0050-111111111111-account-number-us-west-2-proxy",
             "prefix": "6c56edc5-a973-3485-c9eb-16292d709749/TestingImage/"
           },
           "video": {
@@ -269,7 +269,7 @@ const event_StateStartImageAnalysis = {
       },
       "StartTime": "2023-01-09T03:29:43.880Z",
       "Name": "98937baf-d231-4012-b0f0-407bb0f0a757",
-      "RoleArn": "arn:aws:iam::account-number:role/so0050-0a709c9ee415/MyMedia2CloudTest-Backend-AnalysisStateMachineServ-15UVTS9SYPLZU"
+      "RoleArn": "arn:aws:iam::account-number:role/so0050-111111111111/MyMedia2CloudTest-Backend-AnalysisStateMachineServ-15UVTS9SYPLZU"
     },
     "data": {},
     "uuid": "6c56edc5-a973-3485-c9eb-16292d709749"
@@ -298,7 +298,7 @@ const context = {
             ENV_SOLUTION_ID: 'Test_ENV_Variable',
             ENV_RESOURCE_PREFIX: 'Test_ENV_Variable',
             ENV_SOLUTION_UUID: 'Test_ENV_Variable',
-            ENV_ANONYMIZED_USAGE: 'Test_ENV_Variable',
+            ENV_ANONYMOUS_USAGE: 'Test_ENV_Variable',
             ENV_IOT_HOST: 'Test_ENV_Variable',
             ENV_IOT_TOPIC: 'Test_ENV_Variable',
             ENV_PROXY_BUCKET: 'Test_ENV_Variable',

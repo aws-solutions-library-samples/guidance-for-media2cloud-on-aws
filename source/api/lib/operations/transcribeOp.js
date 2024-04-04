@@ -1,16 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  TranscribeClient,
+  ListLanguageModelsCommand,
+  ListVocabulariesCommand,
+} = require('@aws-sdk/client-transcribe');
 const {
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const BaseOp = require('./baseOp');
 
@@ -18,21 +18,15 @@ const OP_CUSTOMVOCABULARIES = 'custom-vocabularies';
 const OP_CUSTOMLANGUAGEMODELS = 'custom-language-models';
 const STATUS_COMPLETED = 'COMPLETED';
 const STATUS_READY = 'READY';
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class TranscribeOp extends BaseOp {
-  static createInstance() {
-    return new AWS.TranscribeService({
-      apiVersion: '2017-10-26',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
-  }
-
   async onPOST() {
-    throw new Error('TranscribeOp.onPOST not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onDELETE() {
-    throw new Error('TranscribeOp.onDELETE not impl');
+    throw new M2CException('invalid operation');
   }
 
   async onGET() {
@@ -43,52 +37,75 @@ class TranscribeOp extends BaseOp {
     if (op === OP_CUSTOMVOCABULARIES) {
       return super.onGET(await this.onGetCustomVocabularies());
     }
-    throw new Error('invalid operation');
+    throw new M2CException('invalid operation');
   }
 
   async onGetCustomLanguageModels() {
-    const transcribe = TranscribeOp.createInstance();
-
+    let command;
     let response;
-    const customLanguageModels = [];
+    let customLanguageModels = [];
+
     do {
-      response = await transcribe.listLanguageModels({
+      const transcribeClient = xraysdkHelper(new TranscribeClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      command = new ListLanguageModelsCommand({
         StatusEquals: STATUS_COMPLETED,
         MaxResults: 100,
         NextToken: (response || {}).NextToken,
-      }).promise().catch(() => undefined);
+      });
+
+      response = await transcribeClient.send(command)
+        .catch(() =>
+          undefined);
+
       if (response && response.Models.length) {
-        const models = response.Models.map(x => ({
-          name: x.ModelName,
-          languageCode: x.LanguageCode,
-          canUse: true,
-        }));
-        customLanguageModels.splice(customLanguageModels.length, 0, ...models);
+        const models = response.Models
+          .map((x) => ({
+            name: x.ModelName,
+            languageCode: x.LanguageCode,
+            canUse: true,
+          }));
+        customLanguageModels = customLanguageModels.concat(models);
       }
     } while ((response || {}).NextToken);
+
     return customLanguageModels;
   }
 
   async onGetCustomVocabularies() {
-    const transcribe = TranscribeOp.createInstance();
-
+    let command;
     let response;
-    const customVocabularies = [];
+    let customVocabularies = [];
     do {
-      response = await transcribe.listVocabularies({
+      const transcribeClient = xraysdkHelper(new TranscribeClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      command = new ListVocabulariesCommand({
         StateEquals: STATUS_READY,
         MaxResults: 100,
         NextToken: (response || {}).NextToken,
-      }).promise().catch(() => undefined);
+      });
+
+      response = await transcribeClient.send(command)
+        .catch(() =>
+          undefined);
+
       if (response && response.Vocabularies.length) {
-        const vocabulary = response.Vocabularies.map(x => ({
-          name: x.VocabularyName,
-          languageCode: x.LanguageCode,
-          canUse: true,
-        }));
-        customVocabularies.splice(customVocabularies.length, 0, ...vocabulary);
+        const vocabulary = response.Vocabularies
+          .map((x) => ({
+            name: x.VocabularyName,
+            languageCode: x.LanguageCode,
+            canUse: true,
+          }));
+        customVocabularies = customVocabularies.concat(vocabulary);
       }
     } while ((response || {}).NextToken);
+
     return customVocabularies;
   }
 }

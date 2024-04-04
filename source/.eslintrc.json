@@ -36,13 +36,23 @@
     "no-unused-vars": 0,
     "no-continue": 0,
     "global-require": 0,
-    "no-loop-func": 0
+    "no-loop-func": 0,
+    "no-restricted-syntax": [
+      "error",
+      "ForInStatement",
+      "LabeledStatement",
+      "WithStatement"
+    ]
   },
   "env": {
     "es6": true,
     "browser": false,
     "node": true,
     "jquery": false,
-    "mocha": true
+    "mocha": true,
+    "es2020": true
+  },
+  "globals": {
+    "jest": true
   }
 }

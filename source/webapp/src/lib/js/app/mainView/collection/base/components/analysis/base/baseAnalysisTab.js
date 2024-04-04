@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../../../../shared/localization.js';
-import S3Utils from '../../../../../../shared/s3utils.js';
+import {
+  GetS3Utils,
+} from '../../../../../../shared/s3utils.js';
+import Spinner from '../../../../../../shared/spinner.js';
 import BaseMedia from '../../../../../../shared/media/baseMedia.js';
-import mxSpinner from '../../../../../../mixins/mxSpinner.js';
 import mxReadable from '../../../../../../mixins/mxReadable.js';
 import BaseTab from '../../../../../../shared/baseTab.js';
 import {
@@ -12,14 +14,21 @@ import {
   AWSConsoleStepFunctions,
 } from '../../../../../../shared/awsConsole.js';
 
+const {
+  Tooltips: {
+    ViewOnAWSConsole: TOOLTIP_VIEW_ON_CONSOLE,
+    DownloadFile: TOOLTIP_DOWNLOAD_FILE,
+  },
+} = Localization;
+
 const COL_TAB = 'col-11';
 
-export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
-  constructor(title, previewComponent, defaultTab = false) {
+export default class BaseAnalysisTab extends mxReadable(BaseTab) {
+  constructor(title, previewComponent) {
     super(title, {
-      selected: defaultTab,
       fontSize: '1rem',
     });
+
     this.$previewComponent = previewComponent;
     this.$css = {
       dl: {
@@ -27,6 +36,7 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
         dd: 'col-sm-10',
       },
     };
+    Spinner.useSpinner();
   }
 
   get ids() {
@@ -45,60 +55,101 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
     return (this.$previewComponent || {}).media;
   }
 
+  loading(enabled) {
+    return Spinner.loading(enabled);
+  }
+
   async show() {
     if (!this.initialized) {
-      const row = $('<div/>').addClass('row no-gutters justify-content-md-center min-h24r')
-        .append(this.createLoading())
-        .append(this.createBackgroundTitle())
-        .append(await this.createContent());
-      this.tabContent.append(row);
+      const container = $('<div/>')
+        .addClass('row no-gutters justify-content-md-center min-h24r');
+      this.tabContent.append(container);
+
+      const backgroundTitle = this.createBackgroundTitle();
+      container.append(backgroundTitle);
+
+      const content = await this.createContent();
+      container.append(content);
     }
+
     return super.show();
   }
 
   async download(key) {
-    return (!key)
-      ? undefined
-      : S3Utils.getObject(this.media.getProxyBucket(), key).catch((e) => {
-        console.error(`failed to download '${key}' - ${encodeURIComponent(e.message)}`);
-        return undefined;
-      });
+    if (!key) {
+      return undefined;
+    }
+
+    const s3utils = GetS3Utils();
+    return s3utils.getObject(
+      this.media.getProxyBucket(),
+      key
+    ).catch((e) => {
+      console.error(
+        'ERR:',
+        'fail to download',
+        key,
+        e.message
+      );
+      return undefined;
+    });
   }
 
   createBackgroundTitle() {
-    return $('<div/>').addClass(`${COL_TAB} d-flex justify-content-center custom-bg min-h24r`)
-      .append($('<span/>').addClass('align-self-center text-uppercase')
+    return $('<div/>')
+      .addClass(`${COL_TAB} d-flex justify-content-center custom-bg min-h24r`)
+      .append($('<span/>')
+        .addClass('align-self-center text-uppercase')
         .html(this.title));
   }
 
   async createContent() {
-    return $('<div/>').addClass(`${COL_TAB} my-4 max-h36r`)
+    return $('<div/>')
+      .addClass(`${COL_TAB} my-4 max-h36r`)
       .html(Localization.Messages.NoData);
   }
 
   readableValue(data, name) {
     if (name === 'key' && data.bucket) {
-      const console = $('<a/>').addClass('mr-1')
+      const container = $('<div/>');
+
+      const consoleLink = $('<a/>')
+        .addClass('mr-1')
         .addClass('badge badge-pill badge-primary mr-1 mb-1 lead-xs')
         .attr('href', AWSConsoleS3.getLink(data.bucket, data.key))
         .attr('target', '_blank')
-        .html(Localization.Tooltips.ViewOnAWSConsole);
-      const download = $('<a/>').addClass('mr-1')
-        .attr('href', S3Utils.signUrl(data.bucket, data.key))
+        .html(TOOLTIP_VIEW_ON_CONSOLE);
+      container.append(consoleLink);
+
+      const downloadLink = $('<a/>')
+        .addClass('mr-1')
         .attr('download', '')
         .attr('target', '_blank')
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
-        .attr('title', Localization.Tooltips.DownloadFile)
+        .attr('title', TOOLTIP_DOWNLOAD_FILE)
         .append(data.key)
         .tooltip({
           trigger: 'hover',
         });
+      container.append(downloadLink);
 
-      return $('<div/>')
-        .append(download)
-        .append(console);
+      container.ready(async () => {
+        const s3utils = GetS3Utils();
+        const signed = await s3utils.signUrl(
+          data.bucket,
+          data.key
+        );
+
+        downloadLink.attr(
+          'href',
+          signed
+        );
+      });
+
+      return container;
     }
+
     if (name === 'fileSize') {
       return BaseMedia.readableFileSize(data.fileSize);
     }
@@ -111,7 +162,7 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
         .attr('target', '_blank')
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
-        .attr('title', Localization.Tooltips.ViewOnAWSConsole)
+        .attr('title', TOOLTIP_VIEW_ON_CONSOLE)
         .html(data[name].split(':').pop())
         .tooltip({
           trigger: 'hover',
@@ -124,29 +175,34 @@ export default class BaseAnalysisTab extends mxReadable(mxSpinner(BaseTab)) {
   }
 
   createGrouping(name, indent = 0) {
-    let css;
-    if (!indent) {
-      css = {
+    const css = (!indent)
+      ? {
         margin: '',
         lead: 'lead-sm',
-      };
-    }
-    else if (indent === 1) {
-      css = {
-        margin: 'ml-2',
-        lead: 'lead-xs',
-      };
-    }
-    else {
-      css = {
-        margin: 'ml-4',
-        lead: 'lead-xxs',
-      };
-    }
-    const details = $('<details/>').addClass(css.margin)
-      .append($('<summary/>').addClass('my-2')
-        .append($('<span/>').addClass(`${css.lead} text-capitalize`)
-          .append(name)));
+      }
+      : (indent === 1)
+        ? {
+          margin: 'ml-2',
+          lead: 'lead-xs',
+        }
+        : {
+          margin: 'ml-4',
+          lead: 'lead-xxs',
+        };
+    const details = $('<details/>')
+      .addClass(css.margin)
+      .data('rendered', false);
+
+    const summary = $('<summary/>')
+      .addClass('my-2');
+    details.append(summary);
+
+    const title = $('<span/>')
+      .addClass('text-capitalize')
+      .addClass(css.lead)
+      .append(name);
+    summary.append(title);
+
     return details;
   }
 

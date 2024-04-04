@@ -8,6 +8,7 @@ const {
       States,
     },
   },
+  M2CException,
 } = require('service-backlog-lib');
 
 const LAMBDA_TIMEOUT_THRESHOLD = 60 * 1000;
@@ -27,7 +28,7 @@ class BaseState {
 
   sanityCheck() {
     if (!this.operation) {
-      throw new Error('missing operation');
+      throw new M2CException('missing operation');
     }
     const input = this.input;
     if (!input
@@ -42,13 +43,13 @@ class BaseState {
       || typeof input.frameCapture.numFrames !== 'number'
       || typeof input.frameCapture.numerator !== 'number'
       || typeof input.frameCapture.denominator !== 'number') {
-      throw new Error('missing or invalid input parameter(s)');
+      throw new M2CException('missing or invalid input parameter(s)');
     }
     const output = this.output;
     if (!output
       || !output.bucket
       || !output.prefix) {
-      throw new Error('missing or invalid output parameter(s)');
+      throw new M2CException('missing or invalid output parameter(s)');
     }
   }
 
@@ -125,6 +126,8 @@ class BaseState {
   makeOutputPath(ref, subPath = '') {
     const parsed = PATH.parse(ref);
     const compatibleName = parsed.name.replace(/[^a-zA-Z0-9_-]/g, '');
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     return PATH.join(parsed.dir, compatibleName, subPath);
   }
 
@@ -140,11 +143,11 @@ class BaseState {
   }
 
   testProjectArn(val) {
-    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/\d+$/.test(val);
+    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/[0-9]+$/.test(val);
   }
 
   testProjectVersionArn(val) {
-    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/version\/[a-zA-Z0-9_.-]{1,255}\/\d+$/.test(val);
+    return /^arn:[a-z\d-]+:rekognition:[a-z\d-]+:\d{12}:project\/[a-zA-Z0-9_.-]{1,255}\/version\/[a-zA-Z0-9_.-]{1,255}\/[0-9]+$/.test(val);
   }
 
   async process() {

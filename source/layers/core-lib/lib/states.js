@@ -2,35 +2,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module.exports = {
-  /* ingest */
+  // ingest
   S3: 's3',
   CreateRecord: 'create-record',
-  /* fixity state machine */
+  // fixity state machine
   CheckRestoreStatus: 'check-restore-status',
   ComputeChecksum: 'compute-checksum',
   ValidateChecksum: 'validate-checksum',
   FixityCompleted: 'fixity-completed',
-  /* mediainfo */
+  // mediainfo
   RunMediainfo: 'run-mediainfo',
   StartTranscode: 'start-transcode',
   CheckTranscodeStatus: 'check-transcode-status',
-  /* imageinfo */
+  ComputePerceptualHash: 'compute-perceptual-hash',
+  // imageinfo
   RunImageInfo: 'run-imageinfo',
-  /* docinfo */
+  // docinfo
   RunDocInfo: 'run-docinfo',
-  /* indexing */
+  // indexing
   UpdateRecord: 'update-record',
   IndexIngestResults: 'index-ingest-results',
 
-  /* analysis */
+  // analysis
   PrepareAnalysis: 'prepare-analysis',
   StartAnalysis: 'start-analysis',
   CheckAnalysisStatus: 'check-analysis-status',
   CollectAnalysisResults: 'collect-analysis-results',
   IndexAnalysisResults: 'index-analysis-results',
 
-  /* sub-states definitions */
-  /* audio-analysis */
+  // sub-states definitions
+  // audio-analysis
   UpdateVocabulary: 'update-vocabulary',
   CheckVocabularyStatus: 'check-vocabulary-status',
   StartTranscribe: 'start-transcribe',
@@ -73,7 +74,7 @@ module.exports = {
   CollectClassificationResults: 'collect-classification-results',
   CreateClassificationTrack: 'create-classification-track',
 
-  /* video analysis */
+  // video analysis
   StartCelebrity: 'start-celeb',
   CollectCelebrityResults: 'collect-celeb-results',
   CreateCelebrityTrack: 'create-celeb-track',
@@ -106,11 +107,11 @@ module.exports = {
   CollectTextResults: 'collect-text-results',
   CreateTextTrack: 'create-text-track',
 
-  /* image analysis */
+  // image analysis
   StartImageAnalysis: 'start-image-analysis',
   CollectImageAnalysisResults: 'collect-image-analysis-results',
 
-  /* document analysis */
+  // document analysis
   StartDocumentText: 'start-document-text',
   CheckDocumentTextStatus: 'check-document-text-status',
   CollectDocumentTextResults: 'collect-document-text-results',
@@ -118,38 +119,41 @@ module.exports = {
   CheckDocumentAnalysisStatus: 'check-document-analysis-status',
   CollectDocumentAnalysisResults: 'collect-document-analysis-results',
 
-  /* frame based analysis */
+  // frame based analysis
   DetectFrames: 'detect-frames',
   CreateTracks: 'create-tracks',
 
-  /** NEW IMPLEMENTATION */
-  /** NEW IMPLEMENTATION */
-  /* frame-based iterator */
+  // frame-based iterator
   PrepareFrameDetectionIterators: 'prepare-frame-detection-iterators',
   DetectFrameIterator: 'detect-frame-iterator',
   PrepareFrameTrackIterators: 'prepare-frame-track-iterators',
-  /* video-based iterator */
+  // video-based iterator
   PrepareVideoDetectionIterators: 'prepare-video-detection-iterators',
-  /* custom-label iterator */
+  // custom-label iterator
   PrepareCustomDetectionIterators: 'prepare-custom-detection-iterators',
-  /* shared */
+  // shared
   StartDetectionIterator: 'start-detection-iterator',
   CollectResultsIterator: 'collect-results-iterator',
   CreateTrackIterator: 'create-track-iterator',
-  /** NEW IMPLEMENTATION */
-  /** NEW IMPLEMENTATION */
 
-  /* custom labels */
+  // custom labels
   StartCustomLabels: 'start-custom-labels',
   CollectCustomLabelsResults: 'collect-custom-labels-results',
   CreateCustomLabelsTrack: 'create-custom-labels-track',
 
-  /* groundtruth */
+  // groundtruth
   CreateDataset: 'create-dataset',
   CreateLabelingJob: 'create-labeling-job',
   CheckLabelingStatus: 'check-labeling-status',
   IndexResults: 'index-results',
 
-  /* shared states */
+  // Prerun states
+  PrepareSegmentDetection: 'prepare-segment-detection',
+  SelectSegmentFrames: 'select-segment-frames',
+
+  // scene feature
+  CreateSceneEvents: 'create-scene-events',
+
+  // shared states
   JobCompleted: 'job-completed',
 };

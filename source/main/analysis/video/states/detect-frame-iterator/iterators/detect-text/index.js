@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  DetectTextCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
   AnalysisTypes,
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
@@ -9,6 +12,16 @@ const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
 const SUBCATEGORY = AnalysisTypes.Rekognition.Text;
 const NAMED_KEY = 'TextDetections';
 const GRID_SIZE = 1 / 3;
+const SKIP_FRAME_ANALYSIS = [
+  'ColorBars',
+  'BlackFrames',
+  // 'StudioLogo',
+  // 'Slate',
+  // 'EndCredits',
+  // 'OpeningCredits',
+  // 'Content',
+  // 'undefined',
+];
 
 class DetectTextIterator extends BaseDetectFrameIterator {
   constructor(stateData) {
@@ -33,37 +46,6 @@ class DetectTextIterator extends BaseDetectFrameIterator {
     return 'DetectTextIterator';
   }
 
-  async detectFrame(bucket, key, frameNo, timestamp) {
-    const fn = this.rekog.detectText.bind(this.rekog);
-    const params = this.makeParams(bucket, key, this.paramOptions);
-    return this.detectFn(fn, params)
-      .then(result =>
-        this.parseTextResult(result, frameNo, timestamp));
-  }
-
-  parseTextResult(data, frameNo, timestamp) {
-    return (!data || !data.TextDetections || !data.TextDetections.length)
-      ? undefined
-      : data.TextDetections.map(x => ({
-        Timestamp: timestamp,
-        FrameNumber: frameNo,
-        TextDetection: x,
-      }));
-  }
-
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.TextDetection || {}).DetectedText).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
-  }
-
   static computeRegionsOfInterest(regionsOfInterest) {
     if (!regionsOfInterest || !Array.isArray(regionsOfInterest) || regionsOfInterest.length !== 9) {
       return undefined;
@@ -86,6 +68,53 @@ class DetectTextIterator extends BaseDetectFrameIterator {
     return (boundingBoxes.length === 0 || boundingBoxes.length === 9)
       ? undefined
       : boundingBoxes;
+  }
+
+  async detectFrame(bucket, key, frameNo, timestamp) {
+    const params = this.makeParams(bucket, key, this.paramOptions);
+    const command = new DetectTextCommand(params);
+
+    return this.detectFn(command)
+      .then((res) =>
+        this.parseTextResult(res, frameNo, timestamp));
+  }
+
+  parseTextResult(data, frameNo, timestamp) {
+    if (!data || !data.TextDetections || !data.TextDetections.length) {
+      return undefined;
+    }
+
+    if (!this.modelMetadata) {
+      this.modelMetadata = {
+        TextModelVersion: data.TextModelVersion,
+      };
+    }
+
+    const minConfidence = this.minConfidence;
+    const filtered = data.TextDetections
+      .filter((x) =>
+        x.Type === 'LINE'
+        && x.Confidence >= minConfidence);
+
+    return filtered
+      .map(x => ({
+        Timestamp: timestamp,
+        FrameNumber: frameNo,
+        TextDetection: x,
+      }));
+  }
+
+  getUniqueNames(dataset) {
+    return [
+      ...new Set(dataset
+        .map((x) =>
+          x.TextDetection.DetectedText)),
+    ];
+  }
+
+  skipFrame(frame) {
+    return SKIP_FRAME_ANALYSIS
+      .includes((frame || {}).technicalCueType);
   }
 }
 

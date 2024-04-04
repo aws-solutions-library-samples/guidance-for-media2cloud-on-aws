@@ -2,69 +2,139 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import SolutionManifest from '/solution-manifest.js';
-import CognitoConnector from './cognitoConnector.js';
 import AppUtils from './appUtils.js';
+import ApiHelper from './apiHelper.js';
+import {
+  GetUserSession,
+  RegisterUserSessionEvent,
+  SESSION_SIGNIN,
+  SESSION_SIGNOUT,
+  SESSION_TOKEN_REFRESHED,
+} from './cognito/userSession.js';
 
-const ID_DEMOAPP = '#demo-app';
-const ID_IOTSUBSCRIBE = `iotsubscriber-${AppUtils.randomHexstring()}`;
-const ON_RECEIVE_MESSAGE = 'iot:message:received';
+const {
+  AwsIotMqtt5ClientConfigBuilder,
+  Mqtt5Client,
+  QoS,
+  once,
+} = window.AWSIotDeviceSDKv2;
 
-export default class IotSubscriber {
-  constructor() {
-    this.$mqtt = undefined;
-    this.$clientId = undefined;
-    this.$connected = false;
-    this.$eventSource = $('<div/>').attr('id', ID_IOTSUBSCRIBE);
-    $(ID_DEMOAPP).append(this.$eventSource);
-    this.$cognito = CognitoConnector.getSingleton();
-    this.registerCognitoEvents();
-  }
+const REGION = SolutionManifest.Region;
+const IOT_HOST = SolutionManifest.IotHost;
+const IOT_TOPIC = SolutionManifest.IotTopic;
 
-  static getSingleton() {
-    if (!window.AWSomeNamespace.IotSubscriberSingleton) {
-      window.AWSomeNamespace.IotSubscriberSingleton = new IotSubscriber();
+/* singleton implementation */
+let _singleton;
+
+/* receive update event on iot message received */
+const _receivers = {};
+
+const _onMessageReceived = (message) => {
+  setTimeout(async () => {
+    const names = Object.keys(_receivers);
+    try {
+      await Promise.all(
+        names.map((name) =>
+          _receivers[name](message)
+            .catch((e) => {
+              console.error(
+                'ERR:',
+                `_onMessageReceived.${name}:`,
+                e.message
+              );
+              return undefined;
+            }))
+      );
+
+      console.log(
+        'INFO:',
+        '_onMessageReceived:',
+        `${names.length} receivers:`,
+        names.join(', ')
+      );
+    } catch (e) {
+      console.error(
+        'ERR:',
+        '_onMessageReceived:',
+        e
+      );
     }
-    return window.AWSomeNamespace.IotSubscriberSingleton;
+  }, 10);
+};
+
+class IotSubscriber {
+  constructor() {
+    _singleton = this;
+    this.$id = AppUtils.randomHexstring();
+
+    this.$client = undefined;
+    this.$cachedCredentials = undefined;
+    this.$lastReceivedMessage = undefined;
+
+    RegisterUserSessionEvent(
+      'iotsubscriber',
+      this.onUserSessionChangeEvent.bind(this)
+    );
   }
 
-  static get Event() {
-    return {
-      Message: {
-        Received: ON_RECEIVE_MESSAGE,
-      },
+  get id() {
+    return this.$id;
+  }
+
+  getCredentials() {
+    return this.$cachedCredentials;
+  }
+
+  async refreshCredentials() {
+    return this.getCredentials();
+  }
+
+  setCredentials(creds = {}) {
+    this.$cachedCredentials = {
+      aws_region: REGION,
+      aws_access_id: creds.accessKeyId,
+      aws_secret_key: creds.secretAccessKey,
+      aws_sts_token: creds.sessionToken,
+      // expiration: creds.expiration,
     };
   }
 
-  get mqtt() {
-    return this.$mqtt;
+  get lastReceivedMessage() {
+    return this.$lastReceivedMessage;
   }
 
-  set mqtt(val) {
-    this.$mqtt = val;
+  set lastReceivedMessage(val) {
+    this.$lastReceivedMessage = val;
   }
 
-  get clientId() {
-    return this.$clientId;
+  async onUserSessionChangeEvent(
+    event,
+    session
+  ) {
+    console.log(
+      '=== IotSubscriber.onUserSessionChangeEvent ==='
+    );
+
+    if (event === SESSION_SIGNOUT) {
+      return this.unsubscribe();
+    }
+
+    if (event === SESSION_SIGNIN) {
+      return this.connect();
+    }
+
+    const credentials = await session.fromCredentials();
+    this.setCredentials(credentials);
+
+    return this.reconnect();
   }
 
-  set clientId(val) {
-    this.$clientId = val;
+  get client() {
+    return this.$client;
   }
 
-  get eventSource() {
-    return this.$eventSource;
-  }
-
-  get cognito() {
-    return this.$cognito;
-  }
-
-  get connected() {
-    return this.$connected;
-  }
-
-  set connected(val) {
-    this.$connected = !!val;
+  set client(val) {
+    this.$client = val;
   }
 
   /**
@@ -73,77 +143,242 @@ export default class IotSubscriber {
    */
   async connect() {
     try {
-      if (this.connected) {
+      if (this.client) {
         return;
       }
-      const username = (this.cognito.user || {}).username || 'anonymous';
-      this.clientId = `${username}-${AppUtils.randomHexstring()}`;
-      this.mqtt = AWSIoTData.device({
-        region: SolutionManifest.Region,
-        host: SolutionManifest.IotHost,
-        clientId: this.clientId,
-        protocol: 'wss',
-        maximumReconnectTimeMs: 8000,
-        debug: true,
-        accessKeyId: '',
-        secretKey: '',
-        sessionToken: '',
+
+      const session = GetUserSession();
+
+      /* attach iot policy to the user */
+      await ApiHelper.attachIot();
+
+      console.log(
+        'INFO:',
+        'iot.connect:',
+        `permission granted to ${session.username}`
+      );
+
+      const credentials = await session.fromCredentials();
+      this.setCredentials(credentials);
+
+      const wsConfig = {
+        credentialsProvider: this,
+        region: REGION,
+      };
+
+      const builder = AwsIotMqtt5ClientConfigBuilder.newWebsocketMqttBuilderWithSigv4Auth(
+        IOT_HOST,
+        wsConfig
+      );
+
+      const decoder = new TextDecoder('utf-8');
+
+      const client = new Mqtt5Client(builder.build());
+
+      client.on('error', (error) => {
+        console.error(
+          'ERR:',
+          'Mqtt5Client.error:',
+          error
+        );
       });
+
+      client.on('messageReceived', (data) => {
+        const decoded = decoder.decode(data.message.payload);
+        if (this.lastReceivedMessage === decoded) {
+          console.log(
+            '[DUPLICATED]',
+            'INFO:',
+            'Mqtt5Client.messageReceived:',
+            data,
+            decoded
+          );
+          return;
+        }
+
+        this.lastReceivedMessage = decoded;
+
+        console.log(
+          'INFO:',
+          'Mqtt5Client.messageReceived:',
+          data,
+          decoded
+        );
+
+        _onMessageReceived(JSON.parse(decoded));
+      });
+
+      client.on('attemptingConnect', (data) => {
+        console.log(
+          'INFO:',
+          'Mqtt5Client.attemptingConnect:',
+          data
+        );
+      });
+
+      client.on('connectionSuccess', (data) => {
+        console.log(
+          'INFO:',
+          'Mqtt5Client.connectionSuccess:',
+          data
+        );
+      });
+
+      client.on('connectionFailure', (data) => {
+        console.log(
+          'INFO:',
+          'Mqtt5Client.connectionFailure:',
+          data
+        );
+      });
+
+      client.on('disconnection', (data) => {
+        console.log(
+          'INFO:',
+          'Mqtt5Client.disconnection:',
+          data
+        );
+      });
+
+      client.on('stopped', (data) => {
+        console.log(
+          'INFO:',
+          'Mqtt5Client.stopped:',
+          data
+        );
+      });
+
+      const promises = [
+        once(client, 'attemptingConnect'),
+        once(client, 'connectionSuccess'),
+      ];
+
+      client.start();
+      await Promise.all(promises);
+
+      const subscribed = await client.subscribe({
+        subscriptions: [
+          {
+            qos: QoS.AtLeastOnce,
+            topicFilter: IOT_TOPIC,
+          },
+        ],
+      });
+
+      console.log(
+        'INFO:',
+        'client.subscribe:',
+        subscribed
+      );
+
+      this.client = client;
     } catch (e) {
-      e.message = `IotSubscriber.connect: ${encodeURIComponent(e.message)}`;
-      console.error(e.message);
-      return;
+      console.error(
+        'ERR:',
+        'IotSubscriber.connect',
+        e
+      );
+      throw e;
     }
-
-    this.mqtt.on('connect', () => {
-      console.log(`${this.clientId} connected to IoT`);
-      this.mqtt.subscribe(SolutionManifest.IotTopic);
-      this.connected = true;
-    });
-
-    this.mqtt.on('reconnect', () => {
-      console.log(`reconnecting ${this.clientId}...`);
-      this.reconnect();
-    });
-
-    this.mqtt.on('error', (e) => {
-      console.log(`error: iot.error: ${e}`);
-    });
-
-    this.mqtt.on('message', (topic, payload) =>
-      this.eventSource.trigger(IotSubscriber.Event.Message.Received, [JSON.parse(payload.toString())]));
   }
 
   /**
    * @function reconnect
    * @description reconnect to Iot message broker
    */
-  async reconnect(credentials) {
+  async reconnect() {
     try {
-      const {
-        accessKeyId = '',
-        secretAccessKey = '',
-        sessionToken = '',
-      } = credentials || AWS.config.credentials;
-      await this.mqtt.updateWebSocketCredentials(accessKeyId, secretAccessKey, sessionToken);
+      await this.unsubscribe();
+
+      const client = this.client;
+
+      const promises = [
+        once(client, 'attemptingConnect'),
+        once(client, 'connectionSuccess'),
+      ];
+
+      client.start();
+
+      /* attemptingConnect may not fire on reconnection */
+      await Promise.any(promises);
+
+      const subscribed = await client.subscribe({
+        subscriptions: [
+          {
+            qos: QoS.AtLeastOnce,
+            topicFilter: IOT_TOPIC,
+          },
+        ],
+      });
+      console.log(
+        'RECONNECT: client.subscribe',
+        subscribed
+      );
     } catch (e) {
-      e.message = `error: iot.reconnect: ${encodeURIComponent(e.message)}`;
-      console.error(e.message);
+      console.error(
+        'ERR:',
+        'IotSubscriber.reconnect',
+        e
+      );
+      throw e;
     }
   }
 
-  unsubscribe() {
-    if (this.mqtt) {
-      this.mqtt.unsubscribe(SolutionManifest.IotTopic, () => {});
-    }
-  }
+  async unsubscribe() {
+    try {
+      const client = this.client;
 
-  registerCognitoEvents() {
-    this.cognito.eventSource.on(CognitoConnector.Events.Session.SignIn, async (event, credentials) =>
-      this.connect());
-    this.cognito.eventSource.on(CognitoConnector.Events.Session.Refresh, async (event, credentials) =>
-      this.reconnect(credentials));
-    this.cognito.eventSource.on(CognitoConnector.Events.Session.SignOut, async (event, username) =>
-      this.unsubscribe());
+      const unsubscribed = await client.unsubscribe({
+        topicFilters: [
+          IOT_TOPIC,
+        ],
+      });
+      console.log(
+        'RECONNECT: client.unsubscribe',
+        unsubscribed
+      );
+
+      const promises = [
+        once(client, 'disconnection'),
+        once(client, 'stopped'),
+      ];
+
+      client.stop();
+      await Promise.all(promises);
+    } catch (e) {
+      console.error(
+        'ERR:',
+        'IotSubscriber.unsubscribe',
+        e
+      );
+      throw e;
+    }
   }
 }
+
+const GetIotSubscriber = () => {
+  if (_singleton === undefined) {
+    const notused_ = new IotSubscriber();
+  }
+
+  return _singleton;
+};
+
+const RegisterIotMessageEvent = (name, target) => {
+  if (!name || typeof target !== 'function') {
+    return false;
+  }
+
+  _receivers[name] = target;
+  return true;
+};
+
+const UnregisterIotMessageEvent = (name) => {
+  delete _receivers[name];
+};
+
+export {
+  GetIotSubscriber,
+  RegisterIotMessageEvent,
+  UnregisterIotMessageEvent,
+};

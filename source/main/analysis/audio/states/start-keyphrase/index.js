@@ -1,35 +1,34 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  ComprehendClient,
+  BatchDetectKeyPhrasesCommand,
+} = require('@aws-sdk/client-comprehend');
 const {
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const SUB_CATEGORY = 'keyphrase';
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class StateStartKeyphrase extends BaseStateStartComprehend {
   constructor(stateData) {
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
     super(stateData, {
       subCategory: SUB_CATEGORY,
-      func: comprehend.batchDetectKeyPhrases.bind(comprehend),
     });
   }
 
   get [Symbol.toStringTag]() {
     return 'StateStartKeyphrase';
+  }
+
+  async startDetection(params) {
+    const command = new BatchDetectKeyPhrasesCommand(params);
+    return BaseStateStartComprehend.RunCommand(command);
   }
 
   parseJobResults(results, reference) {

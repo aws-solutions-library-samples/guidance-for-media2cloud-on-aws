@@ -1,17 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
 const {
-  Environment,
-} = require('core-lib');
+  BatchDetectSentimentCommand,
+} = require('@aws-sdk/client-comprehend');
 const BaseStateStartComprehend = require('../shared/baseStateStartComprehend');
 
 const SUB_CATEGORY = 'sentiment';
@@ -20,18 +12,18 @@ const DOCUMENTS_PER_BATCH = 25;
 
 class StateStartSentiment extends BaseStateStartComprehend {
   constructor(stateData) {
-    const comprehend = new AWS.Comprehend({
-      apiVersion: '2017-11-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
     super(stateData, {
       subCategory: SUB_CATEGORY,
-      func: comprehend.batchDetectSentiment.bind(comprehend),
     });
   }
 
   get [Symbol.toStringTag]() {
     return 'StateStartSentiment';
+  }
+
+  async startDetection(params) {
+    const command = new BatchDetectSentimentCommand(params);
+    return BaseStateStartComprehend.RunCommand(command);
   }
 
   prepareDocuments(datasets) {

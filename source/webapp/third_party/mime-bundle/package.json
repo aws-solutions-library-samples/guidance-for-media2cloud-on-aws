@@ -1,23 +1,19 @@
 {
   "name": "mime-bundle",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "build mime for browser",
   "main": "index.js",
   "scripts": {
     "test": "echo \"bundle exists\" && exit 0",
-    "build:clean": "rm -rf dist && mkdir -p dist/js",
-    "build:browserify": "browserify index.js -o dist/js/mime.js",
-    "build:copy": "terser dist/js/mime.js -o ./dist/js/mime.min.js",
-    "build": "npm-run-all -s build:clean build:browserify build:copy"
+    "build:clean": "rm -rf dist temp && mkdir -p dist/js temp",
+    "build:copy": "cp -v .eslintrc.json index.js package.json webpack.config.js ./temp",
+    "build:webpack": "cd ./temp && webpack --mode=production",
+    "build:postbuild": "cp -v ./temp/*.min.js ./dist/js && rm -rf temp",
+    "build": "npm-run-all -s build:clean build:copy build:webpack build:postbuild"
   },
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
-  "license": "Apache-2.0",
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "mime": "^3.0.0"
-  },
-  "devDependencies": {},
-  "private": true
+    "mime": "^2.6.0"
+  }
 }

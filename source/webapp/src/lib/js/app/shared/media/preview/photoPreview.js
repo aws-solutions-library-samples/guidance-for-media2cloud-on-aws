@@ -2,24 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import BasePreview from './basePreview.js';
-import S3Utils from '../../s3utils.js';
+import {
+  GetS3Utils,
+} from '../../s3utils.js';
+import {
+  FaceManager,
+} from '../../faceManager/index.js';
 import AnalysisTypes from '../../analysis/analysisTypes.js';
+
+const CANVAS_BASE_ZINDEX = 100;
 
 export default class PhotoPreview extends BasePreview {
   constructor(media, optionalSearchResults) {
     super(media, optionalSearchResults);
     this.$imageView = undefined;
     this.$canvases = {};
-    this.$canvasIndex = PhotoPreview.Constants.Canvas.ZIndex;
-  }
-
-  static get Constants() {
-    return {
-      ...BasePreview.Constants,
-      Canvas: {
-        ZIndex: 100,
-      },
-    };
+    this.$canvasIndex = CANVAS_BASE_ZINDEX;
   }
 
   get imageView() {
@@ -51,71 +49,107 @@ export default class PhotoPreview extends BasePreview {
   }
 
   getCanvasesByType(type) {
-    return Object.keys(this.canvases).map(x =>
-      ((this.canvases[x].type === type)
-        ? this.canvases[x]
-        : undefined)).filter(x => x);
+    return Object.keys(this.canvases)
+      .map((key) => {
+        if (this.canvases[key].type === type) {
+          return this.canvases[key];
+        }
+        return undefined;
+      })
+      .filter((canvas) =>
+        canvas !== undefined);
   }
 
   async load() {
-    return this.preloaded ? this : this.preload();
+    await this.unload();
+
+    const container = $('<div/>')
+      .addClass('col-9 p-0 m-0 mx-auto');
+    this.container.append(container);
+
+    const overlayContainer = $('<div/>')
+      .addClass('overlay-container');
+    container.append(overlayContainer);
+
+    const image = $('<img/>')
+      .addClass('h-600max w-100 img-contain')
+      .attr('alt', this.media.basename);
+    overlayContainer.append(image);
+
+    image.ready(async () => {
+      const src = await this.media.getProxyImage();
+      image.attr('src', src);
+    });
+    this.imageView = image;
+
+    const canvasContainer = $('<div/>')
+      .addClass('canvas-list');
+    overlayContainer.append(canvasContainer);
+
+    canvasContainer.ready(async () => {
+      const canvases = await this.createCanvases();
+      canvasContainer.append(canvases);
+    });
+
+    return this;
   }
 
   async unload() {
     this.canvases = {};
-    this.canvasIndex = PhotoPreview.Constants.Canvas.ZIndex;
+    this.canvasIndex = CANVAS_BASE_ZINDEX;
     this.imageView = undefined;
     return super.unload();
   }
 
   async pause() {
-    this.container.find('div.canvas-list').addClass('collapse');
+    this.container.find('div.canvas-list')
+      .addClass('collapse');
   }
 
   async unpause() {
-    this.container.find('div.canvas-list').removeClass('collapse');
-  }
-
-  async preload() {
-    await this.unload();
-    const url = await this.media.getProxyImage();
-    this.imageView = await new Promise((resolve) => {
-      const img = $('<img/>').addClass('h-600max w-100 img-contain')
-        .attr('alt', this.media.basename);
-      const image = new Image();
-      image.onload = () =>
-        resolve(img.attr('src', url));
-      image.src = url;
-    });
-    const canvasList = $('<div/>').addClass('canvas-list');
-    const canvases = await this.createCanvases();
-    canvases.forEach(canvas =>
-      canvasList.append(canvas));
-    const overlay = $('<div/>').addClass('overlay-container')
-      .append(this.imageView)
-      .append(canvasList);
-    this.container.append($('<div/>').addClass('col-9 p-0 m-0 mx-auto')
-      .append(overlay));
-    return super.preload();
+    this.container.find('div.canvas-list')
+      .removeClass('collapse');
   }
 
   async createCanvases() {
     const result = this.media.getRekognitionImageResults() || {};
     const types = Object.keys(result);
-    const canvases = await Promise.all(types.map(type =>
-      ((!result[type].output)
-        ? undefined
-        : this.createCanvasesByType(type, result[type].output))));
-    return canvases.filter(x => x);
+
+    let canvases = await Promise.all(types
+      .map((type) => {
+        if (!result[type].output) {
+          return undefined;
+        }
+        return this.createCanvasesByType(
+          type,
+          result[type].output
+        );
+      }));
+    canvases = canvases
+      .filter((x) =>
+        x !== undefined)
+      .flat(1);
+
+    return canvases;
   }
 
   async createCanvasesByType(type, key) {
-    const response = await S3Utils.getObject(this.media.getProxyBucket(), key)
-      .catch(() => undefined);
+    const s3utils = GetS3Utils();
+
+    const response = await s3utils.getObject(
+      this.media.getProxyBucket(),
+      key
+    ).catch(() =>
+      undefined);
+
     if (!response) {
       return undefined;
     }
-    const data = JSON.parse(response.Body);
+
+    const data = await response.Body.transformToString()
+      .then((res) =>
+        JSON.parse(res));
+
     if (data.CelebrityFaces) {
       return this.createCelebCanvas(data);
     }
@@ -134,6 +168,7 @@ export default class PhotoPreview extends BasePreview {
     if (data.TextDetections) {
       return this.createTextCanvas(data);
     }
+
     return undefined;
   }
 
@@ -152,7 +187,8 @@ export default class PhotoPreview extends BasePreview {
           h: Number(Number(celeb.Face.BoundingBox.Height).toFixed(2)),
         },
       });
-      const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+      const canvas = $('<canvas/>')
+        .addClass('image-canvas-overlay collapse')
         .attr('data-canvas-id', canvasId)
         .attr('data-init', false);
       items.push(canvas);
@@ -182,7 +218,8 @@ export default class PhotoPreview extends BasePreview {
           ? `${face.AgeRange.Low}/${face.AgeRange.High}`
           : undefined,
       });
-      const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+      const canvas = $('<canvas/>')
+        .addClass('image-canvas-overlay collapse')
         .attr('data-canvas-id', canvasId)
         .attr('data-init', false);
       items.push(canvas);
@@ -194,9 +231,26 @@ export default class PhotoPreview extends BasePreview {
     const items = [];
     while (data.FaceMatches.length) {
       const match = data.FaceMatches.shift();
+      const face = match.Face;
+
+      // filter out datapoint that has marked as deleted
+      if (face.MarkDeleted === true) {
+        continue;
+      }
+
+      const faceId = face.FaceId;
+
+      let name = face.Name;
+      if (!name) {
+        name = FaceManager.resolveExternalImageId(
+          face.ExternalImageId,
+          faceId
+        );
+      }
+
       const canvasId = this.canvasRegister({
         type: AnalysisTypes.Rekognition.FaceMatch,
-        name: match.Face.ExternalImageId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        name,
         confidence: Number(Number(match.Similarity).toFixed(2)),
         coord: {
           y: Number(Number(data.SearchedFaceBoundingBox.Top).toFixed(2)),
@@ -205,7 +259,8 @@ export default class PhotoPreview extends BasePreview {
           h: Number(Number(data.SearchedFaceBoundingBox.Height).toFixed(2)),
         },
       });
-      const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+      const canvas = $('<canvas/>')
+        .addClass('image-canvas-overlay collapse')
         .attr('data-canvas-id', canvasId)
         .attr('data-init', false);
       items.push(canvas);
@@ -235,7 +290,8 @@ export default class PhotoPreview extends BasePreview {
             },
             parentName: parents,
           });
-          const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+          const canvas = $('<canvas/>')
+            .addClass('image-canvas-overlay collapse')
             .attr('data-canvas-id', canvasId)
             .attr('data-init', false);
           items.push(canvas);
@@ -248,7 +304,8 @@ export default class PhotoPreview extends BasePreview {
           coord: undefined,
           parentName: parents,
         });
-        const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+        const canvas = $('<canvas/>')
+          .addClass('image-canvas-overlay collapse')
           .attr('data-canvas-id', canvasId)
           .attr('data-init', false);
         items.push(canvas);
@@ -268,7 +325,8 @@ export default class PhotoPreview extends BasePreview {
         coord: undefined,
         parentName: moderation.ParentName,
       });
-      const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+      const canvas = $('<canvas/>')
+        .addClass('image-canvas-overlay collapse')
         .attr('data-canvas-id', canvasId)
         .attr('data-init', false);
       items.push(canvas);
@@ -294,7 +352,8 @@ export default class PhotoPreview extends BasePreview {
           h: text.Geometry.BoundingBox.Height,
         },
       });
-      const canvas = $('<canvas/>').addClass('image-canvas-overlay collapse')
+      const canvas = $('<canvas/>')
+        .addClass('image-canvas-overlay collapse')
         .attr('data-canvas-id', canvasId)
         .attr('data-init', false);
       items.push(canvas);

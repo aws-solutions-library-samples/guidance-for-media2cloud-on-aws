@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Localization from '../../../../../shared/localization.js';
-import SettingStore from '../../../../../shared/localCache/settingStore.js';
+import {
+  GetSettingStore,
+} from '../../../../../shared/localCache/index.js';
 import GoogleMap from '../../../../../shared/googleMap.js';
 import DescriptionList from '../../descriptionList.js';
 
@@ -119,7 +121,8 @@ export default class EXIFGroup {
     }
     const lat = map.data('lat');
     const lng = map.data('lng');
-    const apiKey = await (SettingStore.getSingleton()).getItem(OPT_MAPAPIKEY);
+    const store = GetSettingStore();
+    const apiKey = await store.getItem(OPT_MAPAPIKEY);
     const gMap = await GoogleMap.getSingleton(apiKey);
     if (gMap) {
       gMap.render(map[0], lat, lng);

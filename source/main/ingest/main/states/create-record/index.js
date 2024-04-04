@@ -5,12 +5,15 @@ const PATH = require('path');
 const {
   DB,
   CommonUtils,
+  MimeTypeHelper,
   Environment,
   StateData,
   FrameCaptureMode,
   AnalysisTypes,
   IngestError,
 } = require('core-lib');
+
+const AI_OPTIONS_S3KEY = process.env.ENV_AI_OPTIONS_S3KEY;
 
 class StateCreateRecord {
   constructor(stateData) {
@@ -35,13 +38,15 @@ class StateCreateRecord {
       throw new IngestError('missing uuid, bucket and key');
     }
     const response = await CommonUtils.headObject(src.bucket, src.key);
-    const mime = src.mime || CommonUtils.getMime(src.key);
+    if (!src.mime) {
+      src.mime = MimeTypeHelper.getMime(src.key);
+    }
     /* try our best to find md5 from metadata, object-tags, and etag */
     const md5 = await this.findMd5(response);
     /* parse frame capture mode settings */
-    src.aiOptions = this.parseFrameCaptureMode(src.aiOptions);
+    src.aiOptions = await this.parseFrameCaptureMode(src.aiOptions);
     /* update type based on mime */
-    src.type = CommonUtils.parseMimeType(mime);
+    src.type = MimeTypeHelper.parseMimeType(src.mime);
     /* make sure destination.bucket and prefix are set */
     if (!(src.destination || {}).bucket || !(src.destination || {}).prefix) {
       src.destination = {
@@ -59,7 +64,7 @@ class StateCreateRecord {
       key: src.key,
       basename: PATH.parse(src.key).name,
       md5,
-      mime,
+      mime: src.mime,
       type: src.type,
       timestamp: (new Date()).getTime(),
       schemaVersion: 1,
@@ -88,8 +93,10 @@ class StateCreateRecord {
 
     /* #2: try object tagging */
     const src = this.stateData.input || {};
-    const response = await CommonUtils.getTags(src.bucket, src.key).catch(() => undefined);
-    const chksum = ((response || {}).TagSet || []).find(x =>
+    const response = await CommonUtils.getTags(src.bucket, src.key)
+      .catch(() =>
+        undefined);
+    const chksum = ((response || {}).TagSet || []).find((x) =>
       x.Key === 'computed-md5');
     if (chksum && chksum.Value.match(/^([0-9a-fA-F]{32})$/)) {
       return chksum.Value;
@@ -117,8 +124,20 @@ class StateCreateRecord {
     }, data.Metadata);
   }
 
-  parseFrameCaptureMode(aiOptions) {
-    const options = aiOptions;
+  async parseFrameCaptureMode(aiOptions) {
+    let options = aiOptions;
+    if (!options) {
+      const bucket = Environment.Proxy.Bucket;
+      const key = AI_OPTIONS_S3KEY;
+      options = await CommonUtils.download(
+        bucket,
+        key
+      ).then((res) =>
+        JSON.parse(res))
+        .catch((e) =>
+          undefined);
+    }
+
     /* auto select frameCaptureMode if not defined */
     if (options
       && options[AnalysisTypes.Rekognition.CustomLabel]

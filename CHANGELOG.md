@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2024-03-06
+### New features
+- Dynamic frame analysis workflow
+- Auto face indexing workflow
+- Scene and Ad break detection workflow
+- GenAI playground with Amazon Bedrock (Anthropic Claude)
+- Knowledge graph with Amazon Neptune Serverless
+- Option to choose Amazon OpenSearch Serverless Service instead of Amazon OpenSearch Service (cluster)
+- Complex search query that supports AND, OR, NOT directives.
+- Experimental feature: Shoppable Metadata (Disabled by default). Contact your AWS representative if you are interested in this feature.
+
+### Changes
+- Updated lambda function runtime to NodeJS 20.x
+- Updated AWS SDK JS to version 3
+- Refactored video analysis state machine by introducing new sub-state machines
+  - Dynamic frame segmentation state machine
+  - Video based detection state machine
+  - Frame based detection state machine
+  - Custom model detection state machine
+  - Analysis Post Process state machine
+- Consolidated opensearch indices into a single index to support complex search query
+
+### Added
+- An unified state machine status event bus using Amazon EventBridge to consolidate events from various state machines
+- A new Amazon DynamoDB table, `faceindexer` to store face id and name mapping
+- An `Update Face Indexer` state machine to manage the face indexer logics such as adding, modifying, and removing faces from the face indexer table, opensearch documents, and metadata files on proxy bucket
+- A `Graph Indexer` state machine to manage the Amazon Neptune Serverless logics such as adding, modifying, and removing nodes and relationships from the graph database
+- Amazon CodeBuild to build and package opensource models into docker images and store in a private Amazon Elastic Container Registry (Amazon ECR)
+  - CLIP, opensource zero shot image classification model running in containerized lambda function for generating image embeddings, used for scene detection feature
+  - Faiss, opensource vector store running in containerized lambda funciton for similarity search (stateless), used for scene detection feature
+  - OWL-ViT, opensource zero-shot object detection model running in containerized lambda function for apparel detection, used for shoppale metadata feature
+  - BLIP, opensource text to caption model running in containerized lambda function for generating image caption, used for image analysis
+- Private VPC for the Amazon Neptune Serverless instance
+
+### Removed
+- Amazon Rekognition Person Pathing API
+
+
 ## [3.1.5] - 2023-11-02
 
 ### Security

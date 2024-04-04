@@ -74,13 +74,25 @@ class StateRunMediaInfo {
 
   async uploadMediainfoFiles(dest, json, xml) {
     const bucket = dest.bucket;
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     const prefix = PATH.join(dest.prefix, CATEGORY);
     return Promise.all([
       CommonUtils.uploadFile(bucket, prefix, JSON_OUTPUT, json)
-        .then(() => PATH.join(prefix, JSON_OUTPUT))
+        .then(() => {
+          // eslint-disable-next-line
+          // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+          const output = PATH.join(prefix, JSON_OUTPUT);
+          return output;
+        })
         .catch(e => console.error(e)),
       CommonUtils.uploadFile(bucket, prefix, XML_OUTPUT, xml)
-        .then(() => PATH.join(prefix, XML_OUTPUT))
+        .then(() => {
+          // eslint-disable-next-line
+          // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+          const output = PATH.join(prefix, XML_OUTPUT);
+          return output;
+        })
         .catch(e => console.error(e)),
     ]);
   }

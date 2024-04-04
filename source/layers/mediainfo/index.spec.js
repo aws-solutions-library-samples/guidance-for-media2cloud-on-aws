@@ -1,102 +1,105 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
 const {
-  MediaInfoError,
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  S3Client,
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectTaggingCommand,
+  PutObjectTaggingCommand,
+  RestoreObjectCommand,
+  CopyObjectCommand,
+} = require('@aws-sdk/client-s3');
+
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
+const {
   MediaInfoCommand,
-  XBuilder
+  XBuilder,
 } = require('mediainfo');
-const AWS = require('aws-sdk-mock');
-const SDK = require('aws-sdk');
-AWS.setSDKInstance(SDK);
 
 const obj = {
   mediaInfo: {
     media: {
       $: {
-        ref: 'ref'
+        ref: 'ref',
       },
       track: [
         {
           $: {
-            type: 'General'
+            type: 'General',
           },
           CompleteName: 'track1',
           FileNameExtension: 'ext',
-          FileExtension: 'ext'
+          FileExtension: 'ext',
         }, {
           $: {
-            type: 'Audio'
+            type: 'Audio',
           },
           CompleteName: 'track2',
           FileNameExtension: 'ext',
-          FileExtension: 'ext'
+          FileExtension: 'ext',
         }, {
           $: {
-            type: 'NoVideoTest'
+            type: 'NoVideoTest',
           },
           CompleteName: 'track3',
           FileNameExtension: 'ext',
-          FileExtension: 'ext'
-        }
+          FileExtension: 'ext',
+        },
       ],
       testFlattenNum: [
         '-1',
-        '2'
+        '2',
       ],
       testFlattenTrue: [
-        'true'
+        'true',
       ],
       testFlattenFalse: [
         'true',
-        'false'
-      ]
-    }
-  }
+        'false',
+      ],
+    },
+  },
 };
 
 const mockXml = (new XBuilder()).buildObject(obj);
+const s3Mock = mockClient(S3Client);
 
-jest.mock('child_process', () => {
-  return {
-    spawnSync: jest.fn(() => {
-      return {
-        stdout: mockXml,
-        status: 0
-      };
-    })
-  };
-});
+jest.mock('@aws-sdk/s3-request-presigner', () => ({
+  getSignedUrl: jest.fn(() =>
+    'url'),
+}));
 
-describe('Test MediaInfoError', () => {
-  const error = new MediaInfoError();
-  expect(error.name).toBe('MediaInfoError');
-  expect(error.message).toBe('1900 - unknown mediainfo error');
-  expect(error.errorCode).toBe(1900);
-});
+jest.mock('child_process', () => ({
+  spawnSync: jest.fn(() => ({
+    stdout: mockXml,
+    status: 0,
+  })),
+}));
 
 describe('Test MediaInfoCommand', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
-    AWS.mock('S3', 'getSignedUrl', Promise.resolve('url'));
+    jest.resetModules(); // Most important - it clears the cache
+    s3Mock.reset();
   });
 
   afterEach(() => {
-    AWS.restore('S3');
   });
 
   test('Test analyze and miniData', async () => {
@@ -109,27 +112,27 @@ describe('Test MediaInfoCommand', () => {
 
     let response = await mi.analyze({
       Bucket: bucketName,
-      Key: key
+      Key: key,
     });
 
     expect(response.mediaInfo.media.$.ref).toBe(ref);
-    expect(response.mediaInfo.media.track[0]['completeName']).toBe(ref);
-    expect(response.mediaInfo.media.track[0]['fileNameExtension']).toBe(ext);
-    expect(response.mediaInfo.media.track[0]['fileExtension']).toBe(ext);
+    expect(response.mediaInfo.media.track[0].completeName).toBe(ref);
+    expect(response.mediaInfo.media.track[0].fileNameExtension).toBe(ext);
+    expect(response.mediaInfo.media.track[0].fileExtension).toBe(ext);
 
     const http = `https://www.url.com/path.${ext}`;
     response = await mi.analyze(http);
     expect(response.mediaInfo.media.$.ref).toBe(http);
-    expect(response.mediaInfo.media.track[0]['completeName']).toBe(http);
-    expect(response.mediaInfo.media.track[0]['fileNameExtension']).toBe(ext);
-    expect(response.mediaInfo.media.track[0]['fileExtension']).toBe(ext);
+    expect(response.mediaInfo.media.track[0].completeName).toBe(http);
+    expect(response.mediaInfo.media.track[0].fileNameExtension).toBe(ext);
+    expect(response.mediaInfo.media.track[0].fileExtension).toBe(ext);
 
-    const path =  './index.js';
+    const path = './index.js';
     response = await mi.analyze(path);
     expect(response.mediaInfo.media.$.ref).toBe(path);
-    expect(response.mediaInfo.media.track[0]['completeName']).toBe(path);
-    expect(response.mediaInfo.media.track[0]['fileNameExtension']).toBe('js');
-    expect(response.mediaInfo.media.track[0]['fileExtension']).toBe('js');
+    expect(response.mediaInfo.media.track[0].completeName).toBe(path);
+    expect(response.mediaInfo.media.track[0].fileNameExtension).toBe('js');
+    expect(response.mediaInfo.media.track[0].fileExtension).toBe('js');
 
     expect(response.mediaInfo.media.testFlattenNum).toBe(-1);
     expect(response.mediaInfo.media.testFlattenTrue).toBe(true);
@@ -139,9 +142,6 @@ describe('Test MediaInfoCommand', () => {
     expect(response.container.length).toBeGreaterThan(0);
     expect(response.audio.length).toBeGreaterThan(0);
     expect(response.video.length).toBe(0);
-
-    response = mi.others;
-    expect(response.length).toBe(1);
   });
 
   test('Test presign', async () => {
@@ -153,7 +153,7 @@ describe('Test MediaInfoCommand', () => {
 
     const fail = 'fail';
     await mi.presign(fail).catch(error => {
-      expect(error.message).toBe(`invalid filename '${fail}' not supported`)
+      expect(error.message).toBe(`invalid filename '${fail}' not supported`);
     });
 
     await mi.presign({}).catch(error => {

@@ -4,6 +4,7 @@
 const PATH = require('path');
 const {
   CommonUtils,
+  MimeTypeHelper,
 } = require('core-lib');
 const BaseProvider = require('./baseProvider');
 
@@ -42,8 +43,10 @@ class CloudfirstProvider extends BaseProvider {
     this.files = this.data.migrationObject.files.map(x => CommonUtils.cleansing({
       uuid: x.uuid || CommonUtils.uuid4(),
       bucket,
+      // eslint-disable-next-line
+      // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
       key: CommonUtils.sanitizedKey(PATH.join(prefix, x.name)),
-      mime: CommonUtils.getMime(x.name) || CloudfirstProvider.Constant.DefaultMimeType,
+      mime: MimeTypeHelper.getMime(x.name) || CloudfirstProvider.Constant.DefaultMimeType,
       md5: (x.checksums || []).filter(x0 => x0.type.toLowerCase() === 'md5').shift().value,
     }));
 

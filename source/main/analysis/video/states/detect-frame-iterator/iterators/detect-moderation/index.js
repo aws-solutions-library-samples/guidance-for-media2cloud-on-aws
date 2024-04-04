@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  DetectModerationLabelsCommand,
+} = require('@aws-sdk/client-rekognition');
+const {
   AnalysisTypes,
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
@@ -22,34 +25,50 @@ class DetectModerationIterator extends BaseDetectFrameIterator {
   }
 
   async detectFrame(bucket, key, frameNo, timestamp) {
-    const fn = this.rekog.detectModerationLabels.bind(this.rekog);
     const params = this.makeParams(bucket, key, this.paramOptions);
-    return this.detectFn(fn, params)
-      .then(result =>
-        this.parseModerationResult(result, frameNo, timestamp));
+    const command = new DetectModerationLabelsCommand(params);
+
+    return this.detectFn(command)
+      .then((res) =>
+        this.parseModerationResult(res, frameNo, timestamp));
   }
 
   parseModerationResult(data, frameNo, timestamp) {
-    return (!data || !data.ModerationLabels || !data.ModerationLabels.length)
-      ? undefined
-      : data.ModerationLabels.map(x => ({
+    if (!data || !data.ModerationLabels || !data.ModerationLabels.length) {
+      return undefined;
+    }
+
+    if (!this.modelMetadata) {
+      this.modelMetadata = {
+        ModerationModelVersion: data.ModerationModelVersion,
+      };
+    }
+
+    const minConfidence = this.minConfidence;
+    const filtered = data.ModerationLabels
+      .filter((x) =>
+        x.Confidence >= minConfidence);
+
+    return filtered
+      .map(x => ({
         Timestamp: timestamp,
         FrameNumber: frameNo,
         ModerationLabel: x,
       }));
   }
 
-  mapUniqueNameToSequenceFile(mapData, data, seqFile) {
-    let keys = data.map(x =>
-      (x.ModerationLabel || {}).ParentName).filter(x => x);
-    keys = [...new Set(keys)];
-    while (keys.length) {
-      const key = keys.shift();
-      const unique = new Set(mapData[key]);
-      unique.add(seqFile);
-      mapData[key] = [...unique];
-    }
-    return mapData;
+  getUniqueNames(dataset) {
+    const unique = dataset
+      .map((x) => ([
+        x.ModerationLabel.ParentName,
+        x.ModerationLabel.Name,
+      ]))
+      .flat(1)
+      .filter((x) =>
+        x);
+    return [
+      ...new Set(unique),
+    ];
   }
 }
 

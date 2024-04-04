@@ -6,9 +6,15 @@ import VideoCategorySlideComponent from './video/videoCategorySlideComponent.js'
 import VideoPreviewSlideComponent from './video/videoPreviewSlideComponent.js';
 import BaseMediaTab from './base/baseMediaTab.js';
 
+const {
+  Messages: {
+    VideoTab: TITLE,
+  },
+} = Localization;
+
 export default class VideoTab extends BaseMediaTab {
-  constructor(defaultTab, plugins) {
-    super(defaultTab, Localization.Messages.VideoTab, plugins);
+  constructor(options) {
+    super(TITLE, options);
     this.$categorySlideComponent = new VideoCategorySlideComponent();
     this.$previewSlideComponent = new VideoPreviewSlideComponent();
   }

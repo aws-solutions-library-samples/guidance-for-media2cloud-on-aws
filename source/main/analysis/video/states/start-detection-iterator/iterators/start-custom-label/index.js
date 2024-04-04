@@ -1,20 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  RekognitionClient,
+  DescribeProjectVersionsCommand,
+  ResourceNotFoundException,
+} = require('@aws-sdk/client-rekognition');
 const PATH = require('path');
 const {
   CommonUtils,
   AnalysisTypes,
-  AnalysisError,
   Environment,
+  xraysdkHelper,
+  retryStrategyHelper,
 } = require('core-lib');
 const {
   BacklogClient,
@@ -32,11 +30,8 @@ const RUNNABLE_STATUS = [
   'STOPPING',
   'STOPPED',
 ];
-const NON_RUNNABLE_STATUS = [
-  'TRAINING_FAILED',
-  'FAILED',
-  'DELETING',
-];
+
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 class StartCustomLabelIterator extends BaseStartDetectionIterator {
   constructor(stateData) {
@@ -82,15 +77,9 @@ class StartCustomLabelIterator extends BaseStartDetectionIterator {
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory];
     const timestamp = CommonUtils.toISODateTime(data.requestTime);
-    return PATH.join(
-      data.prefix,
-      'raw',
-      timestamp,
-      CATEGORY,
-      subCategory,
-      data[CUSTOMLABEL_MODELS],
-      '/'
-    );
+    // eslint-disable-next-line
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return PATH.join(data.prefix, 'raw', timestamp, CATEGORY, subCategory, data[CUSTOMLABEL_MODELS], '/');
   }
 
   async bestMatchProjectVersion(model) {
@@ -98,27 +87,36 @@ class StartCustomLabelIterator extends BaseStartDetectionIterator {
     const projectArn = (model.indexOf('arn:aws:rekognition:') !== 0)
       ? `arn:aws:rekognition:${process.env.AWS_REGION}:${this.stateData.accountId}:project/${model}`
       : model;
-    const projectVersions = [];
-    const rekog = new AWS.Rekognition({
-      apiVersion: '2016-06-27',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-    });
+    let projectVersions = [];
+
     do {
-      response = await rekog.describeProjectVersions({
+      const rekognitionClient = xraysdkHelper(new RekognitionClient({
+        customUserAgent: CUSTOM_USER_AGENT,
+        retryStrategy: retryStrategyHelper(),
+      }));
+
+      const command = new DescribeProjectVersionsCommand({
         ProjectArn: projectArn,
         NextToken: (response || {}).NextToken,
-      }).promise();
-      projectVersions.splice(projectVersions.length, 0, ...response.ProjectVersionDescriptions);
+      });
+
+      response = await rekognitionClient.send(command);
+
+      projectVersions = projectVersions.concat(response.ProjectVersionDescriptions);
     } while ((response || {}).NextToken);
+
     /* filter runnable models and sort by creation date */
-    const bestMatch = projectVersions.filter(x =>
-      RUNNABLE_STATUS.indexOf(x.Status) >= 0)
+    const bestMatch = projectVersions
+      .filter((x) =>
+        RUNNABLE_STATUS.includes(x.Status))
       .sort((a, b) =>
         new Date(b.CreationTimestamp) - new Date(a.CreationTimestamp))
       .shift();
+
     if (!bestMatch) {
-      throw new AnalysisError(`fail to find runnable project version for ${projectArn}`);
+      throw new ResourceNotFoundException(`fail to find runnable project version for ${projectArn}`);
     }
+
     return {
       projectArn,
       projectVersionArn: bestMatch.ProjectVersionArn,

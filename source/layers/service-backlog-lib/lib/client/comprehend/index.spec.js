@@ -1,107 +1,237 @@
-/*********************************************************************************************************************
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.                                           *
- *                                                                                                                    *
- *  Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance    *
- *  with the License. A copy of the License is located at                                                             *
- *                                                                                                                    *
- *      http://www.apache.org/licenses/LICENSE-2.0                                                                    *
- *                                                                                                                    *
- *  or in the 'license' file accompanying this file. This file is distributed on an 'AS IS' BASIS, WITHOUT WARRANTIES *
- *  OR CONDITIONS OF ANY KIND, express or implied. See the License for the specific language governing permissions    *
- *  and limitations under the License.                                                                                *
- *********************************************************************************************************************/
-const ComprehendBacklogJob = require('./index.js');
-const AWS = require('aws-sdk-mock');
-const SDK = require('aws-sdk');
-AWS.setSDKInstance(SDK);
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
 
-jest.mock('../../shared/retry', () => {
-  return {
-    run: jest.fn((fn, params) => {
-      return Promise.resolve({ jobId: params.jobId });
-    })
-  };
-});
+const {
+  beforeAll,
+  describe,
+  expect,
+} = require('@jest/globals');
+const {
+  DynamoDBClient,
+  PutItemCommand,
+} = require('@aws-sdk/client-dynamodb');
+const {
+  marshall,
+} = require('@aws-sdk/util-dynamodb');
+const {
+  EventBridgeClient,
+  PutEventsCommand,
+} = require('@aws-sdk/client-eventbridge');
+const {
+  mockClient,
+} = require('aws-sdk-client-mock');
+const {
+  ComprehendClient,
+  StartDocumentClassificationJobCommand,
+  StartDominantLanguageDetectionJobCommand,
+  StartEntitiesDetectionJobCommand,
+  StartKeyPhrasesDetectionJobCommand,
+  StartSentimentDetectionJobCommand,
+  StartTopicsDetectionJobCommand,
+} = require('@aws-sdk/client-comprehend');
 
+const ComprehendBacklogJob = require('./index');
+
+const ddbMock = mockClient(DynamoDBClient);
+const comprehendMock = mockClient(ComprehendClient);
+const eventbridgeMock = mockClient(EventBridgeClient);
 
 describe('Test ComprehendBacklogJob', () => {
   beforeAll(() => {
     // Mute console.log output for internal functions
     console.log = jest.fn();
+    console.error = jest.fn();
+    eventbridgeMock.on(PutEventsCommand)
+      .resolves('sent');
   });
 
   beforeEach(() => {
-    jest.resetModules() // Most important - it clears the cache
-    AWS.mock('DynamoDB.Converter', 'unmarshall', Promise.resolve({ serviceApi: 'test' }));
+    jest.resetModules(); // Most important - it clears the cache
+    ddbMock.reset();
+    comprehendMock.reset();
   });
 
   afterEach(() => {
-    AWS.restore('DynamoDB.Converter');
   });
 
   test('Test startDocumentClassificationJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testDocClassification'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartDocumentClassificationJob;
+    const serviceParams = {
+      jobId: 'testDocClassification',
     };
 
-    const response = await comprehendJob.startDocumentClassificationJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartDocumentClassificationJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+
+    comprehendMock.on(StartDocumentClassificationJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startDocumentClassificationJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startDominantLanguageDetectionJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testDominantLang'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartDominantLanguageDetectionJob;
+    const serviceParams = {
+      jobId: 'testDominantLang',
     };
 
-    const response = await comprehendJob.startDominantLanguageDetectionJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartDominantLanguageDetectionJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    comprehendMock.on(StartDominantLanguageDetectionJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startDominantLanguageDetectionJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startEntitiesDetectionJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testEntitiesDetect'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartEntitiesDetectionJob;
+    const serviceParams = {
+      jobId: 'testEntitiesDetect',
     };
 
-    const response = await comprehendJob.startEntitiesDetectionJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartEntitiesDetectionJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    comprehendMock.on(StartEntitiesDetectionJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startEntitiesDetectionJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startKeyPhrasesDetectionJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testKeyPhrase'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartKeyPhrasesDetectionJob;
+    const serviceParams = {
+      jobId: 'testKeyPhrases',
     };
 
-    const response = await comprehendJob.startKeyPhrasesDetectionJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartKeyPhrasesDetectionJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    comprehendMock.on(StartKeyPhrasesDetectionJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startKeyPhrasesDetectionJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startSentimentDetectionJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testSentimentDetect'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartSentimentDetectionJob;
+    const serviceParams = {
+      jobId: 'testSentimentDetect',
     };
 
-    const response = await comprehendJob.startSentimentDetectionJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartSentimentDetectionJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    comprehendMock.on(StartSentimentDetectionJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startSentimentDetectionJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 
   test('Test startTopicsDetectionJob', async () => {
-    const comprehendJob = new ComprehendBacklogJob();
-    const params = {
-      jobId: 'testTopicDetect'
+    const serviceApi = ComprehendBacklogJob.ServiceApis.StartTopicsDetectionJob;
+    const serviceParams = {
+      jobId: 'testTopicDetect',
     };
 
-    const response = await comprehendJob.startTopicsDetectionJob('id', params);
-    expect(response.serviceApi).toBe(ComprehendBacklogJob.ServiceApis.StartTopicsDetectionJob);
-    expect(response.serviceParams.jobId).toBe(params.jobId);
+    const startJobResponse = {
+      serviceApi,
+      serviceParams,
+    };
+    comprehendMock.on(StartTopicsDetectionJobCommand)
+      .resolves(startJobResponse);
+
+    const tableResponse = marshall(startJobResponse);
+    ddbMock.on(PutItemCommand)
+      .resolves(tableResponse);
+
+    const comprehendJob = new ComprehendBacklogJob();
+    const response = await comprehendJob.startTopicsDetectionJob(
+      'id',
+      serviceParams
+    );
+
+    expect(response.serviceApi)
+      .toBe(serviceApi);
+
+    expect(response.serviceParams.jobId)
+      .toBe(serviceParams.jobId);
   });
 });

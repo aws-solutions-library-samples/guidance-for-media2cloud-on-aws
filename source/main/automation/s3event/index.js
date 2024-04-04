@@ -1,20 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    return require('aws-sdk');
-  }
-})();
+const {
+  SFNClient,
+  StartExecutionCommand,
+} = require('@aws-sdk/client-sfn');
 const PATH = require('path');
 const CRYPTO = require('crypto');
 const OS = require('os');
 const FS = require('fs/promises');
 const {
   CommonUtils,
+  MimeTypeHelper,
+  xraysdkHelper,
+  retryStrategyHelper,
+  M2CException,
 } = require('core-lib');
 const {
   FileMagic,
@@ -23,38 +23,28 @@ const {
 
 const PROXY_BUCKET = process.env.ENV_PROXY_BUCKET;
 const RESOURCE_PREFIX = process.env.ENV_RESOURCE_PREFIX;
-const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
-const EXPECTED_BUCKET_OWNER = process.env.ENV_EXPECTED_BUCKET_OWNER;
-
 const MIME_MAJOR_TYPES = [
   'video',
   'audio',
   'image',
 ];
-
 const MIME_MINOR_TYPES = [
   'pdf',
   'mxf',
   'gxf',
 ];
 
-function getS3Instance() {
-  return new AWS.S3({
-    apiVersion: '2006-03-01',
-    computeChecksums: true,
-    signatureVersion: 'v4',
-    s3DisableBodySigning: false,
-    customUserAgent: CUSTOM_USER_AGENT,
-  });
-}
+const CUSTOM_USER_AGENT = process.env.ENV_CUSTOM_USER_AGENT;
 
 function randomGenerateUuid() {
   const random = CRYPTO.randomBytes(16).toString('hex');
   const matched = random.match(/([0-9a-fA-F]{8})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{12})/);
   if (!matched) {
-    throw new Error(`failed to generate UUID from '${random}'`);
+    throw new M2CException(`failed to generate UUID from '${random}'`);
   }
+
   matched.shift();
+
   return matched.join('-').toLowerCase();
 }
 
@@ -67,11 +57,9 @@ function makeSafePrefix(uuid, key) {
     safeKey = safeKey.slice(1);
   }
   const parsed = PATH.parse(safeKey);
-  return PATH.join(
-    uuid,
-    parsed.dir,
-    '/'
-  );
+  // eslint-disable-next-line
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  return PATH.join(uuid, parsed.dir, '/');
 }
 
 async function getMagicInstance() {
@@ -94,15 +82,12 @@ async function getMagicInstance() {
 }
 
 async function readBytes(bucket, key, byteLength = 512) {
-  const s3 = getS3Instance();
-  return s3.getObject({
-    Bucket: bucket,
-    Key: key,
-    Range: `bytes=0-${byteLength}`,
-    ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
-  }).promise()
-    .then((res) =>
-      res.Body);
+  return CommonUtils.getByteRange(
+    bucket,
+    key,
+    0,
+    byteLength
+  );
 }
 
 async function runMagic(magic, buf) {
@@ -141,29 +126,36 @@ function typeSupported(mime) {
   if (!mime) {
     return false;
   }
-  const parsed = mime.split(';').shift().trim();
+
+  const parsed = mime
+    .split(';')
+    .shift()
+    .trim();
+
   const [
     type,
     subtype,
-  ] = parsed.split('/').map((x) =>
-    x.toLowerCase());
+  ] = parsed
+    .split('/')
+    .map((x) =>
+      x.toLowerCase());
 
-  return ((MIME_MAJOR_TYPES.indexOf(type) >= 0)
-    || (MIME_MINOR_TYPES.indexOf(subtype) >= 0));
+  return MIME_MAJOR_TYPES.includes(type)
+    || MIME_MINOR_TYPES.includes(subtype);
 }
 
 exports.handler = async (event, context) => {
   console.log(`event = ${JSON.stringify(event, null, 2)}\ncontext = ${JSON.stringify(context, null, 2)}`);
   try {
     if (!PROXY_BUCKET) {
-      throw new Error('PROXY_BUCKET not specified');
+      throw new M2CException('PROXY_BUCKET not specified');
     }
     if (!RESOURCE_PREFIX) {
-      throw new Error('RESOURCE_PREFIX not specified');
+      throw new M2CException('RESOURCE_PREFIX not specified');
     }
     const accountId = context.invokedFunctionArn.split(':')[4];
     if (!accountId) {
-      throw new Error('accountId not found');
+      throw new M2CException('accountId not found');
     }
 
     const bucket = event.detail.bucket.name;
@@ -177,17 +169,11 @@ exports.handler = async (event, context) => {
     }
 
     /* check Metadata field */
-    const s3 = getS3Instance();
-    const metadata = await s3.headObject({
-      Bucket: bucket,
-      Key: key,
-      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
-    }).promise()
-      .then((res) =>
-        res.Metadata)
-      .catch((e) => {
-        throw new Error(`[ERR]: headObject: ${key}: ${e.code} ${e.message}`);
-      });
+    const metadata = await CommonUtils.headObject(
+      bucket,
+      key
+    ).then((res) =>
+      res.Metadata);
 
     /* web uploaded content */
     if (metadata.webupload) {
@@ -195,7 +181,7 @@ exports.handler = async (event, context) => {
     }
 
     /* check magic number and mime type */
-    const mime = CommonUtils.getMime(key);
+    const mime = MimeTypeHelper.getMime(key);
     const magic = await getMagic(bucket, key);
     if ((magic && !typeSupported(magic.mime)) && !typeSupported(mime)) {
       return undefined;
@@ -224,15 +210,30 @@ exports.handler = async (event, context) => {
         },
       },
     };
-    const step = new AWS.StepFunctions({
-      apiVersion: '2016-11-23',
+
+    const stepfunctionClient = xraysdkHelper(new SFNClient({
       customUserAgent: CUSTOM_USER_AGENT,
-    });
-    return step.startExecution({
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    const command = new StartExecutionCommand({
       input: JSON.stringify(params),
       stateMachineArn,
-    }).promise();
+    });
+
+    return stepfunctionClient.send(command)
+      .then((res) => ({
+        ...res,
+        $metadata: undefined,
+      }));
   } catch (e) {
-    return console.error(e);
+    console.error(
+      'ERR:',
+      e.$metadata.httpStatusCode,
+      e.name,
+      e.message
+    );
+
+    return undefined;
   }
 };

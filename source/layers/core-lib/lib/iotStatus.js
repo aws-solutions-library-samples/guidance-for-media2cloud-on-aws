@@ -1,21 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const AWS = (() => {
-  try {
-    const AWSXRay = require('aws-xray-sdk');
-    return AWSXRay.captureAWS(require('aws-sdk'));
-  } catch (e) {
-    console.log('aws-xray-sdk not loaded');
-    return require('aws-sdk');
-  }
-})();
+const {
+  IoTDataPlaneClient,
+  PublishCommand,
+} = require('@aws-sdk/client-iot-data-plane');
 const Environment = require('./environment');
+const xraysdkHelper = require('./xraysdkHelper');
+const retryStrategyHelper = require('./retryStrategyHelper');
+
+const CUSTOM_USER_AGENT = Environment.Solution.Metrics.CustomUserAgent;
 
 /**
  * @class IotStatus
  */
 class IotStatus {
+  static createIotClient(iotHost) {
+    let endpoint = iotHost;
+    if (endpoint.indexOf('https://') < 0) {
+      endpoint = `https://${endpoint}`;
+    }
+
+    const iotClient = xraysdkHelper(new IoTDataPlaneClient({
+      customUserAgent: CUSTOM_USER_AGENT,
+      endpoint,
+      retryStrategy: retryStrategyHelper(),
+    }));
+
+    return iotClient;
+  }
+
   static async publish(...args) {
     const [
       endpoint,
@@ -27,21 +41,33 @@ class IotStatus {
       args[0],
     ];
 
-    const payload = (typeof message === 'string' || Array.isArray(message) || message instanceof Buffer)
-      ? message
-      : JSON.stringify(message);
+    let payload = message;
+    if (!(typeof payload === 'string'
+    || Array.isArray(payload)
+    || message instanceof Buffer)) {
+      payload = JSON.stringify(payload);
+    }
 
-    const iotData = new AWS.IotData({
-      apiVersion: '2015-05-28',
-      customUserAgent: Environment.Solution.Metrics.CustomUserAgent,
-      endpoint,
-    });
+    const iotClient = IotStatus.createIotClient(endpoint);
 
-    return iotData.publish({
+    const command = new PublishCommand({
       topic,
       payload,
       qos: 0,
-    }).promise().catch(e => console.error(e));
+    });
+
+    return iotClient.send(command)
+      .catch((e) => {
+        console.error(
+          'ERR:',
+          'IotStatus.publish:',
+          'iotClient.send:',
+          e.$metadata.httpStatusCode,
+          e.name,
+          payload
+        );
+        return undefined;
+      });
   }
 }
 

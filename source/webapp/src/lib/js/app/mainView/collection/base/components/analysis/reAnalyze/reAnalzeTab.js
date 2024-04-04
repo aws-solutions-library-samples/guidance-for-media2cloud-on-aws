@@ -7,12 +7,28 @@ import ApiHelper from '../../../../../../shared/apiHelper.js';
 import mxAlert from '../../../../../../mixins/mxAlert.js';
 import mxAnalysisSettings from '../../../../../../mixins/mxAnalysisSettings.js';
 
+const {
+  Messages: {
+    ReAnalyzeTab: TITLE,
+  },
+  Buttons: {
+    ReAnalyzeContent: BTN_REANALYZE_CONTENT,
+  },
+  Alerts: {
+    Oops: OOPS,
+    Confirmed: CONFIRMED,
+    ReAnalyzeSubmitted: ERR_REANALYZE_SUBMITTED,
+    ReAnalzyeFailed: ERR_REANALYZER_FAILED,
+  },
+} = Localization;
+
 const COL_TAB = 'col-11';
 
 export default class ReAnalyzeTab extends mxAnalysisSettings(mxAlert(BaseAnalysisTab)) {
-  constructor(previewComponent, defaultTab = false) {
-    super(Localization.Messages.ReAnalyzeTab, previewComponent, defaultTab);
-    this.$parentContainer = $('<div/>').addClass(`${COL_TAB} my-4 max-h36r`);
+  constructor(previewComponent) {
+    super(TITLE, previewComponent);
+    this.$parentContainer = $('<div/>')
+      .addClass(`${COL_TAB} my-4 max-h36r`);
   }
 
   /* override mxAnalysisSettings */
@@ -40,7 +56,7 @@ export default class ReAnalyzeTab extends mxAnalysisSettings(mxAlert(BaseAnalysi
   /* override mxAnalysisSettings */
   createControls() {
     const btn = $('<button/>').addClass('btn btn-success ml-1')
-      .html(Localization.Buttons.ReAnalyzeContent);
+      .html(BTN_REANALYZE_CONTENT);
     btn.off('click').on('click', async (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -49,17 +65,17 @@ export default class ReAnalyzeTab extends mxAnalysisSettings(mxAlert(BaseAnalysi
         const uuid = this.previewComponent.media.uuid;
         const params = {
           input: {
-            aiOptions: await this.loadLocalSettings(),
+            aiOptions: this.aiOptions,
           },
         };
         await ApiHelper.startAnalysisWorkflow(uuid, params);
         this.loading(false);
-        const message = Localization.Alerts.ReAnalyzeSubmitted
+        const message = ERR_REANALYZE_SUBMITTED
           .replace('{{BASENAME}}', this.previewComponent.media.basename);
         await this.showConfirm(message);
         return false;
       } catch (e) {
-        const message = Localization.Alerts.ReAnalzyeFailed
+        const message = ERR_REANALYZER_FAILED
           .replace('{{BASENAME}}', this.previewComponent.media.basename);
         await this.showAlert(message);
         return false;
@@ -78,10 +94,10 @@ export default class ReAnalyzeTab extends mxAnalysisSettings(mxAlert(BaseAnalysi
   }
 
   async showAlert(message, duration = 2 * 1000) {
-    return super.showMessage(this.tabContent, 'danger', Localization.Alerts.Oops, message, duration);
+    return super.showMessage(this.tabContent, 'danger', OOPS, message, duration);
   }
 
   async showConfirm(message, duration = 2 * 1000) {
-    return super.showMessage(this.tabContent, 'success', Localization.Alerts.Confirmed, message, duration);
+    return super.showMessage(this.tabContent, 'success', CONFIRMED, message, duration);
   }
 }
