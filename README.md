@@ -1,6 +1,7 @@
 # Guidance for Media2Cloud on AWS (formerly known as AWS Media2Cloud Solution)
 
 ## Table of contents
+* [Maintenance notice](#maintenance-notice)
 * [What's new in V3](#whats-new-in-v3)
 * [Introduction](#introduction)
 * [Architecture overview](#architecture-overview)
@@ -13,6 +14,14 @@
 * [Code structure](#code-structure)
 * [License](#license)
 * [Collection of operational metrics](#collection-of-operational-metrics)
+
+__
+
+## Maintenance notice
+
+With the release of Version 4, Version 3 of Media2Cloud has entered maintenance mode. New features will only be available in Version 4 going forward. The Version 3 branch will only receive critical bug fixes, such as updates to the Node.js version to 20.x.
+
+We encourage you to check out the new Version 4 and take advantage of the latest features and improvements.
 
 __
 
