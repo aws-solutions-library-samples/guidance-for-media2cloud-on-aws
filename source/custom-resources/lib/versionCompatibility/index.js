@@ -18,7 +18,7 @@ exports.CheckVersionCompatibilityStatement = async (event, context) => {
     return x0.responseData;
   }
 
-  let consent = event.ResourceProperties.Data.VersionCompatibilityStatement;
+  let consent = event.ResourceProperties.Data.VersionCompatibilityStatement || '';
   consent = consent.toLowerCase();
 
   if (consent.startsWith('yes')) {

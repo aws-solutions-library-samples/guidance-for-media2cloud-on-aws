@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2024-04-11
+### Bugfixes
+- AWS Elemental MediaConvert does not create frameCapture group when s3://[PROXY_BUCKET]/_settings/aioption.json is missing.
+- Short form video (5s) fails the analysis.
+- Rephrase the Version Compatibility input parameter on the CFN template to be more clear.
+
+### New features
+- added Top 5 most relevant tags at the scene level
+
+
 ## [4.0.0] - 2024-03-06
 ### New features
 - Dynamic frame analysis workflow

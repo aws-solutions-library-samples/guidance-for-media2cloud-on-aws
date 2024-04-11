@@ -116,6 +116,10 @@ class StateSelectSegmentFrames {
         segments
       );
 
+      if (frameSegmentation.length === 0) {
+        throw new AnalysisError('no frame being selected');
+      }
+
       console.log(`[INFO]: StateSelectSegmentFrames.process: ${frameSegmentation.length} out of ${framesExtracted}`);
 
       const {

@@ -354,6 +354,19 @@ export default class SegmentTab extends BaseRekognitionTab {
             .addClass('lead-s b-300');
           sectionBrandAndLogos.append(ulBrandAndLogos);
 
+          // tags
+          const sectionTags = $('<section/>');
+          sceneDescView.append(sectionTags);
+
+          desc = $('<p/>')
+            .addClass('b-400 mr-4')
+            .append('Top 5 relevant tags');
+          sectionTags.append(desc);
+
+          const ulTags = $('<ul/>')
+            .addClass('lead-s b-300');
+          sectionTags.append(ulTags);
+
           item.details.forEach((x) => {
             let li;
             if ((x.description || {}).text) {
@@ -390,6 +403,17 @@ export default class SegmentTab extends BaseRekognitionTab {
                   li = $('<li/>')
                     .append(`${_item.text} (${_item.score}%)`);
                   ulBrandAndLogos.append(li);
+                }
+              });
+            }
+
+            // tags
+            if ((x.tags || []).length > 0) {
+              x.tags.forEach((_item) => {
+                if (_item.text) {
+                  li = $('<li/>')
+                    .append(`${_item.text} (${_item.score}%)`);
+                  ulTags.append(li);
                 }
               });
             }

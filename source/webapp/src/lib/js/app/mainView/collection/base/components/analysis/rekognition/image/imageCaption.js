@@ -1,8 +1,28 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import SolutionManifest from '/solution-manifest.js';
 import Localization from '../../../../../../../shared/localization.js';
 import BaseAnalysisTab from '../../base/baseAnalysisTab.js';
+
+const {
+  FoundationModels = [],
+} = SolutionManifest;
+
+const {
+  name: MODEL_NAME = '',
+  value: MODEL_ID = '',
+} = FoundationModels[0] || {};
+
+const MODEL_PRICING = (MODEL_ID.indexOf('sonnet') > 0)
+  ? {
+    InputTokens: 0.00300,
+    OutputTokens: 0.01500,
+  }
+  : {
+    InputTokens: 0.00025,
+    OutputTokens: 0.00125,
+  };
 
 const {
   Messages: {
@@ -46,6 +66,10 @@ export default class ImageCaptionTab extends BaseAnalysisTab {
       output = JSON.parse(output);
 
       const {
+        usage: {
+          inputTokens,
+          outputTokens,
+        },
         description,
         altText,
         fileName,
@@ -92,6 +116,16 @@ export default class ImageCaptionTab extends BaseAnalysisTab {
           }
         }
       });
+
+      // usage
+      const estimatedCost = ((
+        (inputTokens * MODEL_PRICING.InputTokens) +
+        (outputTokens * MODEL_PRICING.OutputTokens)
+      ) / 1000).toFixed(4);
+
+      const p = $('<p/>')
+        .append(`(Total of <code>${inputTokens}</code> input tokens and <code>${outputTokens}</code> output tokens using ${MODEL_NAME}. Estimated code is <code>$${estimatedCost}</code>.)`);
+      container.append(p);
     }
 
     return container;
