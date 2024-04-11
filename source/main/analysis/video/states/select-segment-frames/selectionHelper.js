@@ -7,7 +7,7 @@ const Jimp = require('jimp');
 const TYPE_STEADY = ['ColorBars', 'BlackFrames', 'StudioLogo', 'Slate'];
 const TYPE_CREDITS = ['EndCredits'];
 const TYPE_OPENING = ['OpeningCredits'];
-const TYPE_CONTENT = ['Content'];
+const TYPE_CONTENT = ['Content', 'undefined'];
 const HAMMING_DISTANCE_THRESHOLD = 0.85;
 const SPLIT_INTERVAL = 2 * 60 * 1000; // 2min
 const SAMPLING_INTERVAL = 3 * 1000; // 3s
@@ -47,6 +47,18 @@ function _withShotSegment(frameHashes, segments) {
         shotSegments.push(segment);
       }
     });
+
+  // special case: potentially short form video. Fake the technicalCue.
+  if (technicalCues.length === 0) {
+    shotSegments.forEach((shotSegment) => {
+      technicalCues.push({
+        ShotSegmentRange: [shotSegment.ShotSegment.Index, shotSegment.ShotSegment.Index],
+        TechnicalCueSegment: {
+          Type: 'undefined',
+        },
+      });
+    });
+  }
 
   let selected = [];
   let shotIdx = 0;
@@ -178,7 +190,6 @@ function _selectFromShotSegment(
       Math.round((send - ssta) / SAMPLING_INTERVAL),
       1
     );
-
     selected = _selectByScanning(shotSegmentFrames, maxFrames);
   } else {
     console.log(`[INFO]: [#${shotIdx}]: ${technicalCueType}: not supported`);

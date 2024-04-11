@@ -383,7 +383,7 @@ function _createCustomPrompt(options) {
   const transcript = _textInput(options);
   messages.push({
     role: 'user',
-    content: `Transcript in <transcript> tag:\n<transcript>${transcript}\n</transcript>`,
+    content: `Transcript in <transcript> tag:\n<transcript>${transcript}\n</transcript>\n${options.prompt}`,
   });
 
   messages.push({

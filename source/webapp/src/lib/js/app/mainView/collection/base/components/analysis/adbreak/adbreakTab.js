@@ -463,6 +463,16 @@ export default class AdBreakTab extends BaseAnalysisTab {
       .addClass('lead-s b-300');
     section.append(ulBrandAndLogos);
 
+    // Tags
+    const tags = $('<p/>')
+      .addClass('b-300 mr-4')
+      .append('Top 5 relevant tags');
+    section.append(tags);
+
+    const ulTags = $('<ul/>')
+      .addClass('lead-s b-300');
+    section.append(ulTags);
+
     // Label category
     const labelCategory = $('<p/>')
       .addClass('b-300 mr-4')
@@ -507,6 +517,17 @@ export default class AdBreakTab extends BaseAnalysisTab {
             const li = $('<li/>')
               .append(`${item.text} (${item.score}%)`);
             ulBrandAndLogos.append(li);
+          }
+        });
+      }
+
+      // tags
+      if ((x.tags || []).length > 0) {
+        x.tags.forEach((item) => {
+          if (item.text) {
+            const li = $('<li/>')
+              .append(`${item.text} (${item.score}%)`);
+            ulTags.append(li);
           }
         });
       }

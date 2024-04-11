@@ -3519,6 +3519,8 @@ Resources:
                         - bOpenSearchServerless
                         - 1
                         - 0
+                    ENV_DEFAULT_AI_OPTIONS: !Ref DefaultAIOptions
+                    ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
                     ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
 
     IngestMainStateMachine:

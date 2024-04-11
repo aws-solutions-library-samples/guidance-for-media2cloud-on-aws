@@ -3,6 +3,7 @@
 
 const PATH = require('path');
 const {
+  aimlGetPresets,
   DB,
   CommonUtils,
   MimeTypeHelper,
@@ -13,6 +14,7 @@ const {
   IngestError,
 } = require('core-lib');
 
+const DEFAULT_AI_OPTIONS = process.env.ENV_DEFAULT_AI_OPTIONS;
 const AI_OPTIONS_S3KEY = process.env.ENV_AI_OPTIONS_S3KEY;
 
 class StateCreateRecord {
@@ -136,6 +138,11 @@ class StateCreateRecord {
         JSON.parse(res))
         .catch((e) =>
           undefined);
+    }
+
+    // load from environment variable
+    if (!options) {
+      options = aimlGetPresets(DEFAULT_AI_OPTIONS);
     }
 
     /* auto select frameCaptureMode if not defined */

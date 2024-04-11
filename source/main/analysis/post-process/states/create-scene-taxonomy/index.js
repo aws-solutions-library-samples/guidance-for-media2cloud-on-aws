@@ -35,8 +35,9 @@ const BaseState = require('../shared/base');
 const MODEL_REGION = process.env.ENV_BEDROCK_REGION;
 const MODEL_ID = process.env.ENV_BEDROCK_MODEL_ID;
 const MODEL_VERSION = process.env.ENV_BEDROCK_MODEL_VER;
-const SYSTEM = 'You are a media operation engineer. Your job is to review a portion of a video content presented by a sequence of consecutive images. Each image also contains a sequence of frames presented in a 4x7 grid reading from left to right and then from top to bottom. You may also optionally be given the dialogues of the scene that helps you to understand the context. You are asked to provide the following information: a detail description to describe the scene, identify the most relevant IAB taxonomy, GARM, sentiment, and brands and logos that may appear in the scene. It is important to return the results in JSON format and also includes a confidence score from 0 to 100. Skip any explanation.';
-const SYSTEM_IAB = 'You are a media operation engineer. Your job is to review a portion of a video content presented by a sequence of consecutive images. Each image also contains a sequence of frames presented in a 4x7 grid reading from left to right and then from top to bottom. You may also optionally be given the dialogues of the scene that helps you to understand the context. You are asked to identify the most relevant IAB taxonomy. It is important to return the results in JSON format and also includes a confidence score from 0 to 100. Skip any explanation.';
+const TASK_ALL = 'You are asked to provide the following information: a detail description to describe the scene, identify the most relevant IAB taxonomy, GARM, sentiment, and brands and logos that may appear in the scene, and five most relevant tags from the scene.';
+const TASK_IAB = 'You are asked to identify the most relevant IAB taxonomy.';
+const SYSTEM = 'You are a media operation engineer. Your job is to review a portion of a video content presented by a sequence of consecutive images. Each image also contains a sequence of frames presented in a 4x7 grid reading from left to right and then from top to bottom. You may also optionally be given the dialogues of the scene that helps you to understand the context. {{TASK}} It is important to return the results in JSON format and also includes a confidence score from 0 to 100. Skip any explanation.';
 const ASSISTANT = {
   ProvideDialogues: {
     role: 'assistant',
@@ -62,7 +63,7 @@ const MODEL_PARAMS = {
   // top_p: 0.8,
   // top_k: 250,
   stop_sequences: ['\n\nHuman:'],
-  system: SYSTEM,
+  // system: SYSTEM,
 };
 
 const ENABLE_IMAGE_TILE = false;
@@ -701,6 +702,12 @@ async function _inference(
     text: `Here is a list of Sentiments in <sentiment> tag:\n<sentiment>\n${sentiments.join('\n')}\n</sentiment>\nOnly answer the Sentiment from this list.`,
   });
 
+  // tags
+  additional.push({
+    type: 'text',
+    text: 'Also provide five most relevant tags of the scene.',
+  });
+
   messages.push({
     role: 'user',
     content: additional,
@@ -736,6 +743,12 @@ async function _inference(
         score: 90,
       },
     ],
+    tags: [
+      {
+        text: 'BMW',
+        score: 90,
+      },
+    ],
   };
 
   const output = `Return JSON format. An example of the output:\n${JSON.stringify(example)}\n`;
@@ -747,10 +760,12 @@ async function _inference(
   // assistant
   messages.push(ASSISTANT.Prefill);
 
+  const system = SYSTEM.replace('{{TASK}}', TASK_ALL);
   const modelParams = {
     ...MODEL_PARAMS,
     ...options,
     messages,
+    system,
   };
 
   const response = await _invokeEndpoint(modelId, modelParams);
@@ -1083,7 +1098,7 @@ async function _inferenceRefineIAB(
   // guardrail to only return JSON
   messages.push(ASSISTANT.Prefill);
 
-  const system = SYSTEM_IAB;
+  const system = SYSTEM.replace('{{TASK}}', TASK_IAB);
   const modelId = MODEL_ID;
   const modelParams = {
     ...MODEL_PARAMS,

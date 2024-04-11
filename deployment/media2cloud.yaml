@@ -161,7 +161,6 @@ Parameters:
     VersionCompatibilityStatement:
         Type: String
         Description: The new Version 4 of Media2Cloud is not compatible with previous versions due to several optimization changes. These changes include the Amazon OpenSearch cluster indexes and consolidation of the generated metadata. While a migration tool is being developed to help customers migrate from previous versions to Version 4, this CloudFormation template SHOULD NOT be used to update your existing Media2Cloud V3 deployment to the latest version. Confirm that you have read and understand the version compatibility statement. If you are creating a new stack, select "Yes, I understand and proceed".
-        Default: No, do not proceed
         AllowedValues:
             - Yes, I understand and proceed
             - No, do not proceed
@@ -171,7 +170,7 @@ Metadata:
         ParameterGroups:
             -
                 Label:
-                    default: Version Compatibility
+                    default: PLEASE READ AND SELECT AN ANSWER
                 Parameters:
                     - VersionCompatibilityStatement
             -
@@ -214,7 +213,7 @@ Metadata:
                     - BedrockModel
         ParameterLabels:
             VersionCompatibilityStatement:
-                default: Please read the following statement
+                default: Version compatibility
             Email:
                 default: Email
             PriceClass:

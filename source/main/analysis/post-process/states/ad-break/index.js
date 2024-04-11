@@ -746,7 +746,7 @@ function _bestGuessCandidates(scenes) {
   }
 
   // special case: content does not have end credits
-  if (contentTimestamps[1] < 0) {
+  if (contentTimestamps[1] < 0 && scenes.length > 0) {
     contentTimestamps[1] = scenes[scenes.length - 1].timeEnd;
   }
 
