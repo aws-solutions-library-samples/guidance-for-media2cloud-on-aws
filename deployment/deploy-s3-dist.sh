@@ -145,11 +145,10 @@ function copy_to_bucket() {
   [ "$location" != "null" ] && \
     region=$location
 
-  local latestUrl=""
-  local domain=s3.${region}.amazonaws.com
+  local domain="s3.amazonaws.com"
   local optionalFlag="--acl ${ACL_SETTING}"
-  if [ "$region" == "us-east-1" ]; then
-    domain=s3.amazonaws.com
+  if [ "$region" != "us-east-1" ]; then
+    domain=s3.${region}.amazonaws.com
     optionalFlag="${optionalFlag} --region ${region}"
   fi
 
@@ -159,6 +158,7 @@ function copy_to_bucket() {
   echo "== Deploy '${SOLUTION} ($VERSION)' package from '${source}' to '${dest}' in '${region}' [COMPLETED] =="
 
   # deploy to "latest" folder if specified
+  local latestUrl=""
   if [ "$DEPLOY_LATEST" == "true" ]; then
     latestUrl="https://${bucket}.${domain}/${SOLUTION}/latest/${MAIN_TEMPLATE}"
 

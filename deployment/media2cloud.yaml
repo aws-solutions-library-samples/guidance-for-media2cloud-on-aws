@@ -145,6 +145,8 @@ Parameters:
         AllowedValues:
             - North Virginia [US East] (us-east-1)
             - Oregon [US West] (us-west-2)
+            - Paris [Europe] (eu-west-3)
+            - Sydney [Asia Pacific] (ap-southeast-2)
             - No, do not enable Amazon Bedrock
             # - Frankfurt [Europe] (eu-central-1)
             # - Tokyo [Asia Pacific] (ap-northeast-1)

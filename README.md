@@ -115,7 +115,7 @@ __
 
 Before you create the Media2Cloud V4 stack, make sure you have enabled the Anthropic Claude 3 Haiku or Sonnet model through the **Amazon Bedrock** console under the `Manage model access` page.
 
-Currently, the Anthropic Claude 3 Haiku and Sonnet models are available in the US East (N. Virginia) [us-east-1] and US West (Oregon) [us-west-2] regions. If you are creating the Media2Cloud V4 stack in other regions, such as Europe (Ireland), you can still try out the Anthropic Claude 3 Haiku and Sonnet models by enabling the model access in either `us-east-1` or `us-west-2` regions. Keep in mind that there will be additional Data Transfer cost across regions.
+Currently, the Anthropic Claude 3 Haiku and Sonnet models are available in the US East (N. Virginia) [us-east-1], US West (Oregon) [us-west-2], Europe (Paris) [eu-west-3], and Asia Pacific (Sydney) [ap-southeast-2] regions. If you are creating the Media2Cloud V4 stack in other regions, such as Europe (Ireland), you can still try out the Anthropic Claude 3 Haiku and Sonnet models by choosing the model access in one of these regions: `us-east-1`, `us-west-2`, `eu-west-3`, or `ap-southeast-2`. Keep in mind that there will be additional Data Transfer cost across regions.
 
 ![Amazon Bedrock](./deployment/tutorials/images/amazon-bedrock-model-access.gif)
 
@@ -163,6 +163,8 @@ aws cloudformation create-stack \
 |US East (N. Virginia)|<a href="https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-us-east-1.s3.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-us-east-1.s3.amazonaws.com/media2cloud/latest/media2cloud.template|
 |US West (Oregon)|<a href="https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-us-west-2.s3.us-west-2.amazonaws.com/media2cloud/latest/media2cloud.template|
 |Europe (Ireland)|<a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-eu-west-1.s3.eu-west-1.amazonaws.com/media2cloud/latest/media2cloud.template|
+|Europe (Paris)|<a href="https://console.aws.amazon.com/cloudformation/home?region=eu-west-3#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-eu-west-3.s3.eu-west-3.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-eu-west-3.s3.eu-west-3.amazonaws.com/media2cloud/latest/media2cloud.template|
+|Asia Pacific (Sydney)|<a href="https://console.aws.amazon.com/cloudformation/home?region=ap-southeast-2#/stacks/quickcreate?templateURL=https://awsi-megs-guidances-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/media2cloud/latest/media2cloud.template&stackName=media2cloudv4" target="_blank">Launch stack</a>|https://awsi-megs-guidances-ap-southeast-2.s3.ap-southeast-2.amazonaws.com/media2cloud/latest/media2cloud.template|
 
 The stack creation takes about 30 minutes to complete. Upon completion, you should receive an email invitation to the Media2Cloud web portal.
 
