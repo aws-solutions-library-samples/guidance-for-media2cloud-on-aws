@@ -18,9 +18,6 @@ const {
   Retry,
   Environment,
 } = require('core-lib');
-const {
-  SigV4,
-} = require('core-lib');
 
 const ANALYSIS_TYPE = 'image';
 const CATEGORY = 'rekog-image';

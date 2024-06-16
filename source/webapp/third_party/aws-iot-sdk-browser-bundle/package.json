@@ -16,9 +16,8 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "aws-iot-device-sdk": "^2.2.13",
-    "aws-sdk": "^2.1033.0"
+    "aws-iot-device-sdk": "^2.2.14",
+    "aws-sdk": "^2.1642.0"
   },
-  "devDependencies": {},
   "private": true
 }

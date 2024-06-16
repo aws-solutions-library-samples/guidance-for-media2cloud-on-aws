@@ -3,12 +3,24 @@
 
 const PATH = require('path');
 const CRYPTO = require('crypto');
-const CANVAS = require('canvas');
+const JIMP = require('jimp');
 const {
   AnalysisTypes,
   CommonUtils,
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
+
+/**
+ * WORKAROUND: JIMP 0.16.1 (0.9.6 doesn't have the issue.)
+ * jpeg-js decoder throws an error when maxMemoryUsageInMB > 512
+ * Reference: https://github.com/oliver-moran/jimp/issues/915
+ */
+const JpegDecoder = JIMP.decoders['image/jpeg'];
+JIMP.decoders['image/jpeg'] = (data) =>
+  JpegDecoder(data, {
+    maxResolutionInMP: 200,
+    maxMemoryUsageInMB: 2048,
+  });
 
 const SUBCATEGORY = AnalysisTypes.Rekognition.FaceMatch;
 const NAMED_KEY = 'Persons';
@@ -132,13 +144,13 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     let t = Math.round(image.height * box.Top);
     l = Math.min(Math.max(l, 0), image.width - w);
     t = Math.min(Math.max(t, 0), image.height - h);
-    /* crop face */
-    const canvas = CANVAS.createCanvas(w, h);
-    const context = canvas.getContext('2d');
-    context.drawImage(image, l, t, w, h, 0, 0, w, h);
-    const cropped = canvas.toBuffer('image/jpeg', {
-      quality: 1.0,
-    });
+
+    // crop face
+    let cropped = image
+      .clone()
+      .crop(l, t, w, h);
+    cropped = await cropped.getBufferAsync(JIMP.MIME_JPEG);
+
     const params = {
       Image: {
         Bytes: cropped,
@@ -148,19 +160,19 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
   }
 
   async loadImage(bucket, key) {
-    const buf = await CommonUtils.download(bucket, key, false)
-      .then(data => data.Body)
-      .catch(e => console.error(e));
-    if (!buf) {
-      return undefined;
-    }
-    return new Promise((resolve) => {
-      const img = new CANVAS.Image();
-      img.onload = () =>
+    const signed = CommonUtils.getSignedUrl({
+      Bucket: bucket,
+      Key: key,
+    });
+    return new Promise((resolve, reject) => {
+      JIMP.read(signed, (e, img) => {
+        if (e) {
+          console.error(e);
+          reject(e);
+          return;
+        }
         resolve(img);
-      img.onerror = e =>
-        resolve(console.error(e));
-      img.src = buf;
+      });
     });
   }
 }

@@ -95,6 +95,24 @@ TEMPLATE_DIST_DIR="$DEPLOY_DIR/global-s3-assets"
 BUILD_DIST_DIR="$DEPLOY_DIR/regional-s3-assets"
 TMP_DIR=$(mktemp -d)
 
+# make sure nodejs v20 is installed
+[[ ! "${NODEJS_VERSION}" =~ "v20" ]] && \
+  echo "error: Node JS Version must be v20" && \
+  exit 1
+
+# make sure docker is installed
+[ "$(which docker)" == "" ] && \
+  echo "error: Docker is required to build some lambda layers" && \
+  exit 1
+
+[ "$(which jq)" == "" ] && \
+  echo "error: JQ command line tool is required" && \
+  exit 1
+
+[ "$(which aws)" == "" ] && \
+  echo "error: AWS CLI command line tool is required" && \
+  exit 1
+
 [ -z "$SOLUTION_ID" ] && \
   echo "error: can't find SOLUTION_ID..." && \
   usage && \
@@ -123,9 +141,9 @@ TMP_DIR=$(mktemp -d)
 LAYER_AWSSDK=
 LAYER_MEDIAINFO=
 LAYER_CORE_LIB=
+LAYER_JIMP=
 LAYER_IMAGE_PROCESS=
 LAYER_FIXITY_LIB=
-LAYER_CANVAS_LIB=
 LAYER_PDF_LIB=
 LAYER_BACKLOG=
 # note: core-lib for custom resource
@@ -163,6 +181,16 @@ ANONYMIZED_DATA="Yes"
 [ "$BUILD_ENV" == "dev" ] && \
   ANONYMIZED_DATA="No"
 
+# bucket account owner
+ACCOUNTID=$(aws sts get-caller-identity | jq .Account | tr -d \")
+[ -z "$ACCOUNTID" ] && \
+  echo "error: fail to get AWS Account ID" && \
+  exit 1
+
+# check to make sure the deployment bucket belongs to the same account
+[ "$(aws s3api get-bucket-location --bucket ${BUCKET_NAME} --expected-bucket-owner ${ACCOUNTID} | jq .LocationConstraint | tr -d \")" == "" ] && \
+  echo "error: deployment bucket, \"${BUCKET_NAME}\" doesn't belong to the same AWS Account" && \
+  exit 1
 
 ## trap exit signal and make sure to remove the TMP_DIR
 trap "rm -rf $TMP_DIR" EXIT
@@ -220,8 +248,8 @@ function build_layer_packages() {
   build_core_lib_layer
   build_fixity_layer
   build_mediainfo_layer
+  build_jimp_layer
   build_image_process_layer
-  build_canvas_layer
   build_pdf_layer
   build_backlog_layer
 }
@@ -273,17 +301,65 @@ function build_mediainfo_layer() {
   popd
 }
 
+function build_jimp_layer() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building JIMP layer package"
+  echo "------------------------------------------------------------------------------"
+  local package="jimp"
+  LAYER_JIMP="${package}-${VERSION}.zip"
+  pushd "$SOURCE_DIR/layers/${package}"
+  npm install
+  npm run build
+  npm run zip -- "$LAYER_JIMP" .
+  cp -v "./dist/${LAYER_JIMP}" "$BUILD_DIST_DIR"
+  popd
+}
+
 function build_image_process_layer() {
   echo "------------------------------------------------------------------------------"
-  echo "Building image-process layer package"
+  echo "Building image-process (EXIFTOOL) layer package"
   echo "------------------------------------------------------------------------------"
   local package="image-process-lib"
   LAYER_IMAGE_PROCESS="${package}-${VERSION}.zip"
   pushd "$SOURCE_DIR/layers/${package}"
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_IMAGE_PROCESS" .
-  cp -v "./dist/${LAYER_IMAGE_PROCESS}" "$BUILD_DIST_DIR"
+
+  mkdir ./dist
+
+  # If a pre-built package matched the version, skip building
+  local latestVersion=$(cat package.json | jq .version | tr -d \")
+  local bucket=$BUCKET_NAME
+  local key="${SOLUTION}/prebuilt/layers/${package}/${latestVersion}.zip"
+
+  local response=$(aws s3 cp s3://${bucket}/${key} $BUILD_DIST_DIR/${LAYER_IMAGE_PROCESS})
+  if [ "$response" != "" ] && [ -f $BUILD_DIST_DIR/${LAYER_IMAGE_PROCESS} ]; then
+    echo "=== Using Prebuilt package (${latestVersion}.zip) for \"${package}\" ==="
+    popd
+    return 0
+  fi
+
+  # docker builds Perl5 runtime and exiftool, then package to package.zip
+  docker build -t ${package} .
+  [ $? -ne 0 ] && exit 1
+
+  # create a container so we can copy the zip package to local host
+  local id=$(docker create ${package})
+  docker cp ${id}:/var/task/package.zip ./dist/${LAYER_IMAGE_PROCESS}
+
+  # remove container
+  docker rm -v $id
+
+  # remove image
+  docker rmi ${package}
+
+  # copy the prebuilt package to s3 bucket
+  aws s3api put-object \
+  --bucket ${bucket} \
+  --key ${key} \
+  --body "./dist/${LAYER_IMAGE_PROCESS}" \
+  --expected-bucket-owner ${ACCOUNTID}
+
+  mv -v "./dist/${LAYER_IMAGE_PROCESS}" "$BUILD_DIST_DIR"
+
   popd
 }
 
@@ -301,30 +377,51 @@ function build_fixity_layer() {
   popd
 }
 
-function build_canvas_layer() {
-  echo "------------------------------------------------------------------------------"
-  echo "Building Canvas layer package"
-  echo "------------------------------------------------------------------------------"
-  local package="canvas-lib"
-  LAYER_CANVAS_LIB="${package}-${VERSION}.zip"
-  pushd "$SOURCE_DIR/layers/${package}"
-  npm run build
-  npm run move -- "$LAYER_CANVAS_LIB"
-  cp -v "./dist/${LAYER_CANVAS_LIB}" "$BUILD_DIST_DIR"
-  popd
-}
-
 function build_pdf_layer() {
   echo "------------------------------------------------------------------------------"
-  echo "Building PDF layer package"
+  echo "Building PDF layer package (Docker)"
   echo "------------------------------------------------------------------------------"
   local package="pdf-lib"
   LAYER_PDF_LIB="${package}-${VERSION}.zip"
   pushd "$SOURCE_DIR/layers/${package}"
-  npm install
-  npm run build
-  npm run zip -- "$LAYER_PDF_LIB" .
-  cp -v "./dist/${LAYER_PDF_LIB}" "$BUILD_DIST_DIR"
+
+  mkdir ./dist
+
+  # If a pre-built package matched the version, skip building
+  local latestVersion=$(cat package.json | jq .version | tr -d \")
+  local bucket=$BUCKET_NAME
+  local key="${SOLUTION}/prebuilt/layers/${package}/${latestVersion}.zip"
+
+  local response=$(aws s3 cp s3://${bucket}/${key} $BUILD_DIST_DIR/${LAYER_PDF_LIB})
+  if [ "$response" != "" ] && [ -f $BUILD_DIST_DIR/${LAYER_PDF_LIB} ]; then
+    echo "=== Using Prebuilt package (${latestVersion}.zip) for \"${package}\" ==="
+    popd
+    return 0
+  fi
+
+  # docker builds the PDFJS and Canvas modules and package to package.zip
+  docker build -t ${package} .
+  [ $? -ne 0 ] && exit 1
+
+  # create a container so we can copy the zip package to local host
+  local id=$(docker create ${package})
+  docker cp ${id}:/var/task/package.zip ./dist/${LAYER_PDF_LIB}
+
+  # remove container
+  docker rm -v $id
+
+  # remove image
+  docker rmi ${package}
+
+  # copy the prebuilt package to s3 bucket
+  aws s3api put-object \
+  --bucket ${bucket} \
+  --key ${key} \
+  --body "./dist/${LAYER_PDF_LIB}" \
+  --expected-bucket-owner ${ACCOUNTID}
+
+  mv -v "./dist/${LAYER_PDF_LIB}" "$BUILD_DIST_DIR"
+
   popd
 }
 
@@ -933,14 +1030,14 @@ function build_cloudformation_templates() {
   echo "Updating %%LAYER_MEDIAINFO%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%LAYER_MEDIAINFO%%|${LAYER_MEDIAINFO}|g" *.yaml || exit 1
 
+  echo "Updating %%LAYER_JIMP%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%LAYER_JIMP%%|${LAYER_JIMP}|g" *.yaml || exit 1
+
   echo "Updating %%LAYER_IMAGE_PROCESS%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%LAYER_IMAGE_PROCESS%%|${LAYER_IMAGE_PROCESS}|g" *.yaml || exit 1
 
   echo "Updating %%LAYER_FIXITY_LIB%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%LAYER_FIXITY_LIB%%|${LAYER_FIXITY_LIB}|g" *.yaml || exit 1
-
-  echo "Updating %%LAYER_CANVAS_LIB%% param in cloudformation templates..."
-  sed -i'.bak' -e "s|%%LAYER_CANVAS_LIB%%|${LAYER_CANVAS_LIB}|g" *.yaml || exit 1
 
   echo "Updating %%LAYER_PDF_LIB%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%LAYER_PDF_LIB%%|${LAYER_PDF_LIB}|g" *.yaml || exit 1
@@ -1034,9 +1131,9 @@ function on_complete() {
   echo "** LAYER_AWSSDK=${LAYER_AWSSDK} **"
   echo "** LAYER_CORE_LIB=${LAYER_CORE_LIB} **"
   echo "** LAYER_MEDIAINFO=${LAYER_MEDIAINFO} **"
+  echo "** LAYER_JIMP=${LAYER_JIMP} **"
   echo "** LAYER_IMAGE_PROCESS=${LAYER_IMAGE_PROCESS} **"
   echo "** LAYER_FIXITY_LIB=${LAYER_FIXITY_LIB} **"
-  echo "** LAYER_CANVAS_LIB=${LAYER_CANVAS_LIB} **"
   echo "** LAYER_PDF_LIB=${LAYER_PDF_LIB} **"
   echo "** LAYER_BACKLOG=${LAYER_BACKLOG} **"
   ## Backlog Service ##

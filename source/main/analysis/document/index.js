@@ -6,8 +6,8 @@ const {
   StateData,
   AnalysisError,
 } = require('core-lib');
-const StateIndexAnalysisResults = require('./states/index-analysis-results');
 const StateStartDocumentAnalysis = require('./states/start-document-analysis');
+const StateCollectAnalysisResults = require('./states/collect-analysis-results');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
@@ -37,8 +37,8 @@ exports.handler = async (event, context) => {
       case StateData.States.StartDocumentAnalysis:
         instance = new StateStartDocumentAnalysis(stateData);
         break;
-      case StateData.States.IndexAnalysisResults:
-        instance = new StateIndexAnalysisResults(stateData);
+      case StateData.States.CollectDocumentAnalysisResults:
+        instance = new StateCollectAnalysisResults(stateData);
         break;
       default:
         break;

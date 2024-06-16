@@ -1,25 +1,17 @@
 {
-  "name": "pdf-lib",
-  "version": "1.0.0",
-  "description": "lambda layer of of Mozilla PDF.JS wrapper to read and convert PDF to PNG image",
+  "name": "pdfjs-lib",
+  "version": "v3.11.174",
+  "description": "wrapping pdf.js and canvas into AWS Lambda Layer",
   "main": "index.js",
   "private": true,
-  "author": {
-    "name": "Amazon Web Services",
-    "url": "https://aws.amazon.com/solutions"
-  },
-  "dependencies": {
-    "pdfjs-dist": "3.6.172"
-  },
   "scripts": {
-    "pretest": "npm install",
-    "test": "echo \"layer wrapping PDF.JS, skipping unit test.\"",
-    "build:clean": "rm -rf dist && mkdir -p dist/nodejs",
-    "build:copy": "cp -rv package.json dist/nodejs/",
-    "build:install": "cd dist/nodejs && npm install --omit=dev --omit=optional",
-    "build": "npm-run-all -s build:clean build:copy build:install",
-    "zip": "cd dist && zip -rq"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "devDependencies": {},
-  "license": "Apache-2.0"
+  "author": "aws-mediaent-solutions",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^2.11.2",
+    "pdfjs-dist": "^3.11.174",
+    "path2d-polyfill": "2.0.1"
+  }
 }

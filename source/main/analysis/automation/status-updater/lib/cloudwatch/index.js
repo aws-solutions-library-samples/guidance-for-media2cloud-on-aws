@@ -15,11 +15,13 @@ const {
 } = require('core-lib');
 const BacklogStatusChangeEvent = require('./backlog/backlogStatusChangeEvent');
 const RekognitionStatusChangeEvent = require('./backlog/rekognitionStatusChangeEvent');
+const TextractStatusChangeEvent = require('./backlog/textractStatusChangeEvent');
 const TranscribeStatusChangeEvent = require('./backlog/transcribeStatusChangeEvent');
 const ComprehendStatusChangeEvent = require('./backlog/comprehendStatusChangeEvent');
 const CustomLabelsStatusChangeEvent = require('./backlog/customLabelsStatusChangeEvent');
 
 const CATEGORY_REKOGNITION = 'rekognition:';
+const CATEGORY_TEXTRACT = 'textract:';
 const CATEGORY_TRANSCRIBE = 'transcribe:';
 const CATEGORY_COMPREHEND = 'comprehend:';
 const CATEGORY_CUSTOM = 'custom:';
@@ -84,6 +86,8 @@ class CloudWatchStatus {
     if (this.source === BacklogStatusChangeEvent.SourceType) {
       if (this.detail.serviceApi.indexOf(CATEGORY_REKOGNITION) === 0) {
         instance = new RekognitionStatusChangeEvent(this);
+      } else if (this.detail.serviceApi.indexOf(CATEGORY_TEXTRACT) === 0) {
+        instance = new TextractStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_TRANSCRIBE) === 0) {
         instance = new TranscribeStatusChangeEvent(this);
       } else if (this.detail.serviceApi.indexOf(CATEGORY_COMPREHEND) === 0) {

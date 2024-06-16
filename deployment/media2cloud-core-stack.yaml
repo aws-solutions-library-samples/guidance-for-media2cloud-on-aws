@@ -16,10 +16,10 @@ Mappings:
             Name: core-lib
     OpenSearch:
         Engine:
-            Version: OpenSearch_1.3
+            Version: OpenSearch_2.13
     Node:
         Runtime:
-            Version: nodejs16.x
+            Version: nodejs20.x
 
 Parameters:
     S3Bucket:
@@ -168,10 +168,6 @@ Resources:
                           SSEAlgorithm: AES256
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
-            AccessControl: LogDeliveryWrite
-            OwnershipControls:
-                Rules:
-                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_ingest_bucket/
@@ -241,6 +237,7 @@ Resources:
             PolicyDocument:
                 Statement:
                     -
+                        Sid: DenyInsecureTransport
                         Effect: Deny
                         Principal: "*"
                         Action: s3:*
@@ -269,10 +266,6 @@ Resources:
                           SSEAlgorithm: AES256
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
-            AccessControl: LogDeliveryWrite
-            OwnershipControls:
-                Rules:
-                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_proxy_bucket/
@@ -330,6 +323,7 @@ Resources:
             PolicyDocument:
                 Statement:
                     -
+                        Sid: DenyInsecureTransport
                         Effect: Deny
                         Principal: "*"
                         Action: s3:*
@@ -358,10 +352,6 @@ Resources:
                           SSEAlgorithm: AES256
             AccelerateConfiguration:
                 AccelerationStatus: Enabled
-            AccessControl: LogDeliveryWrite
-            OwnershipControls:
-                Rules:
-                    - ObjectOwnership: ObjectWriter
             LoggingConfiguration:
                 DestinationBucketName: !Ref LogsBucket
                 LogFilePrefix: access_logs_web_bucket/
@@ -434,6 +424,7 @@ Resources:
             PolicyDocument:
                 Statement:
                     -
+                        Sid: DenyInsecureTransport
                         Effect: Deny
                         Principal: "*"
                         Action: "s3:*"

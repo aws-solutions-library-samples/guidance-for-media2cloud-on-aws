@@ -9,7 +9,6 @@ module.exports = {
     setupFiles: ['<rootDir>/setEnvVars.js'],
     modulePaths: [
       "<rootDir>/../../../layers/core-lib/node_modules/",
-      "<rootDir>/../../../layers/pdf-lib/node_modules/",
-      "<rootDir>/../../../layers/canvas-lib/node_modules/"
+      "<rootDir>/../../../layers/pdf-lib/node_modules/"
     ]
   };

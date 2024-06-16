@@ -18,9 +18,9 @@
     "url": "https://aws.amazon.com/solutions"
   },
   "devDependencies": {
-    "service-backlog-lib": "file:../../layers/service-backlog-lib",
-    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
-    "jest": "^29.3.1"
+    "@babel/plugin-transform-modules-commonjs": "^7.24.7",
+    "jest": "^29.7.0",
+    "service-backlog-lib": "file:../../layers/service-backlog-lib"
   },
   "license": "Apache-2.0"
 }

@@ -18,9 +18,9 @@
     "url": "https://aws.amazon.com/solutions"
   },
   "devDependencies": {
+    "@babel/plugin-transform-modules-commonjs": "^7.24.7",
     "core-lib": "file:../../../layers/core-lib",
-    "@babel/plugin-transform-modules-commonjs": "^7.19.6",
-    "jest": "^29.3.1"
+    "jest": "^29.7.0"
   },
   "license": "Apache-2.0"
 }

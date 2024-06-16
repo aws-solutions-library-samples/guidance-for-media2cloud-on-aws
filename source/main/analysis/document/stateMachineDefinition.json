@@ -1,19 +1,23 @@
 {
-    "StartAt": "Analyze document",
+    "StartAt": "Analyze document and wait",
     "States": {
-        "Analyze document": {
+        "Analyze document and wait": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
             "Parameters": {
-                "operation": "start-document-analysis",
-                "uuid.$": "$.uuid",
-                "status.$": "$.status",
-                "progress.$": "$.progress",
-                "input.$": "$.input",
-                "data.$": "$.data",
-                "stateExecution.$": "$$.Execution"
+                "FunctionName": "${AnalysisDocumentLambda}",
+                "Payload": {
+                    "token.$": "$$.Task.Token",
+                    "operation": "start-document-analysis",
+                    "uuid.$": "$.uuid",
+                    "status.$": "$.status",
+                    "progress.$": "$.progress",
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
             },
-            "Next": "More pages?",
+            "TimeoutSeconds": 86400,
+            "Next": "Collect and index analysis results",
             "Retry": [
                 {
                     "ErrorEquals": [
@@ -25,27 +29,16 @@
                 }
             ]
         },
-        "More pages?": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.status",
-                    "StringEquals": "COMPLETED",
-                    "Next": "Index analysis results"
-                }
-            ],
-            "Default": "Analyze document"
-        },
-        "Index analysis results": {
+        "Collect and index analysis results": {
             "Type": "Task",
-            "Resource": "${x0}",
+            "Resource": "${AnalysisDocumentLambda.Arn}",
             "Parameters": {
-                "operation": "index-analysis-results",
                 "uuid.$": "$.uuid",
                 "status.$": "$.status",
                 "progress.$": "$.progress",
-                "input.$": "$.input",
-                "data.$": "$.data"
+                "operation": "collect-document-analysis-results",
+                "data.$": "$.data",
+                "stateExecution.$": "$$.Execution"
             },
             "End": true,
             "Retry": [

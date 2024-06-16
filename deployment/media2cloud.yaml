@@ -31,7 +31,7 @@ Mappings:
             S3Key: _settings/aioptions.json
     Node:
         Runtime:
-            Version: nodejs16.x
+            Version: nodejs20.x
     Send:
         AnonymizedUsage:
             Data: "Yes"

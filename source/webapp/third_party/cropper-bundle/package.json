@@ -15,8 +15,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "cropperjs": "^1.4.3"
+    "cropperjs": "^1.6.2"
   },
-  "devDependencies": {},
   "private": true
 }

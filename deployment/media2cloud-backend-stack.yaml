@@ -71,6 +71,9 @@ Mappings:
         MediaInfoLib:
             Package: "%%LAYER_MEDIAINFO%%"
             Name: mediainfo
+        JimpLib:
+            Package: "%%LAYER_JIMP%%"
+            Name: jimp
         ImageProcessLib:
             Package: "%%LAYER_IMAGE_PROCESS%%"
             Name: image-process-lib
@@ -80,9 +83,6 @@ Mappings:
         PDFLib:
             Package: "%%LAYER_PDF_LIB%%"
             Name: pdf-lib
-        CanvasLib:
-            Package: "%%LAYER_CANVAS_LIB%%"
-            Name: canvas-lib
         BacklogLib:
             Package: "%%LAYER_BACKLOG%%"
             Name: service-backlog-lib
@@ -141,7 +141,7 @@ Mappings:
             DisplayName: BacklogSNS
     Node:
         Runtime:
-            Version: nodejs16.x
+            Version: nodejs20.x
 
 Parameters:
     S3Bucket:
@@ -231,10 +231,10 @@ Resources:
     #
     # Lambda Layers for backend
     # * MediaInfoLayer
+    # * JimpLayer
     # * ImageProcessLayer
     # * FixityLibLayer
     # * PDFLibLayer
-    # * CanvasLibLayer
     # * BacklogLayer
     #
     ################################################################################
@@ -262,6 +262,31 @@ Resources:
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) mediainfo library layer
             LicenseInfo: Apache-2.0
+
+    JimpLayer:
+        Type: AWS::Lambda::LayerVersion
+        Properties:
+            LayerName: !Sub
+                - ${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Layer
+                    - JimpLib
+                    - Name
+            CompatibleRuntimes:
+                - !FindInMap
+                    - Node
+                    - Runtime
+                    - Version
+            Content:
+                S3Bucket: !Ref S3Bucket
+                S3Key: !Sub
+                    - ${KeyPrefix}/${package}
+                    - package: !FindInMap
+                        - Layer
+                        - JimpLib
+                        - Package
+            Description: !Sub (${SolutionLowerCaseId}) JIMP layer
+            LicenseInfo: MIT
 
     ImageProcessLayer:
         Type: AWS::Lambda::LayerVersion
@@ -336,31 +361,6 @@ Resources:
                         - PDFLib
                         - Package
             Description: !Sub (${SolutionLowerCaseId}) pdf library layer (PDF.JS)
-            LicenseInfo: Apache-2.0
-
-    CanvasLibLayer:
-        Type: AWS::Lambda::LayerVersion
-        Properties:
-            LayerName: !Sub
-                - ${ResourcePrefix}-${name}
-                - name: !FindInMap
-                    - Layer
-                    - CanvasLib
-                    - Name
-            CompatibleRuntimes:
-                - !FindInMap
-                    - Node
-                    - Runtime
-                    - Version
-            Content:
-                S3Bucket: !Ref S3Bucket
-                S3Key: !Sub
-                    - ${KeyPrefix}/${package}
-                    - package: !FindInMap
-                        - Layer
-                        - CanvasLib
-                        - Package
-            Description: !Sub (${SolutionLowerCaseId}) nodeJS canvas layer
             LicenseInfo: Apache-2.0
 
     BacklogLibLayer:
@@ -2802,6 +2802,7 @@ Resources:
             Layers:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
+                - !Ref JimpLayer
                 - !Ref ImageProcessLayer
             TracingConfig:
                 Mode: Active
@@ -2981,7 +2982,6 @@ Resources:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
                 - !Ref PDFLibLayer
-                - !Ref CanvasLibLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -3959,8 +3959,8 @@ Resources:
             Layers:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
-                - !Ref CanvasLibLayer
                 - !Ref BacklogLibLayer
+                - !Ref JimpLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -5616,6 +5616,15 @@ Resources:
                                     - logs:CreateLogStream
                                     - logs:PutLogEvents
                                 Resource: !GetAtt AnalysisDocumentLogGroup.Arn
+                            # S3 - ingest bucket
+                            -
+                                Effect: Allow
+                                Action: s3:ListBucket
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}
+                            -
+                                Effect: Allow
+                                Action: s3:GetObject
+                                Resource: !Sub arn:aws:s3:::${IngestBucket}/*
                             # S3 - proxy bucket
                             -
                                 Effect: Allow
@@ -5635,11 +5644,16 @@ Resources:
                                     - dynamodb:Query
                                     - dynamodb:UpdateItem
                                     - dynamodb:DeleteItem
+                                    - dynamodb:PutItem
+                                    - dynamodb:BatchGetItem
+                                    - dynamodb:BatchWriteItem
                                 Resource: !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ResourcePrefix}-*
                             # Textract
                             -
                                 Effect: Allow
-                                Action: textract:AnalyzeDocument
+                                Action:
+                                    - textract:StartDocumentTextDetection
+                                    - textract:GetDocumentTextDetection
                                 Resource: "*"
                             # OpenSearch
                             -
@@ -5653,6 +5667,16 @@ Resources:
                                 Resource:
                                     - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}
                                     - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*
+                            # IAM - Textract pass SNS topic role for notification
+                            -
+                                Effect: Allow
+                                Action: iam:PassRole
+                                Resource: !GetAtt BacklogTopicRole.Arn
+                            # EventBridge - service backlog
+                            -
+                                Effect: Allow
+                                Action: events:PutEvents
+                                Resource: !GetAtt EventBridgeBus.Arn
 
     AnalysisDocumentLambda:
         Type: AWS::Lambda::Function
@@ -5672,12 +5696,12 @@ Resources:
                     - Workflow
                     - AnalysisDocument
                     - Name
-            Description: !Sub (${SolutionLowerCaseId}) analysis document state machine lambda (384MB)
+            Description: !Sub (${SolutionLowerCaseId}) analysis document state machine lambda (512MB)
             Runtime: !FindInMap
                 - Node
                 - Runtime
                 - Version
-            MemorySize: 384
+            MemorySize: 512
             Timeout: 900
             Handler: index.handler
             Role: !GetAtt AnalysisDocumentRole.Arn
@@ -5692,6 +5716,7 @@ Resources:
             Layers:
                 - !Ref AwsSdkLayer
                 - !Ref CoreLibLayer
+                - !Ref BacklogLibLayer
             TracingConfig:
                 Mode: Active
             Environment:
@@ -5706,6 +5731,12 @@ Resources:
                     ENV_IOT_TOPIC: !Ref IotTopic
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
                     ENV_ES_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
+                    ## Service Backlog ##
+                    ENV_BACKLOG_EB_BUS: !GetAtt EventBridgeBus.Name
+                    ENV_BACKLOG_TABLE: !Ref BacklogTable
+                    ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
+                    ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
+                    ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
 
     AnalysisDocumentStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -5718,75 +5749,63 @@ Resources:
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
             DefinitionString:
-                !Sub
-                    - |-
-                        {
-                            "StartAt": "Analyze document",
-                            "States": {
-                                "Analyze document": {
-                                    "Type": "Task",
-                                    "Resource": "${x0}",
-                                    "Parameters": {
+                !Sub |-
+                    {
+                        "StartAt": "Analyze document and wait",
+                        "States": {
+                            "Analyze document and wait": {
+                                "Type": "Task",
+                                "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+                                "Parameters": {
+                                    "FunctionName": "${AnalysisDocumentLambda}",
+                                    "Payload": {
+                                        "token.$": "$$.Task.Token",
                                         "operation": "start-document-analysis",
                                         "uuid.$": "$.uuid",
                                         "status.$": "$.status",
                                         "progress.$": "$.progress",
                                         "input.$": "$.input",
-                                        "data.$": "$.data",
-                                        "stateExecution.$": "$$.Execution"
-                                    },
-                                    "Next": "More pages?",
-                                    "Retry": [
-                                        {
-                                            "ErrorEquals": [
-                                                "States.ALL"
-                                            ],
-                                            "IntervalSeconds": 1,
-                                            "MaxAttempts": 4,
-                                            "BackoffRate": 1.2
-                                        }
-                                    ]
-                                },
-                                "More pages?": {
-                                    "Type": "Choice",
-                                    "Choices": [
-                                        {
-                                            "Variable": "$.status",
-                                            "StringEquals": "COMPLETED",
-                                            "Next": "Index analysis results"
-                                        }
-                                    ],
-                                    "Default": "Analyze document"
-                                },
-                                "Index analysis results": {
-                                    "Type": "Task",
-                                    "Resource": "${x0}",
-                                    "Parameters": {
-                                        "operation": "index-analysis-results",
-                                        "uuid.$": "$.uuid",
-                                        "status.$": "$.status",
-                                        "progress.$": "$.progress",
-                                        "input.$": "$.input",
                                         "data.$": "$.data"
-                                    },
-                                    "End": true,
-                                    "Retry": [
-                                        {
-                                            "ErrorEquals": [
-                                                "States.ALL"
-                                            ],
-                                            "IntervalSeconds": 1,
-                                            "MaxAttempts": 4,
-                                            "BackoffRate": 1.2
-                                        }
-                                    ]
-                                }
+                                    }
+                                },
+                                "TimeoutSeconds": 86400,
+                                "Next": "Collect and index analysis results",
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.ALL"
+                                        ],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 4,
+                                        "BackoffRate": 1.2
+                                    }
+                                ]
+                            },
+                            "Collect and index analysis results": {
+                                "Type": "Task",
+                                "Resource": "${AnalysisDocumentLambda.Arn}",
+                                "Parameters": {
+                                    "uuid.$": "$.uuid",
+                                    "status.$": "$.status",
+                                    "progress.$": "$.progress",
+                                    "operation": "collect-document-analysis-results",
+                                    "data.$": "$.data",
+                                    "stateExecution.$": "$$.Execution"
+                                },
+                                "End": true,
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "States.ALL"
+                                        ],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 4,
+                                        "BackoffRate": 1.2
+                                    }
+                                ]
                             }
                         }
-                    -
-                        {
-                            x0: !GetAtt AnalysisDocumentLambda.Arn
-                        }
+                    }
 
     ################################################################################
     # Analysis Main State Machine resources
@@ -6251,6 +6270,7 @@ Resources:
                                 Resource:
                                     - !Ref AnalysisVideoStateMachine
                                     - !Ref AnalysisAudioStateMachine
+                                    - !Ref AnalysisDocumentStateMachine
                             # DynamoDB - get token from ServiceToken / delete items from AIML table on REMOVE event
                             -
                                 Effect: Allow
@@ -6379,6 +6399,9 @@ Resources:
                         - comprehend:starttopicsdetectionjob
                         # Custom Custom Labels API supported by backlog management
                         - custom:startcustomlabelsdetection
+                        # Textract APIs supported by backlog management
+                        - textract:startdocumentanalysis
+                        - textract:startdocumenttextdetection
             State: ENABLED
             Targets:
                 -

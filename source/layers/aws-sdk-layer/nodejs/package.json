@@ -10,10 +10,9 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "@elastic/elasticsearch": "7.12.0",
-    "aws-elasticsearch-connector": "^9.2.0",
-    "aws-sdk": "^2.1173.0",
-    "aws-xray-sdk": "^3.3.4"
+    "@opensearch-project/opensearch": "^2.10.0",
+    "aws-sdk": "^2.1642.0",
+    "aws-xray-sdk": "^3.9.0"
   },
   "scripts": {
     "pretest": "npm install",

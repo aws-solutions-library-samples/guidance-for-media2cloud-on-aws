@@ -15,8 +15,7 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "amazon-cognito-identity-js": "*"
+    "amazon-cognito-identity-js": "^6.3.12"
   },
-  "devDependencies": {},
   "private": true
 }

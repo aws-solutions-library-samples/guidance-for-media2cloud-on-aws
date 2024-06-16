@@ -22,8 +22,8 @@ const {
 class TextractBacklogJob extends BacklogJob {
   static get ServiceApis() {
     return {
-      StartDocumentAnalysis: 'textract:startDocumentAnalysis',
-      StartDocumentTextDetection: 'textract:startDocumentTextDetection',
+      StartDocumentAnalysis: 'textract:startdocumentanalysis',
+      StartDocumentTextDetection: 'textract:startdocumenttextdetection',
     };
   }
 
@@ -81,7 +81,12 @@ class TextractBacklogJob extends BacklogJob {
   }
 
   noMoreQuotasException(code) {
-    return (code === 'LimitExceededException');
+    const errors = [
+      'LimitExceededException',
+      'ProvisionedThroughputExceededException',
+      'ThrottlingException',
+    ];
+    return errors.includes(code);
   }
 }
 

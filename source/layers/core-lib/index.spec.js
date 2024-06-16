@@ -36,7 +36,6 @@ const {
   AdmZip,
   Indexer,
   NodeWebVtt,
-  SigV4,
   ConfigurationError,
   IngestError,
   AnalysisError,

@@ -9,10 +9,13 @@ const AWS = (() => {
     return require('aws-sdk');
   }
 })();
-const AmazonConnection = require('aws-elasticsearch-connector');
 const {
   Client,
-} = require('@elastic/elasticsearch');
+} = require('@opensearch-project/opensearch');
+const {
+  AwsSigv4Signer,
+} = require('@opensearch-project/opensearch/aws');
+
 const Environment = require('../environment');
 const AnalysisTypes = require('../analysisTypes');
 const MAPPINGS_INGEST = require('./mappings/ingest');
@@ -58,10 +61,22 @@ class Indexer {
       throw new Error('endpoint not specified');
     }
     this.$client = new Client({
+      ...AwsSigv4Signer({
+        region: process.env.AWS_REGION,
+        service: 'es',
+        getCredentials: () =>
+          new Promise((resolve, reject) => {
+            // resolve(new AWS.EnvironmentCredentials('AWS'));
+            AWS.config.getCredentials((err, credentials) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(credentials);
+              }
+            });
+          }),
+      }),
       node: `https://${endpoint}`,
-      ...AmazonConnection(new AWS.Config({
-        ...(new AWS.EnvironmentCredentials('AWS')),
-      })),
     });
   }
 

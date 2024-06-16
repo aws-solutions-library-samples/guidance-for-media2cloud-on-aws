@@ -9,7 +9,6 @@
     "url": "https://aws.amazon.com/solutions"
   },
   "license": "Apache-2.0",
-  "dependencies": {},
   "scripts": {
     "pretest": "npm install",
     "test": "jest --coverage --coverageDirectory=../../test/coverage-reports/jest/layers/mediainfo/",
@@ -20,8 +19,8 @@
     "zip": "cd dist && zip -rq"
   },
   "devDependencies": {
-    "jest": "^29.3.1",
-    "aws-sdk": "2.831.0",
-    "aws-sdk-mock": "5.8.0"
+    "aws-sdk": "^2.1642.0",
+    "aws-sdk-mock": "5.8.0",
+    "jest": "^29.7.0"
   }
 }
