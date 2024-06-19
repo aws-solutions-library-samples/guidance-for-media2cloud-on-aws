@@ -14,6 +14,7 @@ yum update -y && \
 yum install -y gcc unzip && \
 python3.10 -m pip install --no-cache-dir --upgrade pip && \
 python3.10 -m pip install --no-cache-dir  --retries 10 --timeout 60 \
+numpy==1.26.4 \
 boto3 \
 transformers==4.37.2 \
 torch==2.1.0 \

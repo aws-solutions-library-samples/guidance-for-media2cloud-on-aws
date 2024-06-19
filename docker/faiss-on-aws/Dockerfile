@@ -13,9 +13,9 @@ RUN \
 yum update -y && \
 python3.10 -m pip install --no-cache-dir --upgrade pip && \
 python3.10 -m pip install --no-cache-dir \
+numpy==1.26.4 \
 boto3 \
 faiss-cpu \
-numpy \
 pillow \
 packaging \
 -t /opt/packages
