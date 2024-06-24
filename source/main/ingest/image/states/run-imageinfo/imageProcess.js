@@ -26,9 +26,12 @@ const MAX_IMAGE_SIZE = 5 * 1000 * 1000;
 const MAX_THUMBNAIL_WIDTH = 480;
 const MAX_THUMBNAIL_HEIGHT = 270;
 
+const TIFF_EXTENSIONS = ['.tif', '.tiff'];
+
 class ImageProcess {
   constructor(stateData) {
     this.$stateData = stateData;
+    _workaroundTIFFCMYKColorFormat(stateData);
   }
 
   get [Symbol.toStringTag]() {
@@ -241,6 +244,25 @@ class ImageProcess {
 
   async createProxy() {
     return undefined;
+  }
+}
+
+// WORKAROUND:
+// TIFF decoder package looks for "window" object when color space is CMYK
+// @jimp/node_modules/utif2/utif.js#1415
+function _workaroundTIFFCMYKColorFormat(data) {
+  const {
+    input: {
+      key,
+    },
+  } = data;
+
+  const ext = PATH.parse(key).ext.toLowerCase();
+
+  if (TIFF_EXTENSIONS.includes(ext)) {
+    if (global.window === undefined) {
+      global.window = {};
+    }
   }
 }
 
