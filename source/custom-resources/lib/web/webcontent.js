@@ -124,8 +124,6 @@ class WebContent extends mxBaseResponse(class {}) {
 
   async downloadS3() {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -158,8 +156,6 @@ class WebContent extends mxBaseResponse(class {}) {
         files.push(entry.entryName);
 
         const s3Client = xraysdkHelper(new S3Client({
-          computeChecksums: true,
-          applyChecksum: true,
           customUserAgent: CUSTOM_USER_AGENT,
           retryStrategy: retryStrategyHelper(),
         }));

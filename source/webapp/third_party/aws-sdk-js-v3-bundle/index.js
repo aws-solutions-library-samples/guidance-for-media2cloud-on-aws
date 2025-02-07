@@ -12,6 +12,7 @@ const {
 } = require('@smithy/util-retry');
 const {
   S3Client,
+  ChecksumAlgorithm,
   HeadObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
@@ -79,6 +80,7 @@ window.Polyfill = {
 window.AWSv3 = {
   StandardRetryStrategy,
   S3Client,
+  ChecksumAlgorithm,
   HeadObjectCommand,
   GetObjectCommand,
   PutObjectCommand,

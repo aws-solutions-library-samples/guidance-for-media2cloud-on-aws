@@ -15,8 +15,8 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@smithy/smithy-client": "^2.1.18",
+    "@smithy/smithy-client": "^2.5.1",
     "core-lib": "file:../../layers/core-lib",
-    "gremlin": "^3.7.1"
+    "gremlin": "^3.7.3"
   }
 }

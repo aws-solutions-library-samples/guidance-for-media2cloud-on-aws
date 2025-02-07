@@ -149,8 +149,6 @@ class StateDetectCustomLabels extends BaseState {
     const key = PATH.join(prefix, name);
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CustomUserAgent,
       retryStrategy: retryStrategyHelper(),
     }));

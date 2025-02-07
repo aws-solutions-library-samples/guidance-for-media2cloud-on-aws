@@ -46,8 +46,6 @@ exports.SetCORS = async (event, context) => {
     }
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -107,8 +105,6 @@ exports.ConfigureBucketNotification = async (event, context) => {
     }
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));

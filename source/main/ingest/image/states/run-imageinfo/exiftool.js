@@ -70,8 +70,6 @@ async function runCommand(
   options
 ) {
   let s3 = new S3Client({
-    computeChecksums: true,
-    applyChecksum: true,
     customUserAgent: CUSTOM_USER_AGENT,
     retryStrategy,
   });

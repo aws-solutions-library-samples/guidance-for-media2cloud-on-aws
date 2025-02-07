@@ -53,8 +53,6 @@ class NodeCanvasFactory {
 class PDFLib {
   static async parseDocument(bucket, key) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));

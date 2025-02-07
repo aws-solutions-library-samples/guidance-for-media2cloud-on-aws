@@ -52,8 +52,6 @@ class CommonUtils extends ValidationHelper {
    */
   static async headObject(bucket, key) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -87,8 +85,6 @@ class CommonUtils extends ValidationHelper {
     const _prefix = PATH.join(prefix, '/');
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -114,8 +110,6 @@ class CommonUtils extends ValidationHelper {
    */
   static async getSignedUrl(params) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -207,8 +201,6 @@ class CommonUtils extends ValidationHelper {
     bodyOnly = true
   ) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -253,8 +245,6 @@ class CommonUtils extends ValidationHelper {
     const range = `bytes=${start}-${end}`;
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -308,8 +298,6 @@ class CommonUtils extends ValidationHelper {
     }, params);
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -348,8 +336,6 @@ class CommonUtils extends ValidationHelper {
     const key = PATH.join(prefix, name);
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -412,8 +398,6 @@ class CommonUtils extends ValidationHelper {
    */
   static async deleteObject(bucket, key) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -440,8 +424,6 @@ class CommonUtils extends ValidationHelper {
    */
   static async getTags(bucket, key) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -491,8 +473,6 @@ class CommonUtils extends ValidationHelper {
     }
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -523,8 +503,6 @@ class CommonUtils extends ValidationHelper {
    */
   static async createReadStream(bucket, key, options) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -555,8 +533,6 @@ class CommonUtils extends ValidationHelper {
     const escaped = query.replace(/'/g, '\'\'');
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -616,8 +592,6 @@ class CommonUtils extends ValidationHelper {
     options
   ) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
@@ -643,8 +617,6 @@ class CommonUtils extends ValidationHelper {
     options
   ) {
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
