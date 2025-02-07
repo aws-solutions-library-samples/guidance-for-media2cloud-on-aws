@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.5] - 2025-02-07
+### Bugfixes
+- faiss new version requires swig. Fix the Faiss version to 1.9.0
+- update all packages to the latest
+- remove computeChecksums flag as it is not used by S3Client
+- workaround for data integrity check that fails the multipart upload from browser, https://github.com/aws/aws-sdk-js-v3/issues/6810
+
 ## [4.0.4] - 2024-06-25
 ### Bugfixes
 - Fix ingest image error on TIFF (CMYK colorspace) image format.
