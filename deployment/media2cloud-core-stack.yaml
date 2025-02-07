@@ -19,7 +19,7 @@ Mappings:
             Name: tokenizer
     OpenSearch:
         Engine:
-            Version: OpenSearch_2.11
+            Version: OpenSearch_2.13
     EventBridge:
         Bus:
             Name: unified-statemachine-status
