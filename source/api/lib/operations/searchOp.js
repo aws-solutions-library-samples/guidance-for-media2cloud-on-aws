@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const Tokenizer = require('wink-tokenizer')();
 const {
   Indexer,
   CommonUtils,
@@ -36,29 +35,18 @@ function multimatch(a, b) {
   let matches = a.localeCompare(b, undefined, {
     sensitivity: 'base',
   });
+
   if (matches === 0) {
     return true;
   }
 
-  const tokenA = Tokenizer.tokenize(a)
-    .map((token) =>
-      token.value);
-  const tokenB = Tokenizer.tokenize(b)
-    .map((token) =>
-      token.value);
+  if (matches < 0) {
+    matches = b.localeCompare(a, undefined, {
+      sensitivity: 'base',
+    });
+  }
 
-  matches = 0;
-  tokenB.forEach((token) => {
-    const match = tokenA.find((x) =>
-      x.localeCompare(token, undefined, {
-        sensitivity: 'base',
-      }) === 0);
-    if (match !== undefined) {
-      matches += 1;
-    }
-  });
-
-  if (matches === tokenB.length) {
+  if (matches === 0) {
     return true;
   }
 
