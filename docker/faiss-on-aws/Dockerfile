@@ -15,7 +15,7 @@ python3.10 -m pip install --no-cache-dir --upgrade pip && \
 python3.10 -m pip install --no-cache-dir \
 numpy==1.26.4 \
 boto3 \
-faiss-cpu \
+faiss-cpu==1.9.0 \
 pillow \
 packaging \
 -t /opt/packages
