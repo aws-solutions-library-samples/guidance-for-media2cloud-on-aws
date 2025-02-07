@@ -302,8 +302,6 @@ class MediaInfoCommand {
     }
 
     let s3Client = new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy,
     });

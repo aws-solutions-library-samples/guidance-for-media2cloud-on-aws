@@ -15,14 +15,13 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.468.0",
-    "@aws-sdk/client-comprehend": "^3.468.0",
-    "@aws-sdk/client-dynamodb": "^3.468.0",
-    "@aws-sdk/client-s3": "^3.468.0",
-    "@aws-sdk/client-sfn": "^3.468.0",
-    "@aws-sdk/client-transcribe": "^3.468.0",
-    "@aws-sdk/util-dynamodb": "^3.468.0",
-    "aws-sdk-client-mock": "^2.2.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.743.0",
+    "@aws-sdk/client-comprehend": "^3.743.0",
+    "@aws-sdk/client-dynamodb": "^3.743.0",
+    "@aws-sdk/client-s3": "^3.743.0",
+    "@aws-sdk/client-sfn": "^3.743.0",
+    "@aws-sdk/client-transcribe": "^3.743.0",
+    "@aws-sdk/util-dynamodb": "^3.743.0",
     "core-lib": "file:../layers/core-lib"
   }
 }

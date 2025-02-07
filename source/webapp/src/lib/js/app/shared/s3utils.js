@@ -34,8 +34,10 @@ function updateClient(userSession) {
   _s3Client = new S3Client({
     region: REGION,
     credentials: userSession.fromCredentials(),
-    computeChecksums: true,
-    applyChecksum: true,
+    // Workaround for data integrity check that fails the multipart upload:
+    // https://github.com/aws/aws-sdk-js-v3/issues/6810
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 }
 

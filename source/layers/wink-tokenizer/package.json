@@ -16,8 +16,8 @@
     "zip": "cd dist && zip -rq"
   },
   "dependencies": {
-    "wink-eng-lite-web-model": "^1.6.0",
-    "wink-nlp": "^2.2.0",
+    "wink-eng-lite-web-model": "^1.8.1",
+    "wink-nlp": "^2.3.2",
     "wink-tokenizer": "^5.3.0"
   }
 }

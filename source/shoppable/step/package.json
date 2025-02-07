@@ -14,8 +14,8 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.468.0",
-    "@smithy/smithy-client": "^2.1.18",
+    "@aws-sdk/client-s3": "^3.743.0",
+    "@smithy/smithy-client": "^2.5.1",
     "core-lib": "file:../../layers/core-lib"
   }
 }

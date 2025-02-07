@@ -220,8 +220,6 @@ class SolutionManifest extends mxBaseResponse(class {}) {
     const manifest = await this.makeManifest();
 
     const s3Client = xraysdkHelper(new S3Client({
-      computeChecksums: true,
-      applyChecksum: true,
       customUserAgent: CUSTOM_USER_AGENT,
       retryStrategy: retryStrategyHelper(),
     }));
