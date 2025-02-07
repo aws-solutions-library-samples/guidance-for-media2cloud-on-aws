@@ -10,6 +10,7 @@ const EnumFrameRate = Object.freeze({
   FPS_25: Symbol('25'),
   FPS_29_97: Symbol('29.97'),
   FPS_30: Symbol('30'),
+  FPS_50: Symbol('50'),
   FPS_59_94: Symbol('59.94'),
   FPS_60: Symbol('60'),
 });
@@ -29,6 +30,9 @@ function _lookupFramerate(enumFPS) {
   }
   if (enumFPS === EnumFrameRate.FPS_30) {
     return [30000, 1000];
+  }
+  if (enumFPS === EnumFrameRate.FPS_50) {
+    return [50000, 1000];
   }
   if (enumFPS === EnumFrameRate.FPS_59_94) {
     return [60000, 1001];
@@ -64,6 +68,9 @@ class TimecodeUtils {
     }
     if (_framerate === 30) {
       return EnumFrameRate.FPS_30;
+    }
+    if (_framerate === 50) {
+      return EnumFrameRate.FPS_50;
     }
     if (_framerate === 59) {
       return EnumFrameRate.FPS_59_94;
