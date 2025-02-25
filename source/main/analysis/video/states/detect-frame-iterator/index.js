@@ -54,7 +54,7 @@ class StateDetectFrameIterator {
     } else if (data[Text]) {
       iterator = new DetectTextIterator(this.stateData);
     // auto face indexer
-    } else if (data[AutoFaceIndexer] && data[Celeb] && data[FaceMatch]) {
+    } else if (data[AutoFaceIndexer] && data[FaceMatch]) {
       iterator = new AutoFaceIndexerIterator(this.stateData);
     // use combo detection
     } else if (data[Face] && (data[Celeb] || data[FaceMatch])) {

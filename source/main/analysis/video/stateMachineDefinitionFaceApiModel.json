@@ -1,0 +1,125 @@
+{
+    "Comment": "Run open source faceapi model to pre-analyze faces for all frame images.",
+    "StartAt": "Prepare faceapi model iterators",
+    "States": {
+        "Prepare faceapi model iterators": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+                "FunctionName": "${AnalysisVideoLambda.Arn}",
+                "Payload": {
+                    "operation": "StatePrepareFaceApiModelIterators",
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "Next": "Map faceapi model iterators"
+        },
+        "Map faceapi model iterators": {
+            "Type": "Map",
+            "MaxConcurrency": 10,
+            "ItemsPath": "$.data.iterators",
+            "ItemProcessor": {
+                "ProcessorConfig": {
+                    "Mode": "INLINE"
+                },
+                "StartAt": "Run faceapi model",
+                "States": {
+                    "Run faceapi model": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "OutputPath": "$.Payload",
+                        "Parameters": {
+                            "FunctionName": "${RunFaceApiLambda.Arn}",
+                            "Payload.$": "$"
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "CodeArtifactUserPendingException"
+                                ],
+                                "MaxAttempts": 4,
+                                "IntervalSeconds": 10,
+                                "BackoffRate": 1.2
+                            },
+                            {
+                                "ErrorEquals": [
+                                    "AccessDeniedException",
+                                    "ResourceNotFoundException",
+                                    "ValidationException"
+                                ],
+                                "MaxAttempts": 0
+                            },
+                            {
+                                "ErrorEquals": [
+                                    "InternalServerException",
+                                    "ModelErrorException",
+                                    "ModelNotReadyException",
+                                    "ModelTimeoutException",
+                                    "ServiceQuotaExceededException",
+                                    "ThrottlingException",
+                                    "ServiceUnavailableException"
+                                ],
+                                "IntervalSeconds": 60,
+                                "MaxAttempts": 10,
+                                "BackoffRate": 1.2
+                            },
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException",
+                                    "Lambda.TooManyRequestsException"
+                                ],
+                                "IntervalSeconds": 1,
+                                "MaxAttempts": 2,
+                                "BackoffRate": 1.2
+                            }
+                        ],
+                        "End": true
+                    }
+                }
+            },
+            "ResultPath": "$.data.iterators",
+            "Next": "Run faceapi model completed"
+        },
+        "Run faceapi model completed": {
+            "Type": "Task",
+            "OutputPath": "$.Payload",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${AnalysisVideoLambda.Arn}",
+                "Payload": {
+                    "operation": "StateRunFaceApiModelCompleted",
+                    "input.$": "$.input",
+                    "data.$": "$.data"
+                }
+            },
+            "End": true,
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 4,
+                    "BackoffRate": 1.2
+                }
+            ]
+        }
+    }
+}

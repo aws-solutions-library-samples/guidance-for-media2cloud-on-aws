@@ -7,8 +7,12 @@ const {
 } = require('worker_threads');
 const {
   CommonUtils,
+  JimpHelper: {
+    imageFromS3,
+    computeHash,
+    computeLaplacianVariance,
+  },
 } = require('core-lib');
-const HashHelper = require('./hashHelper');
 
 async function computeImageProps(data, frameHashes) {
   const bucket = data.bucket;
@@ -26,11 +30,11 @@ async function computeImageProps(data, frameHashes) {
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     const key = PATH.join(prefix, frame.name);
-    const image = await HashHelper.loadImage(bucket, key)
+    const image = await imageFromS3(bucket, key)
       .catch((e) => {
         console.error(
           'ERR:',
-          'HashHelper.loadImage:',
+          'JimpHelper.imageFromS3:',
           frame.name,
           e.message
         );
@@ -45,8 +49,8 @@ async function computeImageProps(data, frameHashes) {
         hash,
         laplacian,
       ] = await Promise.all([
-        HashHelper.computeHash(image),
-        HashHelper.computeLaplacianVariance(image),
+        computeHash(image),
+        computeLaplacianVariance(image),
       ]);
     }
 

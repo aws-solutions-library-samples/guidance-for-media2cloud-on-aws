@@ -63,31 +63,29 @@ class Indexer {
     node = DOMAIN_ENDPOINT,
     useOpenSearchServerless = USE_OPENSEARCH_SERVERLESS
   ) {
-    if (!node) {
-      throw new M2CException('node not specified');
+    if (node) {
+      const service = (useOpenSearchServerless)
+        ? 'aoss'
+        : 'es';
+
+      const options = {
+        maxRetries: 10,
+        requestTimeout: DEFAULT_TIMEOUT * 1000,
+      };
+
+      this.$client = new Client({
+        node,
+        ...AwsSigv4Signer({
+          service,
+          region: REGION,
+          getCredentials: async () =>
+            fromEnv()(),
+        }),
+        ...options,
+      });
+
+      this.$useOpenSearchServerless = useOpenSearchServerless;
     }
-
-    const service = (useOpenSearchServerless)
-      ? 'aoss'
-      : 'es';
-
-    const options = {
-      maxRetries: 10,
-      requestTimeout: DEFAULT_TIMEOUT * 1000,
-    };
-
-    this.$client = new Client({
-      node,
-      ...AwsSigv4Signer({
-        service,
-        region: REGION,
-        getCredentials: async () =>
-          fromEnv()(),
-      }),
-      ...options,
-    });
-
-    this.$useOpenSearchServerless = useOpenSearchServerless;
   }
 
   get client() {
@@ -96,6 +94,10 @@ class Indexer {
 
   get useOpenSearchServerless() {
     return this.$useOpenSearchServerless;
+  }
+
+  static canUse() {
+    return DOMAIN_ENDPOINT && DOMAIN_ENDPOINT.length > 0;
   }
 
   static getIndices() {
@@ -125,6 +127,10 @@ class Indexer {
   }
 
   async createIndex(name, mapping = undefined) {
+    if (!Indexer.canUse()) {
+      return undefined;
+    }
+
     if (!name) {
       throw new M2CException('index name not specified');
     }
@@ -203,9 +209,14 @@ class Indexer {
   }
 
   async deleteIndex(name) {
+    if (!Indexer.canUse()) {
+      return undefined;
+    }
+
     if (!name) {
       throw new M2CException('index name not specified');
     }
+
     return this.client.indices.delete({
       index: name,
     }).catch((e) => {
@@ -236,9 +247,14 @@ class Indexer {
   }
 
   async updateSettings(name, settings) {
+    if (!Indexer.canUse()) {
+      throw new M2CException('Amazon OpenSearch is not configured');
+    }
+
     if (!name || !settings) {
       throw new M2CException('index name or settings not specified');
     }
+
     return this.client.indices.putSettings({
       index: name,
       body: settings,
@@ -248,9 +264,14 @@ class Indexer {
   }
 
   async getSettings(name) {
+    if (!Indexer.canUse()) {
+      throw new M2CException('Amazon OpenSearch is not configured');
+    }
+
     if (!name) {
       throw new M2CException('index name not specified');
     }
+
     return this.client.indices.getSettings({
       index: name,
       include_defaults: true,
@@ -260,9 +281,14 @@ class Indexer {
   }
 
   async getIndexMapping(name) {
+    if (!Indexer.canUse()) {
+      throw new M2CException('Amazon OpenSearch is not configured');
+    }
+
     if (!name) {
       throw new M2CException('index name not specified');
     }
+
     return this.client.indices.getMapping({
       index: name,
     }).catch((e) => {
@@ -271,9 +297,14 @@ class Indexer {
   }
 
   async updateIndexMapping(name, mapping) {
+    if (!Indexer.canUse()) {
+      throw new M2CException('Amazon OpenSearch is not configured');
+    }
+
     if (!name || !mapping) {
       throw new M2CException('index name or mapping not specified');
     }
+
     return this.client.indices.putMapping({
       index: name,
       body: mapping,
@@ -283,6 +314,10 @@ class Indexer {
   }
 
   async index(name, id, body) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!name || !id || !body) {
       throw new M2CException('name, id, or body not specified');
     }
@@ -304,6 +339,10 @@ class Indexer {
   }
 
   async update(name, id, doc) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!name || !id || !doc) {
       throw new M2CException('name, id, or doc not specified');
     }
@@ -327,6 +366,10 @@ class Indexer {
   }
 
   async delete(name, id) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!name || !id) {
       throw new M2CException('name or id not specified');
     }
@@ -344,14 +387,24 @@ class Indexer {
   }
 
   async search(query) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!query) {
       throw new M2CException('missing query');
     }
+
     return this.client.search(query);
   }
 
   async aggregate(fields, size = DEFAULT_AGGREGATION_SIZE) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     let names = fields;
+
     if (fields === undefined || fields.length === 0) {
       throw M2CException('missing fields');
     }
@@ -385,6 +438,10 @@ class Indexer {
   }
 
   async getDocument(name, id, fields = []) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!name || !id) {
       throw new M2CException('name or id not specified');
     }
@@ -404,6 +461,10 @@ class Indexer {
   }
 
   async getDocumentVersion(name, id) {
+    if (!Indexer.canUse()) {
+      return -1;
+    }
+
     if (!name || !id) {
       throw new M2CException('name or id not specified');
     }
@@ -549,16 +610,26 @@ class Indexer {
   }
 
   async msearch(query) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!query) {
       throw new M2CException('missing query');
     }
+
     return this.client.msearch(query);
   }
 
   async mget(query) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     if (!query) {
       throw new M2CException('missing query');
     }
+
     return this.client.mget(query);
   }
 
@@ -567,6 +638,10 @@ class Indexer {
     id,
     fields = []
   ) {
+    if (!Indexer.canUse()) {
+      return {};
+    }
+
     let keys = fields;
 
     if (typeof keys === 'string') {

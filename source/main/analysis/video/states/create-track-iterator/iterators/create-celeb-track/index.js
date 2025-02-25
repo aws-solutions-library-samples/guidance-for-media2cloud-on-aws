@@ -2,20 +2,25 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
-  AnalysisTypes,
-  CommonUtils,
+  AnalysisTypes: {
+    Rekognition: {
+      Celeb,
+    },
+  },
 } = require('core-lib');
 const BaseCreateTrackIterator = require('../shared/baseCreateTrackIterator');
 
-const SUBCATEGORY = AnalysisTypes.Rekognition.Celeb;
-
 class CreateCelebTrackIterator extends BaseCreateTrackIterator {
   constructor(stateData) {
-    super(stateData, SUBCATEGORY);
+    super(stateData, Celeb);
   }
 
   get [Symbol.toStringTag]() {
     return 'CreateCelebTrackIterator';
+  }
+
+  useSegment() {
+    return true;
   }
 
   filterBy(name, data) {

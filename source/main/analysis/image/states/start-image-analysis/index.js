@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const PATH = require('node:path');
-const Jimp = require('jimp');
 const {
   BedrockRuntimeClient,
   InvokeModelCommand,
@@ -39,12 +38,15 @@ const {
     },
   },
   StateData,
-  DB,
   CommonUtils,
   FaceIndexer,
   xraysdkHelper,
   retryStrategyHelper,
   M2CException,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromS3,
+  },
 } = require('core-lib');
 
 const MODEL_REGION = process.env.ENV_BEDROCK_REGION;
@@ -562,27 +564,16 @@ class StateStartImageAnalysis {
     });
 
     // load image
-    const signed = await CommonUtils.getSignedUrl({
-      Bucket: proxyBucket,
-      Key: imageKey,
-    });
+    let image = await imageFromS3(proxyBucket, imageKey);
 
-    let image = await new Promise((resolve) => {
-      Jimp.read(signed)
-        .then((img) => {
-          const scaleW = MAX_W / img.bitmap.width;
-          const scaleH = MAX_H / img.bitmap.height;
-          const factor = Math.min(scaleW, scaleH);
-
-          let downscaled = img;
-          if (factor < 1.0) {
-            downscaled = img.scale(factor);
-          }
-          resolve(downscaled.quality(80));
-        });
-    });
-
-    image = await image.getBase64Async(Jimp.MIME_JPEG);
+    const scaleW = MAX_W / img.bitmap.width;
+    const scaleH = MAX_H / img.bitmap.height;
+    const factor = Math.min(scaleW, scaleH);
+    if (factor < 1.0) {
+      image = image.scale(factor);
+    }
+    image = image.quality(80);
+    image = await image.getBase64Async(MIME_JPEG);
     image = image.split(',')[1];
 
     // prepare model parameter

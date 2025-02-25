@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const PATH = require('node:path');
+const {
+  parse,
+  join,
+} = require('node:path');
 const {
   Environment: {
     Proxy: {
@@ -27,8 +30,14 @@ const {
   MapDataVersion,
   DB,
   Indexer,
-  CommonUtils,
-  WebVttHelper,
+  CommonUtils: {
+    download,
+    uploadFile,
+  },
+  WebVttHelper: {
+    parse: parseVtt,
+    compile: compileVtt,
+  },
   FaceIndexer,
 } = require('core-lib');
 
@@ -45,58 +54,117 @@ const SUBCATEGORY_REKOG_IMAGE = 'rekog-image';
 
 const THRESHOLD_LAMBDA_TIMEOUT = 60 * 1000;
 
-function _regroupMetadataDatapoints(source) {
-  const grouping = {};
+function _mergeWebVttCues(source, target) {
+  let cues = source.cues.concat(target.cues);
 
-  const datapoints = Object.values(source)
-    .flat(1);
+  const cueMap = {};
+  for (const item of cues) {
+    const strId = Buffer.from(JSON.stringify({
+      start: item.start,
+      end: item.end,
+      styles: item.styles,
+    })).toString('base64');
 
-  datapoints.forEach((datapoint) => {
-    if (grouping[datapoint.name] === undefined) {
-      grouping[datapoint.name] = [datapoint];
-    } else {
-      grouping[datapoint.name].push(datapoint);
-      grouping[datapoint.name]
-        .sort((a, b) =>
-          a.begin - b.begin);
+    if (cueMap[strId] === undefined) {
+      cueMap[strId] = item;
     }
-  });
+  }
 
-  return grouping;
+  cues = Object.values(cueMap);
+  cues.sort((a, b) =>
+    a.start - b.start)
+    .map((cue, idx) => ({
+      ...cue,
+      identifier: String(idx),
+    }));
+
+  return cues;
 }
 
-function _regroupTimeseriesDatapoints(source, target) {
-  const _source = source;
+function _mergeMetadataData(source, target) {
+  let data = source.concat(target);
 
-  const sourceXs = source.data
-    .map((item) =>
-      item.x);
+  const dataMap = {};
+  for (const item of data) {
+    const strId = Buffer.from(JSON.stringify({
+      begin: item.begin,
+      end: item.end,
+      cx: item.cx,
+      cy: item.cy,
+    })).toString('base64');
 
-  target.data.forEach((item) => {
-    const idx = sourceXs.indexOf(item.x);
-
-    if (idx >= 0) {
-      const data = _source.data[idx];
-      data.y += item.y;
-      data.details = data.details
-        .concat(item.details);
-    } else {
-      _source.data.push(item);
+    if (dataMap[strId] === undefined) {
+      dataMap[strId] = item;
     }
-  });
+  }
 
-  // resort timestamp
-  _source.data
-    .sort((a, b) =>
-      b.x - a.x);
+  data = Object.values(dataMap);
+  data.sort((a, b) =>
+    a.begin - b.begin);
 
-  _source.appearance += target.appearance;
+  return data;
+}
 
-  return _source;
+function _mergeTimeseriesDatapoints(source, target) {
+  let data = source.data.concat(target.data);
+
+  const dataMap = {};
+  for (const item of data) {
+    const strId = String(item.x);
+    if (dataMap[strId] === undefined) {
+      dataMap[strId] = {
+        x: item.x,
+        y: 0,
+        details: [],
+      };
+    }
+
+    const details = _mergeTimeseriesDatapointDetails(dataMap[strId].details, item.details);
+    dataMap[strId].details = details
+    dataMap[strId].y = details.length;
+  }
+
+  data = Object.values(dataMap);
+  data.sort((a, b) =>
+    a.x - b.x);
+
+  source.data = data;
+
+  // recalculate appearance
+  let appearance = source.appearance || 0;
+  if (target.appearance !== undefined) {
+    appearance = Math.max(appearance, target.appearance);
+  }
+  source.appearance = appearance;
+
+  return source;
+}
+
+function _mergeTimeseriesDatapointDetails(source, target) {
+  let data = source.concat(target);
+
+  const dataMap = {};
+  for (const item of data) {
+    const strId = Buffer.from(JSON.stringify({
+      l: item.l,
+      t: item.t,
+      w: item.w,
+      h: item.h,
+    })).toString('base64');
+
+    if (dataMap[strId] === undefined) {
+      dataMap[strId] = item;
+    }
+  }
+
+  data = Object.values(dataMap);
+
+  return data;
+
 }
 
 async function _downloadJson(bucket, key) {
-  return CommonUtils.download(bucket, key)
+  return download(bucket, key)
     .then((res) =>
       JSON.parse(res))
     .catch(() =>
@@ -104,7 +172,7 @@ async function _downloadJson(bucket, key) {
 }
 
 async function _uploadJson(bucket, prefix, name, data) {
-  return CommonUtils.uploadFile(
+  return uploadFile(
     bucket,
     prefix,
     name,
@@ -177,8 +245,8 @@ class BaseState {
 
     // update Rekog JSON response
     if (mapData !== undefined) {
-      const parsed = PATH.parse(facematch.output);
-      const jsonKey = PATH.join(parsed.dir, mapData.file);
+      const parsed = parse(facematch.output);
+      const jsonKey = join(parsed.dir, mapData.file);
 
       promises.push(this.updateRekognitionRawJsonResults(
         jsonKey,
@@ -201,19 +269,21 @@ class BaseState {
     ));
 
     // opensearch document depends on the updated metadata file
-    const metadata = await this.updateMetadataFile(
+    let metadata;
+    promises.push(this.updateMetadataFile(
       facematch.metadata,
       updated,
       deleted
-    );
-
-    // update opensearch
-    promises.push(this.updateOpenSearchDocument(
-      uuid,
-      metadata
-    ));
+    ).then((res) =>
+      metadata = res));
 
     promises = await Promise.all(promises);
+
+    // update opensearch
+    promises = await this.updateOpenSearchDocument(
+      uuid,
+      metadata
+    );
 
     return promises;
   }
@@ -223,9 +293,7 @@ class BaseState {
       return undefined;
     }
 
-    const parsed = PATH.parse(jsonKey);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
     // rekognition JSON output
     const json = await _downloadJson(ProxyBucket, jsonKey);
@@ -315,9 +383,7 @@ class BaseState {
   }
 
   async updateMapDataFile(key, updated = [], deleted = []) {
-    const parsed = PATH.parse(key);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
     const mapData = await _downloadJson(ProxyBucket, key);
 
@@ -325,27 +391,28 @@ class BaseState {
       return undefined;
     }
 
-    let modified = mapData.data
-      .reduce((a0, c0) => ({
-        ...a0,
-        [c0]: c0,
-      }), {});
+    let faceMap = {};
+    for (const item of mapData.data) {
+      faceMap[item] = item;
+    }
 
-    deleted.forEach((item) => {
-      delete modified[item.faceId];
-    });
+    for (const { faceId } of deleted) {
+      delete faceMap[faceId];
+    }
 
-    updated.forEach((item) => {
-      if (modified[item.faceId] !== undefined) {
-        modified[item.faceId] = item.celeb;
+    for (const { faceId, celeb, updateFrom } of updated) {
+      if (faceMap[faceId] !== undefined) {
+        faceMap[faceId] = celeb;
       }
-    });
-    modified = [
-      ...new Set(Object.values(modified)),
-    ];
+      if (faceMap[updateFrom] !== undefined) {
+        faceMap[updateFrom] = celeb;
+      }
+    }
+
+    faceMap = [...new Set(Object.values(faceMap))];
 
     mapData.lastmodified = Date.now();
-    mapData.data = modified;
+    mapData.data = faceMap;
 
     return _uploadJson(
       ProxyBucket,
@@ -360,43 +427,45 @@ class BaseState {
       return undefined;
     }
 
-    const parsed = PATH.parse(key);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
-    const json = await _downloadJson(ProxyBucket, key);
-    if (!json) {
+    const data = await _downloadJson(ProxyBucket, key);
+    if (!data) {
       return undefined;
     }
 
-    const _mapUpdated = updated
-      .reduce((a0, c0) => ({
-        ...a0,
-        [c0.faceId]: c0.celeb,
-      }), {});
-    const _mapDeleted = deleted
-      .reduce((a0, c0) => ({
-        ...a0,
-        [c0.faceId]: true,
-      }), {});
+    let faceIdsToDelete = [];
+    for (const { faceId } of deleted) {
+      if (faceId) {
+        faceIdsToDelete.push(faceId);
+      }
+    }
+    faceIdsToDelete = [...new Set(faceIdsToDelete)];
 
-    json.Persons.forEach((person) => {
-      person.FaceMatches.forEach((facematch) => {
-        const faceId = facematch.Face.FaceId;
-        // add a new instead of deleting the entry
-        if (_mapDeleted[faceId] !== undefined) {
-          facematch.Face.MarkDeleted = true;
-        } else if (_mapUpdated[faceId] !== undefined) {
-          facematch.Face.Name = _mapUpdated[faceId];
+    const updateMap = {};
+    for (const { faceId, updateFrom, celeb } of updated) {
+      updateMap[faceId] = celeb;
+      updateMap[updateFrom] = celeb;
+    }
+
+    for (const { FaceMatches: faceMatches = [] } of data.Persons) {
+      for (const { Face: face = {} } of faceMatches) {
+        // process delete action
+        if (faceIdsToDelete.includes(face.FaceId)) {
+          face.MarkDeleted = true;
+        } else if (updateMap[face.FaceId] !== undefined) {
+          face.Name = updateMap[face.FaceId];
+        } else if (updateMap[face.Name] !== undefined) {
+          face.Name = updateMap[face.FaceId];
         }
-      });
-    });
+      }
+    }
 
     return _uploadJson(
       ProxyBucket,
       prefix,
       name,
-      json
+      data
     );
   }
 
@@ -405,36 +474,46 @@ class BaseState {
       return undefined;
     }
 
-    const parsed = PATH.parse(key);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
-    let metadata = await _downloadJson(ProxyBucket, key);
-    if (!metadata) {
+    let dataMap = await _downloadJson(ProxyBucket, key);
+    if (!dataMap) {
       return undefined;
     }
 
-    deleted.forEach((item) => {
-      delete metadata[item.faceId];
-    });
+    // process delete action first
+    for (const { faceId } of deleted) {
+      delete dataMap[faceId];
+    }
 
-    updated.forEach((item) => {
-      if (metadata[item.faceId]) {
-        metadata[item.faceId]
-          .forEach((datapoint) => {
-            datapoint.name = item.celeb;
-          });
+    // move keys from faceIds or oldName to new celeb name
+    for (const { faceId, updateFrom, celeb } of updated) {
+      // the new name already contains data
+      const mergeRequired = dataMap[celeb];
+
+      for (const k of [faceId, updateFrom]) {
+        if (dataMap[k] !== undefined) {
+          // update celeb name
+          for (const item of dataMap[k]) {
+            item.name = celeb;
+          }
+          dataMap[celeb] = dataMap[k];
+          delete dataMap[k];
+        }
       }
-    });
 
-    // regrouping datapoints as a name can be associated with multiple faceIds
-    metadata = _regroupMetadataDatapoints(metadata);
+      // merge datapoints
+      if (mergeRequired !== undefined && dataMap[celeb] !== undefined) {
+        const datapoints = _mergeMetadataData(mergeRequired, dataMap[celeb]);
+        dataMap[celeb] = datapoints;
+      }
+    }
 
     return _uploadJson(
       ProxyBucket,
       prefix,
       name,
-      metadata
+      dataMap
     );
   }
 
@@ -443,46 +522,44 @@ class BaseState {
       return undefined;
     }
 
-    const parsed = PATH.parse(key);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
-    const timeseries = await _downloadJson(ProxyBucket, key);
-    if (!timeseries) {
+    let dataMap = await _downloadJson(ProxyBucket, key);
+    if (!dataMap) {
       return undefined;
     }
 
-    deleted.forEach((item) => {
-      delete timeseries[item.faceId];
-    });
+    // process delete action first
+    for (const { faceId } of deleted) {
+      delete dataMap[faceId];
+    }
 
-    updated.forEach((item) => {
-      // move from faceId to celeb
-      if (timeseries[item.celeb] === undefined) {
-        if (timeseries[item.faceId] !== undefined) {
-          timeseries[item.celeb] = {
-            ...timeseries[item.faceId],
-            label: item.celeb,
-          };
-          delete timeseries[item.faceId];
-          return;
+    // move keys from faceIds or oldName to new celeb name
+    for (const { faceId, updateFrom, celeb } of updated) {
+      // the new name already contains data
+      const mergeRequired = dataMap[celeb];
+
+      for (const k of [faceId, updateFrom]) {
+        if (dataMap[k] !== undefined) {
+          // update celeb name
+          dataMap[k].label = celeb;
+          dataMap[celeb] = dataMap[k];
+          delete dataMap[k];
         }
       }
+
       // merge datapoints
-      if (timeseries[item.celeb] !== undefined) {
-        timeseries[item.celeb] = _regroupTimeseriesDatapoints(
-          timeseries[item.celeb],
-          timeseries[item.faceId]
-        );
-        delete timeseries[item.faceId];
+      if (mergeRequired !== undefined && dataMap[celeb] !== undefined) {
+        const datapoints = _mergeTimeseriesDatapoints(mergeRequired, dataMap[celeb]);
+        dataMap[celeb] = datapoints;
       }
-    });
+    }
 
     return _uploadJson(
       ProxyBucket,
       prefix,
       name,
-      timeseries
+      dataMap
     );
   }
 
@@ -491,109 +568,82 @@ class BaseState {
       return undefined;
     }
 
-    const parsed = PATH.parse(key);
-    const prefix = parsed.dir;
-    const name = parsed.base;
+    const { dir: prefix, base: name } = parse(key);
 
-    const vtts = await _downloadJson(ProxyBucket, key);
-    if (!vtts) {
+    let vttMap = await _downloadJson(ProxyBucket, key);
+    if (!vttMap) {
       return undefined;
     }
-    Object.keys(vtts)
-      .forEach((x) => {
-        vtts[x] = WebVttHelper.parse(vtts[x]);
-      });
 
-    deleted.forEach((item) => {
-      delete vtts[item.faceId];
-    });
+    // process delete action first
+    for (const { faceId } of deleted) {
+      delete vttMap[faceId];
+    }
 
-    updated.forEach((item) => {
-      // move from faceId to celeb
-      if (vtts[item.celeb] === undefined) {
-        if (vtts[item.faceId] !== undefined) {
-          // replace faceId to celeb
-          vtts[item.celeb] = vtts[item.faceId];
-          vtts[item.celeb].cues.forEach((cue) => {
-            cue.text = cue.text.replaceAll(item.faceId, item.celeb);
-          });
-          delete vtts[item.faceId];
-          return;
+    for (const [key, value] of Object.entries(vttMap)) {
+      vttMap[key] = parseVtt(value);
+    }
+
+    // move keys from faceIds or oldName to new celeb name
+    for (const { faceId, updateFrom, celeb } of updated) {
+      // the new name already contains data
+      const mergeRequired = vttMap[celeb];
+
+      for (const k of [faceId, updateFrom]) {
+        if (vttMap[k] !== undefined) {
+          // update celeb name
+          for (const cue of vttMap[k].cues) {
+            cue.text = cue.text.replaceAll(k, celeb);
+          }
+          // remap
+          vttMap[celeb] = vttMap[k];
+          delete vttMap[k];
         }
       }
 
-      // merge cues
-      if (vtts[item.faceId] !== undefined) {
-        // replace faceId to celeb
-        let cues = vtts[item.faceId].cues;
-        cues.forEach((cue) => {
-          cue.text = cue.text.replaceAll(item.faceId, item.celeb);
-        });
-
-        // merge, sort, and remap id
-        cues = vtts[item.celeb].cues
-          .concat(cues)
-          .sort((a, b) =>
-            a.start - b.start)
-          .map((cue, idx) => ({
-            ...cue,
-            identifier: String(idx),
-          }));
-
-        vtts[item.celeb].cues = cues;
-        delete vtts[item.faceId];
+      // merge datapoints
+      if (mergeRequired !== undefined && vttMap[celeb] !== undefined) {
+        const cues = _mergeWebVttCues(mergeRequired, vttMap[celeb]);
+        vttMap[celeb].cues = cues;
       }
-    });
+    }
 
-    // re-compiling the webvtt
-    Object.keys(vtts)
-      .forEach((item) => {
-        // just in case, fix the start/end...
-        const cues = vtts[item].cues
-          .map((cue) => {
-            if (((cue.end - cue.start) * 1000) <= 0) {
-              cue.end += 0.5; // +500ms
-            }
-            return cue;
-          });
-        vtts[item] = WebVttHelper.compile(vtts[item]);
-      });
+    // now, recompile the webvtt track
+    for (const [key, value] of Object.entries(vttMap)) {
+      // just in case, patching the start/end timestamps
+      for (const cue of value.cues) {
+        if ((cue.end - cue.start) <= 0.10) {
+          cue.end += 0.5;
+        }
+      }
+      vttMap[key] = compileVtt(value);
+    }
 
     return _uploadJson(
       ProxyBucket,
       prefix,
       name,
-      vtts
+      vttMap
     );
   }
 
   async updateOpenSearchDocument(uuid, metadata) {
-    if (metadata === undefined) {
+    if (uuid === undefined || metadata === undefined) {
       return undefined;
     }
 
     const datapoints = [];
 
-    Object.keys(metadata)
-      .forEach((x) => {
-        const item = metadata[x];
-        if (item.length === 0) {
-          return;
+    for (const [name, value] of Object.entries(metadata)) {
+      if (value.length > 0) {
+        const timecodes = [];
+        for (const { begin, end } of value) {
+          timecodes.push({ begin, end });
         }
-
-        const name = item[0].name;
-        const faceId = item[0].faceId;
-        const timecodes = item
-          .map((timecode) => ({
-            begin: timecode.begin,
-            end: timecode.end,
-          }));
-        datapoints.push({
-          name,
-          faceId,
-          timecodes,
-        });
-      });
+        const faceId = value[0].faceId;
+        datapoints.push({ name, faceId, timecodes });
+      }
+    }
 
     if (datapoints.length === 0) {
       return undefined;
@@ -604,7 +654,6 @@ class BaseState {
     };
 
     const indexer = new Indexer();
-
     return indexer.update(INDEX, uuid, doc);
   }
 
@@ -639,7 +688,7 @@ class BaseState {
 
     return indexer.search(query)
       .then((res) => {
-        const ids = res.body.hits.hits
+        const ids = ((((res || {}).body || {}).hits || {}).hits || [])
           .map((x) =>
             x._id);
         return ids;

@@ -1,15 +1,24 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-const PATH = require('path');
+const {
+  join,
+  parse,
+} = require('path');
 const {
   RekognitionClient,
 } = require('@aws-sdk/client-rekognition');
 const {
   StateData,
-  CommonUtils,
+  CommonUtils: {
+    download,
+    uploadFile,
+    toISODateTime,
+  },
   Environment,
   MapDataVersion,
-  FrameCaptureModeHelper,
+  FrameCaptureModeHelper: {
+    computeFrameNumAndTimestamp,
+  },
   xraysdkHelper,
   retryStrategyHelper,
   M2CException,
@@ -58,6 +67,8 @@ class BaseDetectFrameIterator {
     this.$mapData = [];
     this.$modelMetadata = undefined;
     this.$originalResponse = undefined;
+    this.$faceapiMap = undefined;
+    this.$framesegmentation = undefined;
   }
 
   get [Symbol.toStringTag]() {
@@ -120,6 +131,22 @@ class BaseDetectFrameIterator {
     this.$originalResponse = val;
   }
 
+  get faceapiMap() {
+    return this.$faceapiMap;
+  }
+
+  set faceapiMap(val) {
+    this.$faceapiMap = val;
+  }
+
+  get framesegmentation() {
+    return this.$framesegmentation;
+  }
+
+  set framesegmentation(val) {
+    this.$framesegmentation = val;
+  }
+
   /* derived class to implement */
   async detectFrame(bucket, key, frameNo, timestamp) {
     throw new M2CException('dervied class to implement detectFrame');
@@ -131,19 +158,34 @@ class BaseDetectFrameIterator {
   }
 
   async process() {
-    if (this.stateData.data.framesegmentation) {
+    const {
+      data: {
+        [this.subCategory]: data,
+      },
+    } = this.stateData;
+
+    const {
+      bucket,
+      frameCapture: { prefix, numFrames },
+    } = data;
+
+    if (data.startTime === undefined) {
+      data.startTime = Date.now();
+    }
+    if (data.cursor === undefined) {
+      data.cursor = 0;
+    }
+
+    const outPrefix = this.makeRawDataPrefix(this.subCategory);
+
+    // download framesegmentation / faceapi output
+    await this.downloadSupplements();
+
+    if (this.framesegmentation.length > 0) {
       return this.processWithFrameSegmentation();
     }
 
-    const data = this.stateData.data[this.subCategory];
-    const bucket = data.bucket;
-    const prefix = data.frameCapture.prefix;
-    const outPrefix = this.makeRawDataPrefix(this.subCategory);
-    const numFrames = data.frameCapture.numFrames;
-
-    data.startTime = data.startTime || Date.now();
     let lambdaTimeout = false;
-
     const t0 = new Date();
     while (!lambdaTimeout && data.cursor < numFrames) {
       await this.processFrame(
@@ -172,21 +214,25 @@ class BaseDetectFrameIterator {
     prefix,
     idx
   ) {
-    const data = this.stateData.data[this.subCategory];
+    const {
+      data: { [this.subCategory]: data },
+    } = this.stateData;
     const frameCapture = data.frameCapture;
     const name = BaseDetectFrameIterator.makeFrameCaptureFileName(idx);
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(prefix, name);
+    const key = join(prefix, name);
 
-    const [
-      frameNo,
-      timestamp,
-    ] = FrameCaptureModeHelper.computeFrameNumAndTimestamp(
+    const [frameNo, timestamp] = computeFrameNumAndTimestamp(
       idx,
       data.framerate,
       frameCapture
     );
+
+    const frame = { name, frameNo, timestamp };
+    if (this.skipFrame(frame)) {
+      return undefined;
+    }
 
     const dataset = await this.detectFrame(
       bucket,
@@ -249,8 +295,8 @@ class BaseDetectFrameIterator {
   ) {
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(prefix, name);
-    let merged = await CommonUtils.download(
+    const key = join(prefix, name);
+    let merged = await download(
       bucket,
       key
     ).then((x) =>
@@ -266,7 +312,7 @@ class BaseDetectFrameIterator {
       ],
     };
 
-    return CommonUtils.uploadFile(
+    return uploadFile(
       bucket,
       prefix,
       name,
@@ -283,8 +329,8 @@ class BaseDetectFrameIterator {
   ) {
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(prefix, name);
-    let merged = await CommonUtils.download(
+    const key = join(prefix, name);
+    let merged = await download(
       bucket,
       key
     ).then((x) =>
@@ -299,7 +345,7 @@ class BaseDetectFrameIterator {
         .concat(dataset),
     };
 
-    return CommonUtils.uploadFile(
+    return uploadFile(
       bucket,
       prefix,
       name,
@@ -325,17 +371,17 @@ class BaseDetectFrameIterator {
 
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory];
-    const timestamp = CommonUtils.toISODateTime(data.requestTime);
+    const timestamp = toISODateTime(data.requestTime);
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    return PATH.join(data.prefix, 'raw', timestamp, CATEGORY, subCategory, '/');
+    return join(data.prefix, 'raw', timestamp, CATEGORY, subCategory, '/');
   }
 
   setCompleted() {
     const data = this.stateData.data[this.subCategory];
     data.cursor = 0;
     data.endTime = Date.now();
-    data.output = PATH.join(
+    data.output = join(
       this.makeRawDataPrefix(this.subCategory),
       MAP_FILENAME
     );
@@ -352,30 +398,103 @@ class BaseDetectFrameIterator {
     return `${FRAMECAPTURE_PREFIX}.${frameNo.toString().padStart(7, '0')}.jpg`;
   }
 
-  async processWithFrameSegmentation() {
-    const data = this.stateData.data[this.subCategory];
-    const bucket = data.bucket;
+  async downloadSupplements() {
+    const {
+      data: {
+        [this.subCategory]: { bucket },
+        framesegmentation,
+        faceapi,
+      },
+    } = this.stateData;
 
-    const frameSegmentationJson = this.stateData.data.framesegmentation.key;
-    const frameSegmentation = await CommonUtils.download(bucket, frameSegmentationJson)
-      .then((res) =>
-        JSON.parse(res));
+    const outputs = {};
+    let promises = [];
+
+    if (framesegmentation !== undefined) {
+      promises.push(download(bucket, framesegmentation.key)
+        .then((res) =>
+          outputs.segmentation = JSON.parse(res))
+        .catch(() => ([])));
+    }
+    if (faceapi !== undefined) {
+      promises.push(download(bucket, join(faceapi.prefix, faceapi.output))
+        .then((res) =>
+          outputs.faceapi = JSON.parse(res))
+        .catch(() => ([])));
+    }
+    await Promise.all(promises);
+
+    let faceapiFramesReduction = false;
+    let dynamicFrames = {};
+    if (outputs.segmentation !== undefined) {
+      for (const frame of outputs.segmentation) {
+        const { frameNo } = frame;
+        dynamicFrames[String(frameNo)] = frame;
+      }
+      faceapiFramesReduction = (outputs.segmentation.length > 0);
+    }
+
+    const faceapiFrames = [];
+    if (outputs.faceapi !== undefined) {
+      for (const { frameNo, faces = [] } of outputs.faceapi) {
+        if (faces.length === 0) {
+          continue;
+        }
+        // reduce faceapi output if frame segmentation is present
+        const id = String(frameNo);
+        if (faceapiFramesReduction && dynamicFrames[id] === undefined) {
+          continue;
+        }
+
+        faceapiFrames.push({ frameNo, faces });
+      }
+    }
+
+    dynamicFrames = Object.values(dynamicFrames);
+    dynamicFrames.sort((a, b) =>
+      a.frameNo - b.frameNo);
+
+    // convert faceapi output to lookup table
+    let faceapiMap;
+    if ((faceapiFrames || []).length > 0) {
+      faceapiMap = {};
+      for (const frame of faceapiFrames) {
+        faceapiMap[String(frame.frameNo)] = frame;
+      }
+    }
+
+    console.log(`DynamicFrames: ${(dynamicFrames || []).length}, FaceapiFrames: ${(faceapiFrames || []).length}`);
+
+    this.faceapiMap = faceapiMap;
+    this.framesegmentation = dynamicFrames;
+
+    return { dynamicFrames, faceapiFrames };
+  }
+
+  async processWithFrameSegmentation() {
+    const {
+      data: {
+        [this.subCategory]: data,
+        framesegmentation: { key },
+      },
+    } = this.stateData;
+
+    const { bucket } = data;
+    const prefix = parse(key).dir;
+    const numFrames = this.framesegmentation.length;
 
     console.log(
       '=== Using processWithFrameSegmentation: numFrames:',
-      frameSegmentation.length
+      numFrames
     );
-    const numFrames = frameSegmentation.length;
-    const prefix = PATH.parse(frameSegmentationJson).dir;
-    const outPrefix = this.makeRawDataPrefix(this.subCategory);
-
-    data.startTime = data.startTime || Date.now();
 
     const t0 = new Date();
     let lambdaTimeout = false;
 
+    data.startTime = data.startTime || Date.now();
+
     while (!lambdaTimeout && data.cursor < numFrames) {
-      const frame = frameSegmentation[data.cursor];
+      const frame = this.framesegmentation[data.cursor];
       await this.processFrame2(
         bucket,
         prefix,
@@ -387,6 +506,8 @@ class BaseDetectFrameIterator {
     }
 
     this.mapData = this.getUniqueNames(this.dataset);
+
+    const outPrefix = this.makeRawDataPrefix(this.subCategory);
     await this.updateOutputs(bucket, outPrefix);
 
     const consumed = new Date() - t0;
@@ -414,7 +535,7 @@ class BaseDetectFrameIterator {
 
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(prefix, frame.name);
+    const key = join(prefix, frame.name);
 
     const dataset = await this.detectFrame(
       bucket,
@@ -423,16 +544,23 @@ class BaseDetectFrameIterator {
       frame.timestamp
     );
 
-    if (dataset) {
-      this.dataset = this.dataset.concat(dataset);
+    if (dataset === undefined) {
+      return dataset;
     }
+
+    if (frame.extendFrameDuration !== undefined) {
+      for (const item of dataset) {
+        item.ExtendFrameDuration = frame.extendFrameDuration;
+      }
+    }
+    this.dataset = this.dataset.concat(dataset);
 
     return dataset;
   }
 
-  skipFrame(frame) {
+  skipFrame(frame = {}) {
     return SKIP_FRAME_ANALYSIS
-      .includes((frame || {}).technicalCueType);
+      .includes(frame.technicalCueType);
   }
 
   static async RunCommand(command) {

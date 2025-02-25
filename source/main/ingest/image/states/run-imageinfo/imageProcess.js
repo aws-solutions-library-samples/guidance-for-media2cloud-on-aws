@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const PATH = require('path');
-const Jimp = require('jimp');
 const {
   CommonUtils,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromBuffer,
+  },
 } = require('core-lib');
 const {
   RunExifTool,
 } = require('./exiftool');
-
-/**
- * WORKAROUND: Jimp 0.16.1 (0.9.6 doesn't have the issue.)
- * jpeg-js decoder throws an error when maxMemoryUsageInMB > 512
- * Reference: https://github.com/oliver-moran/jimp/issues/915
- */
-const JpegDecoder = Jimp.decoders['image/jpeg'];
-Jimp.decoders['image/jpeg'] = (data) =>
-  JpegDecoder(data, {
-    maxResolutionInMP: 200,
-    maxMemoryUsageInMB: 2048,
-  });
 
 const MAX_IMAGE_SIZE = 5 * 1000 * 1000;
 const MAX_THUMBNAIL_WIDTH = 480;
@@ -90,11 +81,7 @@ class ImageProcess {
   }
 
   async createImage(buffer, orient, maxW, maxH) {
-    let image = await new Promise((resolve, reject) => {
-      Jimp.read(buffer)
-        .then((data) => resolve(data))
-        .catch((e) => reject(e));
-    });
+    let image = await imageFromBuffer(buffer);
 
     /* resize image if needed */
     let factor = 1;
@@ -120,13 +107,13 @@ class ImageProcess {
     */
 
     /* Max image size allowed for Rekognition is 15MB */
-    let buf = await image.getBufferAsync(Jimp.MIME_JPEG);
+    let buf = await image.getBufferAsync(MIME_JPEG);
     if (buf.byteLength > MAX_IMAGE_SIZE) {
       factor = MAX_IMAGE_SIZE / buf.byteLength;
       image = image
         .scale(factor)
         .quality(80);
-      buf = await image.getBufferAsync(Jimp.MIME_JPEG);
+      buf = await image.getBufferAsync(MIME_JPEG);
     }
     return buf;
   }

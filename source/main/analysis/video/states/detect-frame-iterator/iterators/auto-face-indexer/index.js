@@ -1,12 +1,17 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const FS = require('node:fs');
-const PATH = require('node:path');
+const {
+  mkdirSync,
+  writeFileSync,
+} = require('node:fs');
+const {
+  parse,
+  join,
+} = require('node:path');
 const {
   DetectFacesCommand,
 } = require('@aws-sdk/client-rekognition');
-const Jimp = require('jimp');
 const {
   AnalysisTypes: {
     Rekognition: {
@@ -15,16 +20,35 @@ const {
     },
     AutoFaceIndexer,
   },
-  CommonUtils,
+  CommonUtils: {
+    download,
+    uploadFile,
+  },
   M2CException,
   FaceIndexer,
-  JimpHelper,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromScratch,
+    computeLaplacianVariance,
+  },
+  FrameCaptureModeHelper: {
+    computeFrameNumAndTimestamp,
+  },
 } = require('core-lib');
 const DetectCelebIterator = require('../detect-celeb');
 const DetectFaceMatchIterator = require('../detect-face-match');
 const {
   RunCommand,
 } = require('../shared/baseDetectFrameIterator');
+
+const {
+  makeFrameCaptureFileName,
+} = DetectFaceMatchIterator;
+
+const {
+  createExternalImageId,
+  faceIdToNumber,
+} = FaceIndexer;
 
 const DEBUG_ENABLED = (
   process.env.ENV_DEBUG !== undefined &&
@@ -34,8 +58,10 @@ const DEBUG_ENABLED = (
 const MIN_SIMILARITY = 90;
 const BBOX_MINCONFIDENCE = 98;
 const PREFIX_FULLIMAGE = 'fullimage';
+// Use DetectFaces API to detect occluded faces and filter out faces
+const FILTER_OCCLUDEDFACES = false;
 
-const DEFAULT_FILTER_SETINGS = {
+const DEFAULT_FILTER_SETTINGS = {
   minFaceW: 64,
   minFaceH: 64,
   maxPitch: 26,
@@ -46,40 +72,54 @@ const DEFAULT_FILTER_SETINGS = {
   minCelebConfidence: 100, // 99,
   // Laplacian Variance to check blurriness of the face
   minLaplacianVariance: 0, // 18,
+  occludedFaceFiltering: true,
 };
 
-let FilterSettings = DEFAULT_FILTER_SETINGS;
+let FilterSettings = DEFAULT_FILTER_SETTINGS;
 
 class AutoFaceIndexerIterator {
   constructor(stateData) {
-    const data = stateData.data;
+    const {
+      data: {
+        [Celeb]: celeb,
+        [FaceMatch]: facematch,
+        [AutoFaceIndexer]: autofaceindexer,
+      },
+    } = stateData;
 
-    if (!data[Celeb]) {
-      throw new M2CException(`${Celeb} must be specified`);
+    if (facematch === undefined) {
+      throw new M2CException('FaceMatch must be specified');
+    }
+
+    if (autofaceindexer === undefined) {
+      throw new M2CException('AutoFaceIndexer must be specified');
     }
 
     if (DEBUG_ENABLED) {
       _createDir(AutoFaceIndexer);
     }
 
-    _setFilterSettings((data[AutoFaceIndexer] || {}).filterSettings);
+    _setFilterSettings(autofaceindexer.filterSettings);
 
-    this.$celebIterator = new DetectCelebIterator(stateData);
     this.$facematchIterator = new DetectFaceMatchIterator(stateData);
+    if (celeb !== undefined) {
+      this.$celebIterator = new DetectCelebIterator(stateData);
+    }
 
-    if (data[AutoFaceIndexer].startTime === undefined) {
-      data[AutoFaceIndexer].startTime = Date.now();
+    if (autofaceindexer.startTime === undefined) {
+      autofaceindexer.startTime = Date.now();
     }
-    if (data[AutoFaceIndexer].facesIndexed === undefined) {
-      data[AutoFaceIndexer].facesIndexed = 0;
+    if (autofaceindexer.facesIndexed === undefined) {
+      autofaceindexer.facesIndexed = 0;
     }
-    if (data[AutoFaceIndexer].apiCount === undefined) {
-      data[AutoFaceIndexer].apiCount = 0;
+    if (autofaceindexer.apiCount === undefined) {
+      autofaceindexer.apiCount = 0;
     }
-    if (data[AutoFaceIndexer].faceApiCount === undefined) {
-      data[AutoFaceIndexer].faceApiCount = 0;
+    if (autofaceindexer.faceApiCount === undefined) {
+      autofaceindexer.faceApiCount = 0;
     }
-    this.$autoFaceIndexerData = data[AutoFaceIndexer];
+
+    this.$autoFaceIndexerData = autofaceindexer;
     this.$faceIndexer = new FaceIndexer();
   }
 
@@ -107,90 +147,90 @@ class AutoFaceIndexerIterator {
     return this.$faceIndexer;
   }
 
-  async process() {
-    const instance = this.celebIterator;
+  get framesegmentation() {
+    return (this.$facematchIterator || {}).framesegmentation;
+  }
 
-    if (instance.stateData.data.framesegmentation) {
+  get faceapiMap() {
+    return (this.$facematchIterator || {}).faceapiMap;
+  }
+
+  async process() {
+    const iterators = [[this.facematchIterator, FaceMatch]];
+    if (this.celebIterator !== undefined) {
+      iterators.push([this.celebIterator, Celeb]);
+    }
+
+    let promises = [];
+    const startTime = Date.now();
+    for (const [iterator, subcategory] of iterators) {
+      const {
+        stateData: { data: { [subcategory]: iteratorData } },
+      } = iterator;
+      if (iteratorData.startTime === undefined) {
+        iteratorData.startTime = startTime;
+      }
+      if (iteratorData.cursor === undefined) {
+        iteratorData.cursor = 0;
+      }
+
+      promises.push(iterator.downloadSupplements());
+    }
+    promises = await Promise.all(promises);
+
+    if ((this.framesegmentation || []).length > 0) {
       return this.processWithFrameSegmentation();
     }
 
-    const data = instance.stateData.data[Celeb];
-
-    const bucket = data.bucket;
-    const prefix = data.frameCapture.prefix;
-    const numFrames = data.frameCapture.numFrames;
-
-    const iterators = [
-      [this.celebIterator, Celeb],
-      [this.facematchIterator, FaceMatch],
-    ];
-
-    const startTime = Date.now();
-
-    iterators.forEach((x) => {
-      const [
-        iterator,
-        subcategory,
-      ] = x;
-      const categoryData = iterator.stateData.data[subcategory];
-      categoryData.startTime = categoryData.startTime || startTime;
-    });
+    const {
+      stateData: { data: { [FaceMatch]: data } },
+    } = this.facematchIterator;
+    const { bucket, frameCapture: { prefix, numFrames } } = data;
 
     let lambdaTimeout = false;
 
     const t0 = new Date();
     while (!lambdaTimeout && data.cursor < numFrames) {
-      await this.processFrame(
-        bucket,
-        prefix,
-        data.cursor
-      );
+      await this.processFrame(bucket, prefix, data.cursor);
 
-      iterators.forEach((x) => {
-        const [
-          iterator,
-          subcategory,
-        ] = x;
-        const categoryData = iterator.stateData.data[subcategory];
-        categoryData.cursor += 1;
-      });
+      for (const [iterator, subcategory] of iterators) {
+        const {
+          stateData: { data: { [subcategory]: iteratorData } },
+        } = iterator;
+        iteratorData.cursor += 1;
+      }
 
       /* make sure we allocate enough time for the next iteration */
       lambdaTimeout = this.quitNow();
     }
 
-    await Promise.all(iterators
-      .map((x) => {
-        const [
-          iterator,
-          subcategory,
-        ] = x;
-        const outPrefix = iterator.makeRawDataPrefix(subcategory);
-        const dataset = iterator.dataset;
-        iterator.mapData = iterator.getUniqueNames(dataset);
-
-        return iterator.updateOutputs(
-          bucket,
-          outPrefix
-        );
-      }));
+    promises = [];
+    for (const [iterator, subcategory] of iterators) {
+      const outPrefix = iterator.makeRawDataPrefix(subcategory);
+      iterator.mapData = iterator.getUniqueNames(iterator.dataset);
+      promises.push(iterator.updateOutputs(bucket, outPrefix));
+    }
+    promises = await Promise.all(promises);
 
     const consumed = new Date() - t0;
     const remained = this.getRemainingTime();
     console.log(`COMPLETED: frame #${data.cursor - 1} [Consumed/Remained: ${consumed / 1000}s / ${remained / 1000}s]`);
 
-    return (data.cursor >= numFrames)
-      ? this.setCompleted()
-      : this.setProgress(Math.round((data.cursor / numFrames) * 100));
+    if (data.cursor >= numFrames) {
+      return this.setCompleted();
+    }
+
+    const progress = Math.round((data.cursor / numFrames) * 100);
+    return this.setProgress(progress);
   }
 
   getRemainingTime() {
-    const instance = this.celebIterator;
+    const instance = this.facematchIterator;
     return instance.stateData.getRemainingTime();
   }
 
   quitNow() {
-    const instance = this.celebIterator;
+    const instance = this.facematchIterator;
     return instance.stateData.quitNow();
   }
 
@@ -199,29 +239,17 @@ class AutoFaceIndexerIterator {
     prefix,
     idx
   ) {
-    const dataset = await this.celebIterator.processFrame(
-      bucket,
-      prefix,
-      idx
-    );
+    const {
+      stateData: {
+        data: { [FaceMatch]: { framerate, frameCapture } },
+      },
+    } = this.facematchIterator;
 
-    const faces = this.getUnrecognizedFaces(dataset);
-    /* no face found, skip celeb and facematch */
-    if (!faces || !faces.length) {
-      return undefined;
-    }
+    const name = makeFrameCaptureFileName(idx);
+    const [frameNo, timestamp] = computeFrameNumAndTimestamp(idx, framerate, frameCapture);
 
-    const promises = [];
-    if (this.facematchIterator) {
-      promises.push(this.facematchIterator.processFrame(
-        bucket,
-        prefix,
-        idx,
-        faces
-      ));
-    }
-
-    return Promise.all(promises);
+    const frame = { name, frameNo, timestamp };
+    return await this.processFrame2(bucket, prefix, frame);
   }
 
   getUnrecognizedFaces(celebrities) {
@@ -231,9 +259,13 @@ class AutoFaceIndexerIterator {
       return unrecognizedFaces;
     }
 
+    const minConfidenceAutoTag = this.celebIterator.minConfidence
+      || this.facematchIterator.minConfidence;
+
     (celebrities.CelebrityFaces || [])
       .forEach((celeb) => {
-        // filter out confidence higher than 99%
+        // Do not add to the face collection when
+        // MatchConfidence is higher than the indexer min. celebrity confidence threshold
         if (Math.round(celeb.MatchConfidence) > FilterSettings.minCelebConfidence) {
           return;
         }
@@ -243,16 +275,21 @@ class AutoFaceIndexerIterator {
           return;
         }
 
+        // should we auto tag with the identified celebrity name?
+        let autoTag;
+        if (celeb.MatchConfidence >= minConfidenceAutoTag) {
+          autoTag = celeb.Name;
+        }
+
         const matched = {
           Face: {
             BoundingBox: celeb.Face.BoundingBox,
             Pose: celeb.Face.Pose,
             Quality: (celeb.Face || {}).Quality,
           },
-          // optional
-          Name: celeb.Name,
           Confidence: celeb.MatchConfidence,
           Gender: (celeb.KnownGender || {}).Type,
+          Name: autoTag, // optional
         };
         matched.Face.CenterXY = _computeFaceCenterXY(matched);
 
@@ -304,13 +341,14 @@ class AutoFaceIndexerIterator {
     const endTime = Date.now();
     this.autoFaceIndexerData.endTime = endTime;
 
-    const stateData = this.celebIterator.setCompleted();
-    stateData.data[Celeb].endTime = endTime;
-
-    this.facematchIterator.setCompleted();
-    stateData.data[FaceMatch] =
-      this.facematchIterator.stateData.data[FaceMatch];
+    const stateData = this.facematchIterator.setCompleted();
     stateData.data[FaceMatch].endTime = endTime;
+
+    if (this.celebIterator) {
+      this.celebIterator.setCompleted();
+      stateData.data[Celeb] = this.celebIterator.stateData.data[Celeb];
+      stateData.data[Celeb].endTime = endTime;
+    }
 
     return stateData;
   }
@@ -318,87 +356,61 @@ class AutoFaceIndexerIterator {
   setProgress(pencentage) {
     this.setMetrics();
 
-    const stateData = this.celebIterator.setProgress(pencentage);
-
-    this.facematchIterator.setProgress(pencentage);
-    stateData.data[FaceMatch] =
-      this.facematchIterator.stateData.data[FaceMatch];
+    const stateData = this.facematchIterator.setProgress(pencentage);
+    if (this.celebIterator) {
+      this.celebIterator.setProgress(pencentage);
+      stateData.data[Celeb] = this.celebIterator.stateData.data[Celeb];
+    }
 
     return stateData;
   }
 
   async processWithFrameSegmentation() {
-    const instance = this.celebIterator;
-    const data = instance.stateData.data[Celeb];
+    const {
+      stateData: {
+        data: { [FaceMatch]: data, framesegmentation: { key } },
+      },
+    } = this.facematchIterator;
 
-    const bucket = data.bucket;
-    const frameSegmentationJson = instance.stateData.data.framesegmentation.key;
-    const frameSegmentation = await CommonUtils.download(bucket, frameSegmentationJson)
-      .then((res) =>
-        JSON.parse(res));
+    const { bucket } = data;
+    const prefix = parse(key).dir;
+    const numFrames = this.framesegmentation.length;
 
     console.log(
       '=== Using processWithFrameSegmentation: numFrames:',
-      frameSegmentation.length
+      numFrames
     );
 
-    const numFrames = frameSegmentation.length;
-    const prefix = PATH.parse(frameSegmentationJson).dir;
-
-    const iterators = [
-      [this.celebIterator, Celeb],
-      [this.facematchIterator, FaceMatch],
-    ];
-
-    const startTime = Date.now();
-    iterators.forEach((x) => {
-      const [
-        iterator,
-        subcategory,
-      ] = x;
-      const categoryData = iterator.stateData.data[subcategory];
-      categoryData.startTime = categoryData.startTime || startTime;
-    });
+    const iterators = [[this.facematchIterator, FaceMatch]];
+    if (this.celebIterator) {
+      iterators.push([this.celebIterator, Celeb]);
+    }
 
     let lambdaTimeout = false;
 
     const t0 = new Date();
     while (!lambdaTimeout && data.cursor < numFrames) {
-      const frame = frameSegmentation[data.cursor];
-      await this.processFrame2(
-        bucket,
-        prefix,
-        frame
-      );
+      const frame = this.framesegmentation[data.cursor];
+      await this.processFrame2(bucket, prefix, frame);
 
-      iterators.forEach((x) => {
-        const [
-          iterator,
-          subcategory,
-        ] = x;
-        const categoryData = iterator.stateData.data[subcategory];
-        categoryData.cursor += 1;
-      });
+      for (const [iterator, subcategory] of iterators) {
+        const {
+          stateData: { data: { [subcategory]: iteratorData } },
+        } = iterator;
+        iteratorData.cursor += 1;
+      }
 
       /* make sure we allocate enough time for the next iteration */
       lambdaTimeout = this.quitNow();
     }
 
-    await Promise.all(iterators
-      .map((x) => {
-        const [
-          iterator,
-          subcategory,
-        ] = x;
-        const outPrefix = iterator.makeRawDataPrefix(subcategory);
-        const dataset = iterator.dataset;
-        iterator.mapData = iterator.getUniqueNames(dataset);
-
-        return iterator.updateOutputs(
-          bucket,
-          outPrefix
-        );
-      }));
+    let promises = [];
+    for (const [iterator, subcategory] of iterators) {
+      const outPrefix = iterator.makeRawDataPrefix(subcategory);
+      iterator.mapData = iterator.getUniqueNames(iterator.dataset);
+      promises.push(iterator.updateOutputs(bucket, outPrefix));
+    }
+    await Promise.all(promises);
 
     const consumed = new Date() - t0;
     const remained = this.getRemainingTime();
@@ -408,10 +420,8 @@ class AutoFaceIndexerIterator {
       return this.setCompleted();
     }
 
-    let percentage = (data.cursor / numFrames) * 100;
-    percentage = Math.round(percentage);
-
-    return this.setProgress(percentage);
+    const progress = Math.round((data.cursor / numFrames) * 100);
+    return this.setProgress(progress);
   }
 
   async processFrame2(
@@ -425,18 +435,34 @@ class AutoFaceIndexerIterator {
       frame.timestamp
     );
 
-    await this.celebIterator.processFrame2(
-      bucket,
-      prefix,
-      frame
-    );
+    let unrecognizedFaces;
+    if (this.celebIterator !== undefined) {
+      await this.celebIterator.processFrame2(bucket, prefix, frame);
 
-    const unrecognizedFaces = this.getUnrecognizedFaces(
-      this.celebIterator.originalResponse
-    );
+      const { originalResponse: responseData } = this.celebIterator;
+      unrecognizedFaces = this.getUnrecognizedFaces(responseData);
+      // if celeb enabled but no detected, skip facematch
+      if ((unrecognizedFaces || []).length === 0) {
+        return undefined;
+      }
+    }
 
-    // no face found, skip celeb and facematch
-    if (unrecognizedFaces.length === 0) {
+    // try faceapi results
+    if ((unrecognizedFaces || []).length === 0) {
+      const { faces = [] } = this.faceapiMap[String(frame.frameNo)] || {};
+      if (faces.length > 0) {
+        for (const face of faces) {
+          const { Face: { CenterXY } } = face;
+          if (CenterXY === undefined) {
+            face.Face.CenterXY = _computeFaceCenterXY(face);
+          }
+        }
+        unrecognizedFaces = faces;
+      }
+    }
+
+    // still no face found, skip the rest
+    if ((unrecognizedFaces || []).length === 0) {
       return undefined;
     }
 
@@ -447,13 +473,18 @@ class AutoFaceIndexerIterator {
       unrecognizedFaces
     );
 
-    const uuid = this.facematchIterator.stateData.uuid;
-    const collectionId = this.facematchIterator.faceCollectionId;
-    const frameImage = this.facematchIterator.cachedImage;
-    const recognizedFaces = this.getFaceMatchedFaces(
-      this.facematchIterator.recognizedFaces
-    );
-    // const recognizedFaces = this.facematchIterator.recognizedFaces;
+    const {
+      stateData: { uuid },
+      faceCollectionId: collectionId,
+      cachedImage: frameImage,
+    } = this.facematchIterator;
+
+    if (frameImage === undefined) {
+      return undefined;
+    }
+
+    let { recognizedFaces } = this.facematchIterator;
+    recognizedFaces = this.getFaceMatchedFaces(recognizedFaces);
 
     let response;
 
@@ -463,7 +494,7 @@ class AutoFaceIndexerIterator {
       recognizedFaces
     );
 
-    const parsed = PATH.parse(frame.name);
+    const parsed = parse(frame.name);
 
     // dump the frame image before occlusion
     await _debugDumpFrame(
@@ -485,7 +516,7 @@ class AutoFaceIndexerIterator {
       return undefined;
     }
 
-    const bytes = await blitImage.getBufferAsync(Jimp.MIME_JPEG);
+    const bytes = await blitImage.getBufferAsync(MIME_JPEG);
 
     // dump the frame image for debugging
     await _debugDumpFrame(
@@ -493,7 +524,7 @@ class AutoFaceIndexerIterator {
       `${parsed.name}-after${parsed.ext}`
     );
 
-    const externalImageId = FaceIndexer.createExternalImageId(
+    const externalImageId = createExternalImageId(
       uuid,
       frame.timestamp
     );
@@ -515,7 +546,7 @@ class AutoFaceIndexerIterator {
       });
 
     let promises = [];
-    const facePrefix = PATH.join(AutoFaceIndexer, collectionId);
+    const facePrefix = join(AutoFaceIndexer, collectionId);
     const facematchDataset = this.facematchIterator.dataset;
 
     // found the faces that were indexed successfully
@@ -525,72 +556,81 @@ class AutoFaceIndexerIterator {
 
     while (indexed.FaceRecords.length > 0) {
       const indexedFace = indexed.FaceRecords.shift();
-      const found = _findFace(indexedFace, faceImages);
 
-      if (found) {
-        const faceId = indexedFace.Face.FaceId;
-        const userId = indexedFace.Face.UserId;
-        const image = found.image;
-        const name = found.name;
-        const confidence = Math.round(found.confidence || indexedFace.Face.Confidence);
-
-        // adding Name and Confidence to the datapoint
-        if (name) {
-          indexedFace.Face.Name = name;
-          indexedFace.Face.Confidence = confidence;
-        }
-
-        const key = await _storeFaceS3(
-          faceId,
-          bucket,
-          facePrefix,
-          image
-        );
-
-        if (fullImageKey === undefined) {
-          const fullImagePrefix = PATH.join(facePrefix, PREFIX_FULLIMAGE);
-
-          fullImageKey = await _storeFullImageS3(
-            uuid,
-            bucket,
-            fullImagePrefix,
-            frame.timestamp,
-            frameImage
-          );
-        }
-
-        const fields = {
-          uuid,
-          collectionId,
-          externalImageId,
-          userId,
-          key,
-          fullImageKey,
-          name,
-          confidence,
-        };
-
-        // optional fields
-        if (indexedFace.FaceDetail !== undefined) {
-          if (indexedFace.FaceDetail.Gender !== undefined
-          && indexedFace.FaceDetail.Gender.Confidence >= 90) {
-            fields.gender = indexedFace.FaceDetail.Gender.Value;
-          }
-          if (indexedFace.FaceDetail.AgeRange !== undefined) {
-            fields.ageRange = [
-              indexedFace.FaceDetail.AgeRange.Low,
-              indexedFace.FaceDetail.AgeRange.High,
-            ].join(',');
-          }
-        }
-
-        promises.push(this.faceIndexer.registerFace(faceId, fields)
-          .then((res) => {
-            const datapoint = _createDatapoint(frame, indexedFace, found);
-            facematchDataset.push(datapoint);
-            return res;
-          }));
+      const found = _findFaceInFaceImages(indexedFace, faceImages);
+      if (!found) {
+        console.log(`Cannot find indexed face in face images. frame#${frame.frameNo}, timestamp#${frame.timestamp}, image=${frame.name}. ${JSON.stringify(indexedFace)}`);
+        continue;
       }
+
+      const [faceImage,] = found;
+      const {
+        Face: { FaceId: faceId, UserId: userId, Confidence: score },
+      } = indexedFace;
+      const image = faceImage.image;
+      const name = faceImage.name;
+      const confidence = Math.round(faceImage.confidence || score);
+
+      // adding Name and Confidence to the datapoint
+      if (name) {
+        indexedFace.Face.Name = name;
+        indexedFace.Face.Confidence = confidence;
+      }
+
+      // adding face coordinate
+      const {
+        Face: { BoundingBox: { Left: l, Top: t, Width: w, Height: h } },
+      } = indexedFace;
+
+      const coord = [l, t, w, h].map((x) =>
+        x.toFixed(4)).join(',');
+
+      const key = await _storeFaceS3(
+        faceId,
+        bucket,
+        facePrefix,
+        image
+      );
+
+      if (fullImageKey === undefined) {
+        const fullImagePrefix = join(facePrefix, PREFIX_FULLIMAGE);
+        fullImageKey = await _storeFullImageS3(
+          uuid,
+          bucket,
+          fullImagePrefix,
+          frame.timestamp,
+          frameImage
+        );
+      }
+
+      const fields = {
+        uuid,
+        collectionId,
+        externalImageId,
+        userId,
+        key,
+        fullImageKey,
+        celeb: name,
+        confidence,
+        coord,
+      };
+
+      // optional fields
+      if ((((indexedFace.FaceDetail || {}).Gender || {}).Confidence || 0) >= 90) {
+        const { FaceDetail: { Gender: { Value } } } = indexedFace;
+        fields.gender = Value;
+      }
+      if (((indexedFace.FaceDetail || {}).AgeRange || {}).Low !== undefined) {
+        const { FaceDetail: { AgeRange: { Low, High } } } = indexedFace;
+        fields.ageRange = `${Low},${High}`;
+      }
+
+      promises.push(this.faceIndexer.registerFace(faceId, fields)
+        .then((res) => {
+          const datapoint = _createDatapoint(frame, indexedFace, found);
+          facematchDataset.push(datapoint);
+          return res;
+        }));
     }
 
     promises = await Promise.all(promises);
@@ -626,16 +666,7 @@ class AutoFaceIndexerIterator {
     const imgW = frameImage.bitmap.width;
     const imgH = frameImage.bitmap.height;
 
-    const combined = await new Promise((resolve, reject) => {
-      const _ = new Jimp(imgW, imgH, 0xffffffff, (e, img) => {
-        if (e) {
-          console.error(e);
-          reject(e);
-        } else {
-          resolve(img);
-        }
-      });
-    });
+    const combined = await imageFromScratch(imgW, imgH);
 
     const cropped = [];
 
@@ -645,20 +676,32 @@ class AutoFaceIndexerIterator {
       const name = face.Name;
       const confidence = Math.round(face.Confidence || 0);
 
-      // ensure coord not out of bound
-      let w = Math.round(imgW * box.Width);
-      let h = Math.round(imgH * box.Height);
-      w = (Math.min(Math.max(w, 0), imgW) >> 1) << 1;
-      h = (Math.min(Math.max(h, 0), imgH) >> 1) << 1;
-
-      let l = Math.round(imgW * box.Left);
-      let t = Math.round(imgH * box.Top);
-      l = Math.min(Math.max(l, 0), imgW - w);
-      t = Math.min(Math.max(t, 0), imgH - h);
-
+      let { Top: t, Left: l, Width: w, Height: h } = box;
       // compute center point
-      const cx = box.Left + (box.Width / 2);
-      const cy = box.Top + (box.Height / 2);
+      const cx = l + (w / 2);
+      const cy = t + (h / 2);
+
+      l = Math.round(l * imgW);
+      t = Math.round(t * imgH);
+      w = (Math.round(w * imgW) >> 1) << 1;
+      h = (Math.round(h * imgH) >> 1) << 1;
+
+      // scale the bounding box
+      const scaleW = Math.min(imgW, (Math.round(w * 1.5) >> 1) << 1);
+      const scaleH = Math.min(imgH, (Math.round(h * 1.5) >> 1) << 1);
+
+      l = Math.max(0, l - Math.ceil((scaleW - w) / 2));
+      t = Math.max(0, t - Math.ceil((scaleH - h) / 2));
+      w = scaleW;
+      h = scaleH;
+
+      // check out of bound
+      if ((l + w) > imgW) {
+        w = imgW - l;
+      }
+      if ((t + h) > imgH) {
+        h = imgH - t;
+      }
 
       // crop face
       const img = frameImage
@@ -676,7 +719,7 @@ class AutoFaceIndexerIterator {
 
       // ignore face that is blurry
       if (FilterSettings.minLaplacianVariance > 0) {
-        const variance = await JimpHelper.computeLaplacianVariance(img);
+        const variance = await computeLaplacianVariance(img);
 
         if (variance > FilterSettings.minLaplacianVariance) {
           combined.blit(img, l, t);
@@ -745,35 +788,33 @@ class AutoFaceIndexerIterator {
   }
 
   async filterOccludedFaces(blitImage, faceImages = []) {
+    const { occludedFaceFiltering = true } = FilterSettings;
+    if (!occludedFaceFiltering) {
+      return { blitImage, faceImages };
+    }
+
     if (!blitImage || faceImages.length === 0) {
-      return {
-        blitImage,
-        faceImages,
-      };
+      return { blitImage, faceImages };
     }
 
     // one last check to detect occluded faces
-    const bytes = await blitImage.getBufferAsync(Jimp.MIME_JPEG);
+    const bytes = await blitImage.getBufferAsync(MIME_JPEG);
     const occludedFaces = await this.detectOccludedFaces(bytes);
 
     if (occludedFaces.length === 0) {
-      return {
-        blitImage,
-        faceImages,
-      };
+      return { blitImage, faceImages };
     }
 
     const toBeRemoved = [];
-    occludedFaces.forEach((face) => {
-      const xy = face.Face.CenterXY;
 
-      faceImages.forEach((face2, idx) => {
-        if (face2 && _inProximity(xy, face2.xy)) {
-          toBeRemoved.push(face2);
-          faceImages[idx] = undefined;
-        }
-      });
-    });
+    for (const face of occludedFaces) {
+      const found = _findFaceInFaceImages(face, faceImages);
+      if (found) {
+        const [faceImage, idx] = found;
+        toBeRemoved.push(faceImage);
+        faceImages[idx] = undefined;
+      }
+    }
 
     const filtered = faceImages
       .filter((x) =>
@@ -826,7 +867,7 @@ class AutoFaceIndexerIterator {
 function _setFilterSettings(userFilterSettings = {}) {
   FilterSettings = {
     ...FilterSettings,
-    userFilterSettings,
+    ...userFilterSettings,
   };
 }
 
@@ -839,7 +880,7 @@ async function _storeFaceS3(
   // scale to 64 pixels
   const factor = 64 / image.bitmap.width;
   let scaled = image.scale(factor);
-  scaled = await scaled.getBufferAsync(Jimp.MIME_JPEG);
+  scaled = await scaled.getBufferAsync(MIME_JPEG);
 
   let name = faceId.replaceAll('-', '');
   name = `${name}.jpg`;
@@ -849,13 +890,13 @@ async function _storeFaceS3(
     name
   );
 
-  return CommonUtils.uploadFile(
+  return uploadFile(
     bucket,
     prefix,
     name,
     scaled
   ).then(() =>
-    PATH.join(prefix, name));
+    join(prefix, name));
 }
 
 async function _storeFullImageS3(
@@ -868,7 +909,7 @@ async function _storeFullImageS3(
   // scale to 640 pixels
   const factor = 640 / image.bitmap.width;
   let scaled = image.scale(factor);
-  scaled = await scaled.getBufferAsync(Jimp.MIME_JPEG);
+  scaled = await scaled.getBufferAsync(MIME_JPEG);
 
   let name = uuid.replaceAll('-', '');
   name = `${name}:${frameTimeStamp}.jpg`;
@@ -878,18 +919,18 @@ async function _storeFullImageS3(
     name
   );
 
-  return CommonUtils.uploadFile(
+  return uploadFile(
     bucket,
     prefix,
     name,
     scaled
   ).then(() =>
-    PATH.join(prefix, name));
+    join(prefix, name));
 }
 
 function _createDatapoint(frame, indexed, faceInFrameImage) {
   // randomly create a unique integer
-  const index = FaceIndexer.faceIdToNumber(indexed.Face.FaceId);
+  const index = faceIdToNumber(indexed.Face.FaceId);
 
   return {
     Timestamp: frame.timestamp,
@@ -917,10 +958,6 @@ function _filterFaces(
 
   const imgW = frameImage.bitmap.width;
   const imgH = frameImage.bitmap.height;
-
-  const recognizedFaceCoords = recognizedFaces
-    .map((face) =>
-      face.Face.CenterXY);
 
   unrecognizedFaces.forEach((face) => {
     const {
@@ -963,11 +1000,8 @@ function _filterFaces(
     }
 
     // already in collection, skip it
-    const idx = _findIndexByFaceCenterXY(
-      face.Face.CenterXY,
-      recognizedFaceCoords
-    );
-    if (idx >= 0) {
+    const found = _findOverlappedFace(face, recognizedFaces);
+    if (found !== undefined) {
       return;
     }
 
@@ -983,27 +1017,21 @@ function _filterDuplicated(faces) {
   }
 
   // remove duplicated faces based on bbox
-  const centerXYs = [];
   const filtered = [];
-
-  filtered.push(faces[0]);
-  centerXYs.push(faces[0].Face.CenterXY);
-  faces.shift();
+  filtered.push(faces.shift());
 
   while (faces.length) {
     const face = faces.shift();
+    const found = _findOverlappedFace(face, filtered);
+    if (found === undefined) {
+      filtered.push(found);
+      continue;
+    }
 
-    const idx = _findIndexByFaceCenterXY(
-      face.Face.CenterXY,
-      centerXYs
-    );
-
-    if (idx < 0) {
-      filtered.push(face);
-      centerXYs.push(face.Face.CenterXY);
-    } else if (face.Confidence > filtered[idx].Confidence) {
-      filtered[idx] = face;
-      centerXYs[idx] = face.Face.CenterXY;
+    if (face.Confidence > found.Confidence) {
+      for (const [key, value] of Object.entries(face)) {
+        found[key] = value;
+      }
     }
   }
 
@@ -1023,42 +1051,57 @@ function _computeFaceCenterXY(face) {
   return [cx, cy];
 }
 
-function _findFace(target, facesInFrameImage) {
-  const xy = target.Face.CenterXY;
+function _centerPointOverlapped(a, b) {
+  const { Top: aT, Left: aL, Width: aW, Height: aH } = a;
+  const { Top: bT, Left: bL, Width: bW, Height: bH } = b;
 
-  const centerXYs = facesInFrameImage
-    .map((face) =>
-      face.xy);
+  const ax = aL + (aW / 2);
+  const ay = aT + (aH / 2);
+  const bx = bL + (bW / 2);
+  const by = bT + (bH / 2);
 
-  const idx = _findIndexByFaceCenterXY(xy, centerXYs);
-  if (idx < 0) {
-    return undefined;
+  if ((bL < ax && ax < (bL + bW) && bT < ay && ay < (bT + bH))
+    && (aL < bx && bx < (aL + aW) && aT < by && by < (aT + aH))) {
+    return true;
   }
 
-  return facesInFrameImage[idx];
+  return false
 }
 
-function _inProximity(a, b) {
-  const [cx0, cy0] = a;
-  const [cx1, cy1] = b;
+function _findOverlappedFace(target, faceRecords) {
+  const { Face: { BoundingBox: coordA } } = target;
 
-  // compute distances and return if distance < 1%
-  let distance = Math.sqrt(
-    ((cx0 - cx1) ** 2) + ((cy0 - cy1) ** 2)
-  );
-  distance = Math.round(distance * 100);
-  return (distance <= 1);
+  for (const face of faceRecords) {
+    const { Face: { BoundingBox: coordB } } = face;
+    if (_centerPointOverlapped(coordA, coordB)) {
+      return face;
+    }
+  }
+
+  return undefined;
 }
 
-function _findIndexByFaceCenterXY(target, centerXYs) {
-  return centerXYs
-    .findIndex((xy) =>
-      _inProximity(target, xy));
+function _findFaceInFaceImages(target, faceImages) {
+  const { Face: { BoundingBox: coordA } } = target;
+
+  for (let idx = 0; idx < faceImages.length; idx += 1) {
+    const faceImage = faceImages[idx];
+    if (faceImage === undefined) {
+      continue;
+    }
+
+    const { bbox: coordB } = faceImage;
+    if (_centerPointOverlapped(coordA, coordB)) {
+      return [faceImage, idx];
+    }
+  }
+
+  return undefined;
 }
 
 function _createDir(path) {
   try {
-    FS.mkdirSync(path, {
+    mkdirSync(path, {
       recursive: true,
     });
   } catch (e) {
@@ -1071,14 +1114,14 @@ async function _debugDumpFrame(image, name) {
     return undefined;
   }
 
-  const file = PATH.join(AutoFaceIndexer, name);
+  const file = join(AutoFaceIndexer, name);
   console.log(`=== [DEBUG]: SAVING ${file}`);
 
   if (image instanceof Buffer) {
-    return FS.writeFileSync(file, image);
+    return writeFileSync(file, image);
   }
 
-  if (image instanceof Jimp) {
+  if (typeof image.clone === 'function') {
     let cloned = image.clone();
 
     const imgW = image.bitmap.width;

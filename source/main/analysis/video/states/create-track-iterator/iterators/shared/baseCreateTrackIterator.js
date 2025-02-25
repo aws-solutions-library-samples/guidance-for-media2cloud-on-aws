@@ -5,9 +5,19 @@ const PATH = require('path');
 const {
   StateData,
   AnalysisError,
-  CommonUtils,
+  CommonUtils: {
+    download,
+    uploadFile,
+    toISODateTime,
+    toHHMMSS,
+  },
   TimelineQ,
   WebVttTrack,
+  AnalysisTypes: {
+    Rekognition: {
+      Segment,
+    },
+  },
 } = require('core-lib');
 
 const CATEGORY = 'rekognition';
@@ -68,7 +78,7 @@ class BaseCreateTrackIterator {
   }
 
   async downloadJson(bucket, key, name) {
-    return CommonUtils.download(bucket, key)
+    return download(bucket, key)
       .then((res) =>
         this.filterBy(
           name,
@@ -91,7 +101,7 @@ class BaseCreateTrackIterator {
   }
 
   async getMapData(bucket, key) {
-    return CommonUtils.download(
+    return download(
       bucket,
       key
     ).then((res) =>
@@ -103,7 +113,7 @@ class BaseCreateTrackIterator {
   }
 
   async getDataFile(bucket, key) {
-    return CommonUtils.download(
+    return download(
       bucket,
       key
     ).then((res) =>
@@ -140,13 +150,19 @@ class BaseCreateTrackIterator {
     const uniques = mapData.data
       .splice(data.cursor);
 
+    let shotSegments;
+    if (this.useSegment()) {
+      shotSegments = await this.downloadSegments();
+    }
+
     let count = 0;
     const t0 = new Date();
     while (!lambdaTimeout && uniques.length > 0) {
       const name = uniques.shift();
       await this.processTrack(
         name,
-        dataset
+        dataset,
+        shotSegments
       );
       data.cursor += 1;
       count += 1;
@@ -165,14 +181,20 @@ class BaseCreateTrackIterator {
     return this.setCompleted();
   }
 
-  async processTrack(name, dataset) {
+  async processTrack(name, dataset, shotSegments) {
     const promises = [];
+
     const stateData = this.stateData.data[this.subCategory];
     const bucket = stateData.bucket;
 
     const appearances = this.filterBy(name, dataset);
     /* #1.1: create timelines */
-    const timelines = this.createTimelines(name, appearances);
+    let timelines;
+    if (shotSegments) {
+      timelines = this.createTimelinesWithSegments(name, appearances, shotSegments);
+    } else {
+      timelines = this.createTimelines(name, appearances);
+    }
     /* #2: create and upload timeseries data */
     let oPrefix;
 
@@ -258,7 +280,7 @@ class BaseCreateTrackIterator {
         continue;
       }
       if (TimelineQ.timeDriftExceedThreshold(queue.last, item)
-      || TimelineQ.positionDriftExceedThreshold(queue.last, item)) {
+        || TimelineQ.positionDriftExceedThreshold(queue.last, item)) {
         timelines.unshift(queue.reduceAll());
       }
       queue.push(item);
@@ -316,7 +338,7 @@ class BaseCreateTrackIterator {
 
   makeRawDataPrefix(subCategory) {
     const data = this.stateData.data[subCategory || this.subCategory];
-    const timestamp = CommonUtils.toISODateTime(data.requestTime);
+    const timestamp = toISODateTime(data.requestTime);
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     return PATH.join(data.prefix, 'raw', timestamp, CATEGORY, subCategory || this.subCategory, '/');
@@ -354,7 +376,7 @@ class BaseCreateTrackIterator {
     // eslint-disable-next-line
     // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
     const key = PATH.join(prefix, name);
-    const merged = await CommonUtils.download(
+    const merged = await download(
       bucket,
       key
     ).then((res) => {
@@ -365,12 +387,141 @@ class BaseCreateTrackIterator {
       };
     }).catch(() =>
       data);
-    return CommonUtils.uploadFile(
+    return uploadFile(
       bucket,
       prefix,
       name,
       merged
     );
+  }
+
+  async downloadSegments() {
+    // check to see if segment detection is enabled.
+    const {
+      data: {
+        [this.subCategory]: { bucket: proxyBucket },
+        [Segment]: segment = {},
+      },
+    } = this.stateData;
+
+    if (!proxyBucket || !segment.output) {
+      return undefined;
+    }
+
+    let output = PATH.join(PATH.parse(segment.output).dir, '00000000.json');
+    output = await download(proxyBucket, output)
+      .then((res) =>
+        JSON.parse(res))
+      .catch(() =>
+        undefined);
+
+    output = output.Segments.filter((segment) =>
+      segment.ShotSegment !== undefined);
+
+    return output;
+  }
+
+  // merge datapoint with shot segment timestamps?
+  useSegment() {
+    return false;
+  }
+
+  // aggregate shot timestamps to the results
+  createTimelinesWithSegments(name, dataset, shotSegments) {
+    const aggregated = [];
+
+    for (const shot of shotSegments) {
+      const {
+        StartTimestampMillis: tsta,
+        EndTimestampMillis: tend,
+        ShotSegment: { Index: shotId },
+        FrameRange: frameRange = [],
+      } = shot;
+
+      // frames extracted within this shot segment
+      let numFramesExtracted = 0;
+      if (frameRange.length === 2) {
+        numFramesExtracted = frameRange[1] - frameRange[0] + 1
+      }
+
+      const hit = {
+        shotId,
+        tsta,
+        tend,
+        numFramesExtracted,
+        items: [],
+      };
+
+      for (const item of dataset) {
+        const { Timestamp: t } = item;
+        if (tsta <= t && t <= tend) {
+          hit.items.push(item);
+        }
+      }
+
+      if (hit.items.length > 0) {
+        aggregated.push(hit);
+      }
+    }
+
+    const timelines = [];
+    for (const item of aggregated) {
+      const { tsta, tend, numFramesExtracted, items } = item;
+      const item0 = items[0];
+      const timeItem = TimelineQ.createTypedItem(item0, {
+        name,
+      });
+
+      const timestamps = [];
+      const frameNums = [];
+      let durations = 0;
+      for (const item of items) {
+        const { Timestamp: t, FrameNumber: frameNum, ExtendFrameDuration: duration } = item;
+        timestamps.push(t);
+        frameNums.push(frameNum);
+        if (duration !== undefined) {
+          durations += duration;
+        }
+      }
+      timestamps.sort((a, b) => a - b);
+      frameNums.sort((a, b) => a - b);
+
+      const tmin = timestamps[0];
+      const tmax = timestamps[timestamps.length - 1] + durations;
+      const fmin = frameNums[0];
+      const fmax = frameNums[frameNums.length - 1];
+
+      // should we roll up to shot level?
+      console.log(`Shot [${toHHMMSS(tsta, true)} - ${toHHMMSS(tend, true)}](${tend - tsta}ms) : ${name} [${toHHMMSS(tmin, true)} - ${toHHMMSS(tmax, true)}][${fmin} - ${fmax}] (${tmax - tmin}ms) [${((tmax - tmin) / (tend - tsta)).toFixed(3)}] [${numFramesExtracted} frames extracted]`);
+
+      let begin = tmin;
+      let end = tmax;
+
+      // roll up to segment timestamp to cover the whole shot
+      // if timestamps more than 80%
+      if ((end - begin) / (tend - tsta) > 0.799) {
+        begin = tsta;
+        end = tend;
+      }
+
+      // extremely short segment
+      if ((end - begin) < 10) {
+        // pad to 800ms at the minimum
+        end = begin + 800;
+        // roll up to segment timestamp
+        if (numFramesExtracted < 2) {
+          begin = tsta;
+          end = tend;
+        }
+      }
+
+      timeItem.begin = begin;
+      timeItem.end = end;
+      timeItem.count = items.length;
+      timelines.push(timeItem);
+    }
+
+    return timelines;
   }
 }
 

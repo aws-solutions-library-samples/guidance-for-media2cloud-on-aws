@@ -6,7 +6,11 @@ const {
     Rekognition: {
       FaceMatch,
     },
-  }, FaceIndexer,
+  },
+  CommonUtils: {
+    download,
+  },
+  FaceIndexer,
 } = require('core-lib');
 const BaseCreateTrackIterator = require('../shared/baseCreateTrackIterator');
 
@@ -17,6 +21,10 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
 
   get [Symbol.toStringTag]() {
     return 'CreateFaceMatchTrackIterator';
+  }
+
+  useSegment() {
+    return true;
   }
 
   filterBy(name, data) {
@@ -32,26 +40,27 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
           return false;
         }
 
-        const faceId = face.FaceId;
-        let _name = face.Name;
-        if (!_name) {
-          _name = FaceIndexer.resolveExternalImageId(
-            face.ExternalImageId,
-            faceId
-          );
+        if (face.Name === name || face.FaceId === name) {
+          return true;
         }
 
-        return (name === _name);
+        const resolvedName = FaceIndexer.resolveExternalImageId(face.ExternalImageId, face.FaceId);
+
+        return (name === resolvedName);
       });
   }
 
   createTimeseriesData(name, datasets) {
     const timestamps = {};
     let desc;
+    let faceId;
     for (let i = 0; i < datasets.length; i++) {
       const dataset = datasets[i];
       if (!(dataset.FaceMatches || [])[0]) {
         continue;
+      }
+      if (!faceId) {
+        faceId = (dataset.FaceMatches[0].Face || {}).FaceId;
       }
       if (!desc) {
         desc = `Index ${dataset.Person.Index}`;
@@ -87,6 +96,7 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
     return {
       label: name,
       desc,
+      faceId,
       data: Object.keys(timestamps)
         .map(x => ({
           x: Number(x),
@@ -94,6 +104,48 @@ class CreateFaceMatchTrackIterator extends BaseCreateTrackIterator {
           details: timestamps[x],
         })),
     };
+  }
+
+  async getDataFile(bucket, key) {
+    const dataset = await download(bucket, key)
+      .then((res) =>
+        JSON.parse(res))
+      .catch((e) => {
+        console.error(e);
+        return undefined;
+      });
+
+    if (dataset === undefined) {
+      return dataset;
+    }
+
+    // amending the facematch results
+    const faceMap = {};
+    for (const { FaceMatches } of dataset.Persons) {
+      for (const face of FaceMatches) {
+        const { Face: { FaceId: faceId } } = face;
+        if (faceMap[faceId] === undefined) {
+          faceMap[faceId] = [];
+        }
+        faceMap[faceId].push(face);
+      }
+    }
+
+    const indexer = new FaceIndexer();
+    let faceIds = Object.keys(faceMap);
+    faceIds = await indexer.batchGet(faceIds);
+
+    for (const item of faceIds) {
+      const name = item.celeb;
+      if (!name) {
+        continue;
+      }
+      for (const face of faceMap[item.faceId]) {
+        face.Face.Name = name;
+      }
+    }
+
+    return dataset;
   }
 }
 

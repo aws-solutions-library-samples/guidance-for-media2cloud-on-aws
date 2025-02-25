@@ -12,7 +12,6 @@ const {
       Text,
       Moderation,
       Label,
-      ImageProperty,
       Segment,
     },
     AutoFaceIndexer,
@@ -92,7 +91,7 @@ class StatePrepareFrameDetectionIterators {
     ];
 
     // auto face indexer: index unknown faces
-    if (aiOptions[AutoFaceIndexer] && aiOptions[Celeb] && aiOptions[FaceMatch]) {
+    if (aiOptions[AutoFaceIndexer] && aiOptions[FaceMatch]) {
       iterators.push(this.makeAutoFaceIndexerParams(aiOptions, stateData, iteratorData));
     // combo analysis: run celeb and facematch detection based on face detection result
     } else if (aiOptions[Face] && (aiOptions[Celeb] || aiOptions[FaceMatch])) {
@@ -131,6 +130,20 @@ class StatePrepareFrameDetectionIterators {
       }
     }
 
+    // add faceapi output to iterators
+    const { data } = this.stateData;
+    if ((data.faceapi || {}).output !== undefined) {
+      const cloned = JSON.parse(JSON.stringify(data.faceapi));
+      for (const iterator of iterators) {
+        const {
+          data: { [Celeb]: celeb, [FaceMatch]: facematch },
+        } = iterator;
+        if (celeb !== undefined || facematch !== undefined) {
+          iterator.data.faceapi = cloned;
+        }
+      }
+    }
+
     this.emptyIterators();
     this.stateData.data[ITERATORS] = iterators;
 
@@ -146,11 +159,7 @@ class StatePrepareFrameDetectionIterators {
   }
 
   makeLabelParams(aiOptions, stateData, iteratorData) {
-    const params = this.makeParams(Label, aiOptions, stateData, iteratorData);
-    if (params && aiOptions[ImageProperty]) {
-      params.data[Label][ImageProperty] = aiOptions[ImageProperty];
-    }
-    return params;
+    return this.makeParams(Label, aiOptions, stateData, iteratorData);
   }
 
   makeModerationParams(aiOptions, stateData, iteratorData) {

@@ -37,6 +37,7 @@ const ENDPOINTS = {
   Theme: `${ApiEndpoint}/${ApiOps.Theme}`,
   Taxonomy: `${ApiEndpoint}/${ApiOps.Taxonomy}`,
   Custom: `${ApiEndpoint}/${ApiOps.Custom}`,
+  Workflow: `${ApiEndpoint}/${ApiOps.Execution}`,
 };
 
 let GRAPH_ENDPOINT;
@@ -482,6 +483,15 @@ export default class ApiHelper {
       _query,
       body,
       headers
+    );
+  }
+
+  static async getWorkflowStatus(executionArn) {
+    const query = { executionArn };
+    return _authHttpRequest.send(
+      'GET',
+      ENDPOINTS.Workflow,
+      query
     );
   }
 }

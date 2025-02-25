@@ -41,14 +41,14 @@ class StatePrepareIterators extends BaseState {
     }
 
     // search relevant docs
-    let faceIds = this.updated
-      .map((item) =>
-        item.faceId);
-
-    faceIds = this.deleted
-      .map((item) =>
-        item.faceId)
-      .concat(faceIds);
+    let faceIds = [];
+    for (const { faceId } of this.updated) {
+      faceIds.push(faceId);
+    }
+    for (const { faceId } of this.deleted) {
+      faceIds.push(faceId);
+    }
+    faceIds = [...new Set(faceIds)];
 
     // search for relevant uuids that contain these faceIds
     const uuids = await this.searchDocumentsByFaceIds(faceIds)
@@ -56,12 +56,15 @@ class StatePrepareIterators extends BaseState {
         res.filter((uuid) =>
           uuid !== prioritizedUuid));
 
-    iterators = uuids
-      .map((uuid) => ({
-        uuid,
+    // iterator to process up to 100 uuids
+    while (uuids.length > 0) {
+      const batch = uuids.splice(0, 100);
+      iterators.push({
+        uuids: batch,
         updated: this.updated,
         deleted: this.deleted,
-      }));
+      });
+    }
 
     console.log('response', {
       ...this.event,

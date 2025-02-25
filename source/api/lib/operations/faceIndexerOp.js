@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-const PATH = require('node:path');
+const {
+  parse,
+  join,
+} = require('node:path');
 const {
   RekognitionClient,
   ListFacesCommand,
@@ -66,7 +69,7 @@ async function _storeFaceS3(
     name,
     image
   ).then(() =>
-    PATH.join(prefix, name));
+    join(prefix, name));
 }
 
 async function _runCommand(command) {
@@ -127,7 +130,7 @@ class FaceIndexerOp extends BaseOp {
       if (subop === SUBOP_UPDATE) {
         promise = this.onUpdateFaceTaggings();
       } else if (subop === SUBOP_INDEX) {
-        promise = this.onIndexFace();
+        promise = this.onIndexFaces();
       } else if (subop === SUBOP_IMPORT) {
         promise = this.onImportFaces();
       }
@@ -252,7 +255,32 @@ class FaceIndexerOp extends BaseOp {
         (res || [])[0]);
   }
 
-  async onIndexFace() {
+  async onIndexFaces() {
+    const { blob, bucket, key } = this.request.body || {};
+
+    // start face indexing state machine
+    if (bucket && key) {
+      const parsed = parse(key);
+      if (parsed.ext === '.json') {
+        const params = {
+          bucket,
+          prefix: parsed.dir,
+          output: parsed.base,
+        };
+
+        return await this.startFaceIndexingJob(params);
+      }
+    }
+
+    // index face from blob (single image)
+    if (blob !== undefined) {
+      return await this.onIndexFaceFromBlob();
+    }
+
+    throw new M2CException('invalid face indexing request');
+  }
+
+  async onIndexFaceFromBlob() {
     const {
       uuid,
       timestamp,
@@ -302,7 +330,7 @@ class FaceIndexerOp extends BaseOp {
 
     const faceId = indexed.FaceRecords[0].Face.FaceId;
     const userId = indexed.FaceRecords[0].Face.UserId;
-    const prefix = PATH.join(AutoFaceIndexer, collectionId);
+    const prefix = join(AutoFaceIndexer, collectionId);
 
     const key = await _storeFaceS3(
       faceId,
@@ -328,7 +356,7 @@ class FaceIndexerOp extends BaseOp {
   async onUpdateFaceTaggings() {
     const prioritizedUuid = (this.request.queryString || {}).uuid;
     if (prioritizedUuid !== undefined
-    && !CommonUtils.validateUuid(prioritizedUuid)) {
+      && !CommonUtils.validateUuid(prioritizedUuid)) {
       throw new M2CException('invalid uuid');
     }
 
@@ -347,6 +375,7 @@ class FaceIndexerOp extends BaseOp {
       .map((item) => ({
         faceId: item.faceId,
         celeb: item.celeb,
+        updateFrom: item.updateFrom,
       }));
 
     if ((deleted.length + updated.length) > 0) {
@@ -364,6 +393,7 @@ class FaceIndexerOp extends BaseOp {
   async startUpdateJob(changeset, prioritizedUuid) {
     const params = {
       input: {
+        action: SUBOP_UPDATE,
         ...changeset,
         prioritizedUuid,
       },
@@ -379,6 +409,18 @@ class FaceIndexerOp extends BaseOp {
         collectionId,
         token,
       },
+    };
+
+    return this.startExecution(params);
+  }
+
+  async startFaceIndexingJob(data) {
+    const params = {
+      input: {
+        action: SUBOP_INDEX,
+        ...data,
+      },
+      data: {},
     };
 
     return this.startExecution(params);

@@ -22,8 +22,19 @@ const {
   getSignedUrl,
 } = window.AWSv3;
 
-const REGION = SolutionManifest.Region;
-const EXPECTED_BUCKET_OWNER = SolutionManifest.S3.ExpectedBucketOwner;
+const {
+  Region,
+  S3: {
+    ExpectedBucketOwner,
+  },
+  Ingest: {
+    Bucket: IngestBucket,
+  },
+  Proxy: {
+    Bucket: ProxyBucket,
+  },
+} = SolutionManifest;
+
 const EXPIRES_IN = 3600 * 2;
 const MAX_CONCURRENT_UPLOAD = 4;
 const MULTIPART_SIZE = 8 * 1024 * 1024;
@@ -32,7 +43,7 @@ let _s3Client;
 
 function updateClient(userSession) {
   _s3Client = new S3Client({
-    region: REGION,
+    region: Region,
     credentials: userSession.fromCredentials(),
     // Workaround for data integrity check that fails the multipart upload:
     // https://github.com/aws/aws-sdk-js-v3/issues/6810
@@ -91,7 +102,7 @@ class S3Utils {
     const command = new HeadObjectCommand({
       Bucket: bucket,
       Key: key,
-      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+      ExpectedBucketOwner,
     });
 
     return _s3Client.send(command)
@@ -108,7 +119,7 @@ class S3Utils {
     const command = new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+      ExpectedBucketOwner,
     });
 
     return _s3Client.send(command)
@@ -131,7 +142,7 @@ class S3Utils {
         Prefix: prefix,
         MaxKeys: 100,
         ContinuationToken: (response || {}).NextContinuationToken,
-        ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+        ExpectedBucketOwner,
       });
 
       response = await _s3Client.send(command);
@@ -149,7 +160,7 @@ class S3Utils {
     const command = new DeleteObjectCommand({
       Bucket: bucket,
       Key: key,
-      ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+      ExpectedBucketOwner,
     });
 
     return _s3Client.send(command)
@@ -167,7 +178,7 @@ class S3Utils {
       client: _s3Client,
       params: {
         ...params,
-        ExpectedBucketOwner: EXPECTED_BUCKET_OWNER,
+        ExpectedBucketOwner,
       },
       queueSize: MAX_CONCURRENT_UPLOAD,
       partSize: MULTIPART_SIZE,
@@ -202,7 +213,18 @@ const GetS3Utils = () => {
   return _singleton;
 };
 
+const GetBucketRegion = () =>
+  Region;
+
+const GetProxyBucket = () =>
+  ProxyBucket;
+
+const GetIngestBucket = () =>
+  IngestBucket;
+
 export {
-  REGION,
+  GetBucketRegion,
+  GetProxyBucket,
+  GetIngestBucket,
   GetS3Utils,
 };

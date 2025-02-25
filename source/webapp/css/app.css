@@ -1637,3 +1637,23 @@ div[data-media-type="video"] .cropper-container {
 .mr-4rem {
   margin-right: 4rem!important;
 }
+
+.bbox {
+  position: absolute;
+  background-color: #28a7454c;
+  border-color: #28a745;
+  border-style: solid;
+  border-width: 0.2rem;
+  opacity: 0.5;
+}
+
+.inline-text-sm {
+  display: inline-block;
+  width: 100%;
+  height: calc(1.5em + .5rem + 2px);
+  padding: .25rem .5rem;
+  font-size: .875rem;
+  line-height: 1.5;
+  /* text-align: center !important; */
+  vertical-align: middle;
+}

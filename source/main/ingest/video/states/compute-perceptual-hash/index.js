@@ -11,8 +11,12 @@ const {
   StateData,
   FrameCaptureModeHelper,
   TranscodeError,
+  JimpHelper: {
+    imageFromS3,
+    computeHash,
+    computeLaplacianVariance,
+  },
 } = require('core-lib');
-const HashHelper = require('./hashHelper');
 
 const WORKER_JS = 'worker.js';
 
@@ -218,11 +222,11 @@ class StateComputePerceptualHash {
       let hash = 'undefined';
       let laplacian = 0;
 
-      const image = await HashHelper.loadImage(bucket, key)
+      const image = await imageFromS3(bucket, key)
         .catch((e) => {
           console.error(
             'ERR:',
-            'HashHelper.loadImage:',
+            'JimpHelper:imageFromS3',
             e.message
           );
           return undefined;
@@ -233,8 +237,8 @@ class StateComputePerceptualHash {
           hash,
           laplacian,
         ] = await Promise.all([
-          HashHelper.computeHash(image),
-          HashHelper.computeLaplacianVariance(image),
+          computeHash(image),
+          computeLaplacianVariance(image),
         ]);
       }
 

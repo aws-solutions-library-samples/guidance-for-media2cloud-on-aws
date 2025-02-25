@@ -216,7 +216,7 @@ class RekognitionOp extends BaseOp {
 
     return _runCommand(command)
       .then((res) => ({
-        statusCode: res.$metadata.httpStatusCode,
+        statusCode: res.StatusCode,
       }))
       .catch((e) => ({
         errorCode: e.name,

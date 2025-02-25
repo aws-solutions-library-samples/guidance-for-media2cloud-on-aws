@@ -154,6 +154,27 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
     });
   }
 
+  static async loadImage(url) {
+    let blob = await fetch(url);
+    blob = await blob.blob();
+
+    blob = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onloadend = () => {
+        resolve(reader.result);
+      };
+
+      reader.onerror = () => {
+        reject(new Error('failed to load image'));
+      }
+
+      reader.readAsDataURL(blob);
+    });
+
+    return blob;
+  }
+
   static validateUuid(uuid = '') {
     return REGEX_UUID.test(uuid);
   }

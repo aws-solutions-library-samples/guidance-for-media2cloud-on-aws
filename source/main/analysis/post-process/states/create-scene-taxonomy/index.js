@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 const FS = require('node:fs');
 const PATH = require('node:path');
-const Jimp = require('jimp');
 const {
   BedrockRuntimeClient,
   InvokeModelCommand,
@@ -29,6 +28,11 @@ const {
   xraysdkHelper,
   retryStrategyHelper,
   WebVttHelper,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromBuffer,
+    imageFromScratch,
+  },
 } = require('core-lib');
 const BaseState = require('../shared/base');
 
@@ -529,7 +533,7 @@ async function _createSceneTaxonomy(
     const parsed = PATH.parse(name);
 
     for (let i = 0; i < images.length; i += 1) {
-      const jpeg = await images[i].getBufferAsync(Jimp.MIME_JPEG);
+      const jpeg = await images[i].getBufferAsync(MIME_JPEG);
       const file = PATH.join(parsed.dir, `${parsed.name}-${i}${parsed.ext}`);
       FS.writeFileSync(file, jpeg);
     }
@@ -573,15 +577,7 @@ async function _tileImage(bucket, prefix, frames) {
   const imgW = tileW * nCol;
   const imgH = tileH * nRow;
 
-  const combined = await new Promise((resolve, reject) => {
-    const _ = new Jimp(imgW, imgH, 0xffffffff, (e, img) => {
-      if (e) {
-        reject(e);
-      } else {
-        resolve(img);
-      }
-    });
-  });
+  const combined = await imageFromScratch(imgW, imgH);
 
   for (let row = 0; row < nRow && frames.length > 0; row += 1) {
     for (let col = 0; col < nCol && frames.length > 0; col += 1) {
@@ -593,21 +589,14 @@ async function _tileImage(bucket, prefix, frames) {
           res.Body.transformToByteArray()));
       buf = Buffer.from(buf);
 
-      const tile = await new Promise((resolve, reject) => {
-        Jimp.read(buf)
-          .then((img) => {
-            const factor = tileW / img.bitmap.width;
-            const scaled = img.scale(factor);
+      let tile = await imageFromBuffer(buf);
 
-            const w = scaled.bitmap.width - (BORDER_SIZE * 2);
-            const h = scaled.bitmap.height - (BORDER_SIZE * 2);
-            const cropped = scaled.crop(BORDER_SIZE, BORDER_SIZE, w, h);
-            resolve(cropped);
-          })
-          .catch((e) => {
-            reject(e);
-          });
-      });
+      const factor = tileW / tile.bitmap.width;
+      tile = tile.scale(factor);
+
+      const w = tile.bitmap.width - (BORDER_SIZE * 2);
+      const h = tile.bitmap.height - (BORDER_SIZE * 2);
+      tile = tile.crop(BORDER_SIZE, BORDER_SIZE, w, h);
 
       const l = col * tileW + BORDER_SIZE;
       const t = row * tileH + BORDER_SIZE;
@@ -646,7 +635,7 @@ async function _inference(
   console.log(`Number of tiled images = ${images.length}`);
 
   for (let i = 0; i < images.length; i += 1) {
-    const image = await images[i].getBase64Async(Jimp.MIME_JPEG);
+    const image = await images[i].getBase64Async(MIME_JPEG);
     imageContents.push({
       type: 'image',
       source: {

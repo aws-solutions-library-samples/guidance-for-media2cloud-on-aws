@@ -24,6 +24,7 @@ const DEFAULT_FILTER_SETTINGS = {
 };
 
 let FilterSettings = DEFAULT_FILTER_SETTINGS;
+const SegmentTypes = ['SHOT'];
 
 class StartSegmentIterator extends BaseStartDetectionIterator {
   constructor(stateData) {
@@ -39,10 +40,7 @@ class StartSegmentIterator extends BaseStartDetectionIterator {
     _setFilterSettings((data[Segment] || {}).filterSettings);
 
     this.$paramOptions = {
-      SegmentTypes: [
-        'TECHNICAL_CUE',
-        'SHOT',
-      ],
+      SegmentTypes,
       Filters: {
         ShotFilter: {
           MinSegmentConfidence: minConfidence,
@@ -65,7 +63,12 @@ function _setFilterSettings(userFilterSettings = {}) {
     const {
       maxPixelThreshold = 0.15,
       minCoveragePercentage = 98,
+      enableTechnicalCue = true,
     } = userFilterSettings;
+
+    if (enableTechnicalCue && !SegmentTypes.includes('TECHNICAL_CUE')) {
+      SegmentTypes.push('TECHNICAL_CUE');
+    }
 
     let _maxPixelThreshold = Number(maxPixelThreshold);
     let _minCoveragePercentage = Number(minCoveragePercentage);

@@ -13,7 +13,7 @@ class StateMessage {
     this.$uuid = params.uuid;
     this.$stateMachine = params.stateMachine;
     this.$operation = params.operation;
-    this.$status = params.status;
+    this.$status = params.status || Statuses.NotStarted;
     this.$progress = Number.parseInt(params.progress || 0, 10);
     this.$errorMessage = params.errorMessage;
   }

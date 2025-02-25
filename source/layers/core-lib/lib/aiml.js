@@ -81,6 +81,7 @@ const ADVANCED_FEATURES = {
     // segment: {
     //   maxPixelThreshold,
     //   minCoveragePercentage,
+    //   enableTechnicalCue, // default to true
     // },
     // autofaceindexer: {
     //   minFaceW,

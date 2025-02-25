@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import SolutionManifest from '/solution-manifest.js';
 import Localization from '../shared/localization.js';
 import VideoTab from './collection/videoTab.js';
 import PhotoTab from './collection/photoTab.js';
@@ -8,6 +9,10 @@ import PodcastTab from './collection/podcastTab.js';
 import DocumentTab from './collection/documentTab.js';
 import SearchTab from './collection/searchTab.js';
 import BaseTab from '../shared/baseTab.js';
+
+const {
+  SearchEngineVersion,
+} = SolutionManifest;
 
 const {
   Messages: {
@@ -45,6 +50,7 @@ const ORDERED_CONTROLLERS = [
   SEARCH_TAB,
   RECOMMEND_TAB,
 ];
+const HASSEARCHENGINE = (SearchEngineVersion === undefined || SearchEngineVersion.length > 0);
 
 export default class CollectionTab extends BaseTab {
   constructor() {
@@ -61,8 +67,10 @@ export default class CollectionTab extends BaseTab {
       [PHOTO_TAB]: new PhotoTab(),
       [PODCAST_TAB]: new PodcastTab(),
       [DOCUMENT_TAB]: new DocumentTab(),
-      [SEARCH_TAB]: new SearchTab(),
     };
+    if (HASSEARCHENGINE) {
+      this.$tabControllers[SEARCH_TAB] = new SearchTab();
+    }
   }
 
   get ids() {

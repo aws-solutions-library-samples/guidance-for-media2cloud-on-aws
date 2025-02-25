@@ -87,7 +87,7 @@ class CreateSegmentTrackIterator extends BaseCreateTrackIterator {
     return this.setCompleted();
   }
 
-  async processTrack(name, dataset) {
+  async processTrack(name, dataset, shotSegments) {
     const data = this.stateData.data[Segment];
     const bucket = data.bucket;
     const title = PATH.parse(data.key).name
