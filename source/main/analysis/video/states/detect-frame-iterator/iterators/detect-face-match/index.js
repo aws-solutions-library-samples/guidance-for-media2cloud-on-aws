@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const {
+  join,
+} = require('node:path');
+const {
   SearchFacesByImageCommand,
 } = require('@aws-sdk/client-rekognition');
-const PATH = require('path');
-const JIMP = require('jimp');
 const {
   AnalysisTypes: {
     Rekognition: {
@@ -13,31 +14,36 @@ const {
     },
   },
   CommonUtils,
-  FrameCaptureModeHelper,
+  FrameCaptureModeHelper: {
+    computeFrameNumAndTimestamp,
+  },
   FaceIndexer,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromS3,
+  }
 } = require('core-lib');
 const BaseDetectFrameIterator = require('../shared/baseDetectFrameIterator');
 
-/**
- * WORKAROUND: JIMP 0.16.1 (0.9.6 doesn't have the issue.)
- * jpeg-js decoder throws an error when maxMemoryUsageInMB > 512
- * Reference: https://github.com/oliver-moran/jimp/issues/915
- */
-const JpegDecoder = JIMP.decoders['image/jpeg'];
-JIMP.decoders['image/jpeg'] = (data) =>
-  JpegDecoder(data, {
-    maxResolutionInMP: 200,
-    maxMemoryUsageInMB: 2048,
-  });
+const {
+  makeFrameCaptureFileName
+} = BaseDetectFrameIterator;
+const {
+  faceIdToNumber,
+  resolveExternalImageId,
+} = FaceIndexer;
+
+const DEBUG_LOCAL = (process.env.AWS_LAMBDA_FUNCTION_NAME === undefined);
 
 const NAMED_KEY = 'Persons';
 const FACEMATCH_QUALITY = 'LOW';
-const FACEMATCH_MIN_WIDTH = 60;
-const FACEMATCH_MIN_HEIGHT = 60;
-const MAX_PITCH = 50;
-const MAX_ROLL = 50;
-const MAX_YAW = 50;
+const FACEMATCH_MIN_WIDTH = 40;
+const FACEMATCH_MIN_HEIGHT = 40;
+const MAX_PITCH = 90;
+const MAX_ROLL = 90;
+const MAX_YAW = 90;
 const MAX_FACES_PER_IMAGE = 5;
+const ENABLE_QUALITY_CHECK = false;
 
 class DetectFaceMatchIterator extends BaseDetectFrameIterator {
   constructor(stateData) {
@@ -132,7 +138,7 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
       return undefined;
     }
 
-    const index = FaceIndexer.faceIdToNumber(bestMatched.Face.FaceId);
+    const index = faceIdToNumber(bestMatched.Face.FaceId);
     bestMatched.Similarity = Number(bestMatched.Similarity.toFixed(2));
 
     const matchedFaces = [
@@ -156,70 +162,46 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
   }
 
   getUniqueNames(dataset) {
-    return [
-      ...new Set(dataset
-        .map((x) => {
-          const face = x.FaceMatches[0].Face;
-          const faceId = face.FaceId;
+    const faceIdMap = {};
+    for (const record of dataset) {
+      const { Face: face } = record.FaceMatches[0];
+      const {
+        Name: name,
+        FaceId: faceId,
+        ExternalImageId: externalImageId,
+      } = face;
 
-          let name = face.Name;
-          if (!name) {
-            name = FaceIndexer.resolveExternalImageId(
-              face.ExternalImageId,
-              faceId
-            );
-          }
-          return name;
-        })),
-    ];
+      if (faceIdMap[faceId]) {
+        // update the Name field if it is an actual face (not faceId)
+        if (!name && faceIdMap[faceId] !== faceId) {
+          face.Name = faceIdMap[faceId];
+        }
+      } else {
+        faceIdMap[faceId] = name || resolveExternalImageId(externalImageId, faceId);
+      }
+    }
+
+    const uniqueNames = Object.values(faceIdMap);
+    return uniqueNames;
   }
 
   async processFrame(
     bucket,
     prefix,
     idx,
-    faces
+    faces = []
   ) {
-    this.recognizedFaces = [];
-    this.cachedImage = undefined;
+    const {
+      data: { [this.subCategory]: data },
+    } = this.stateData;
+    const { frameCapture, framerate } = data;
 
-    if (!faces || faces.length === 0) {
-      return super.processFrame(
-        bucket,
-        prefix,
-        idx
-      );
-    }
+    const [frameNo, timestamp] = computeFrameNumAndTimestamp(idx, framerate, frameCapture);
 
-    const data = this.stateData.data[this.subCategory];
-    const frameCapture = data.frameCapture;
-    const [
-      frameNo,
-      timestamp,
-    ] = FrameCaptureModeHelper.computeFrameNumAndTimestamp(
-      idx,
-      data.framerate,
-      frameCapture
-    );
+    const name = makeFrameCaptureFileName(idx);
+    const frame = { frameNo, timestamp, name };
 
-    const name = BaseDetectFrameIterator.makeFrameCaptureFileName(idx);
-    // eslint-disable-next-line
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(frameCapture.prefix, name);
-
-    const dataset = await this.matchFaces(
-      data.bucket,
-      key,
-      frameNo,
-      timestamp,
-      faces
-    );
-
-    if (dataset) {
-      this.dataset = this.dataset.concat(dataset);
-    }
-
-    return dataset;
+    return await this.processFrame2(bucket, prefix, frame, faces);
   }
 
   async matchFaces(
@@ -230,66 +212,72 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     faces
   ) {
     // if fail to load image, fall back to default api call
-    const image = await this.loadImage(bucket, key);
+    const image = await imageFromS3(bucket, key);
     if (!image) {
-      return this.detectFrame(
-        bucket,
-        key,
-        frameNo,
-        timestamp
-      );
+      return undefined;
     }
 
     // cache the image for other process to use
     this.cachedImage = image;
 
-    // crop faces from image and recursively runs search face apis
-    const imgW = image.bitmap.width;
-    const imgH = image.bitmap.height;
+    let filtered = faces.slice(0);
+    if (ENABLE_QUALITY_CHECK) {
+      filtered = [];
 
-    let filtered = [];
-    faces.forEach((face, idx) => {
-      const w = Math.round(imgW * face.Face.BoundingBox.Width);
-      const h = Math.round(imgH * face.Face.BoundingBox.Height);
-      if (w < FACEMATCH_MIN_WIDTH || h < FACEMATCH_MIN_HEIGHT) {
-        return;
-      }
+      const imgW = image.bitmap.width;
+      const imgH = image.bitmap.height;
+      for (const face of faces) {
+        let {
+          Face: {
+            BoundingBox: { Width: w, Height: h },
+            Pose: { Roll: roll, Pitch: pitch, Yaw: yaw },
+          },
+        } = face;
+        w = Math.round(imgW * w);
+        h = Math.round(imgH * h);
 
-      // if pose is defined, check the Yaw, Pitch, Roll
-      const pose = face.Face.Pose;
-      if (Math.abs(pose.Pitch) > MAX_PITCH) {
-        return;
-      }
-      if (Math.abs(pose.Roll) > MAX_ROLL) {
-        return;
-      }
-      if (Math.abs(pose.Yaw) > MAX_YAW) {
-        return;
-      }
+        if (w < FACEMATCH_MIN_WIDTH || h < FACEMATCH_MIN_HEIGHT) {
+          continue;
+        }
 
-      filtered.push(face);
-    });
+        // if pose is defined, check the Yaw, Pitch, Roll
+        pitch = Math.abs(pitch);
+        if (pitch > MAX_PITCH) {
+          continue;
+        }
 
-    if (filtered.length > MAX_FACES_PER_IMAGE) {
-      filtered = filtered
-        .sort((a, b) =>
-          (b.Face.BoundingBox.Width * b.Face.BoundingBox.Height) -
-          (a.Face.BoundingBox.Width * a.Face.BoundingBox.Height))
-        .slice(0, MAX_FACES_PER_IMAGE);
+        roll = Math.abs(roll);
+        if (roll > MAX_ROLL) {
+          continue;
+        }
+
+        yaw = Math.abs(yaw);
+        if (yaw > MAX_YAW) {
+          continue;
+        }
+
+        filtered.push(face);
+      }
     }
 
-    const facematches = await Promise.all(filtered
-      .map((face) =>
-        this.cropAndMatchFace(
-          image,
-          face.Face.BoundingBox,
-          frameNo,
-          timestamp
-        )));
+    // crop faces from image and recursively runs search face apis
+    if (filtered.length > MAX_FACES_PER_IMAGE) {
+      filtered.sort((a, b) => {
+        const { Face: { BoundingBox: { Width: aW, Height: aH } } } = a;
+        const { Face: { BoundingBox: { Width: bW, Height: bH } } } = b;
+        return (bW * bH) - (aW * aH);
+      });
+      filtered = filtered.slice(0, MAX_FACES_PER_IMAGE);
+    }
 
-    return facematches
-      .filter((x) =>
-        x)
+    let promises = [];
+    for (const { Face: { BoundingBox: bbox } } of filtered) {
+      promises.push(this.cropAndMatchFace(image, bbox, frameNo, timestamp));
+    }
+    promises = await Promise.all(promises);
+
+    return promises
+      .filter((x) => x)
       .reduce((a0, c0) =>
         a0.concat(c0), []);
   }
@@ -303,22 +291,48 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     const imgW = image.bitmap.width;
     const imgH = image.bitmap.height;
 
-    // ensure coord not out of bound
-    let w = Math.round(imgW * box.Width);
-    let h = Math.round(imgH * box.Height);
-    w = (Math.min(Math.max(w, 0), imgW) >> 1) << 1;
-    h = (Math.min(Math.max(h, 0), imgH) >> 1) << 1;
+    let { Top: t, Left: l, Width: w, Height: h } = box;
+    l = Math.round(l * imgW);
+    t = Math.round(t * imgH);
+    w = (Math.round(w * imgW) >> 1) << 1;
+    h = (Math.round(h * imgH) >> 1) << 1;
 
-    let l = Math.round(imgW * box.Left);
-    let t = Math.round(imgH * box.Top);
-    l = Math.min(Math.max(l, 0), imgW - w);
-    t = Math.min(Math.max(t, 0), imgH - h);
+    // scale the bounding box
+    const scaleW = Math.min(imgW, (Math.round(w * 1.5) >> 1) << 1);
+    const scaleH = Math.min(imgH, (Math.round(h * 1.5) >> 1) << 1);
+
+    l = Math.max(0, l - Math.ceil((scaleW - w) / 2));
+    t = Math.max(0, t - Math.ceil((scaleH - h) / 2));
+    w = scaleW;
+    h = scaleH;
+
+    // check out of bound
+    if ((l + w) > imgW) {
+      w = imgW - l;
+    }
+    if ((t + h) > imgH) {
+      h = imgH - t;
+    }
 
     // crop face
     let cropped = image
       .clone()
       .crop(l, t, w, h);
-    cropped = await cropped.getBufferAsync(JIMP.MIME_JPEG);
+
+    if (DEBUG_LOCAL) {
+      const origW = Math.round(box.Width * imgW);
+      const origH = Math.round(box.Height * imgH);
+      const name = `${frameNo}-${origW}x${origH}.jpg`;
+      let prefix = '_facematch';
+      if (origW < 40 || origH < 40) {
+        prefix = join(prefix, 'supersmallfaces');
+      } else if (origW < 48 || origH < 48) {
+        prefix = join(prefix, 'smallfaces');
+      }
+      await cropped.writeAsync(join(prefix, name));
+    }
+
+    cropped = await cropped.getBufferAsync(MIME_JPEG);
 
     const params = {
       Image: {
@@ -336,60 +350,49 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     );
   }
 
-  async loadImage(bucket, key) {
-    const signed = await CommonUtils.getSignedUrl({
-      Bucket: bucket,
-      Key: key,
-    });
-
-    return new Promise((resolve, reject) => {
-      JIMP.read(signed, (e, img) => {
-        if (e) {
-          console.error(e);
-          reject(e);
-          return;
-        }
-        resolve(img);
-      });
-    });
-  }
-
   async processFrame2(
     bucket,
     prefix,
     frame,
-    faces
+    faces = []
   ) {
+    const { frameNo, timestamp, name } = frame;
+
     this.recognizedFaces = [];
     this.cachedImage = undefined;
 
-    if (faces === undefined) {
-      return super.processFrame2(
-        bucket,
-        prefix,
-        frame
-      );
+    let facesInFrame = faces;
+    if (facesInFrame.length === 0) {
+      const item = (this.faceapiMap || {})[String(frameNo)];
+      if (item !== undefined) {
+        facesInFrame = item.faces;
+      }
     }
 
-    if (faces.length === 0) {
+    if (facesInFrame.length === 0) {
       return undefined;
     }
 
-    // eslint-disable-next-line
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-    const key = PATH.join(prefix, frame.name);
-
+    const key = join(prefix, name);
     const dataset = await this.matchFaces(
       bucket,
       key,
-      frame.frameNo,
-      frame.timestamp,
-      faces
+      frameNo,
+      timestamp,
+      facesInFrame
     );
 
-    if (dataset) {
-      this.dataset = this.dataset.concat(dataset);
+    if (dataset === undefined) {
+      return dataset;
     }
+
+    if (frame.extendFrameDuration !== undefined) {
+      for (const item of dataset) {
+        item.ExtendFrameDuration = frame.extendFrameDuration;
+      }
+    }
+    this.dataset = this.dataset.concat(dataset);
+
     return dataset;
   }
 
@@ -400,51 +403,32 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
     boundingbox
   ) {
     if (!data
-    || !data.SearchedFaceConfidence
-    || !data.FaceMatches
-    || !data.FaceMatches.length
+      || !data.SearchedFaceConfidence
+      || !data.FaceMatches
+      || !data.FaceMatches.length
     ) {
       return undefined;
     }
 
     // lookup faceId <-> celeb
-    const facesToGet = [];
+    const faceMap = {};
+    for (const facematch of data.FaceMatches) {
+      const { Face: { FaceId: faceId } } = facematch;
+      if (faceMap[faceId] === undefined) {
+        faceMap[faceId] = [];
+      }
+      faceMap[faceId].push(facematch);
+    }
 
-    data.FaceMatches
-      .forEach((x) => {
-        const face = x.Face;
-        const found = this.faceIndexer.lookup(face.FaceId);
-        if (found === undefined) {
-          facesToGet.push(face);
-        } else if (found && found.celeb) {
-          face.Name = found.celeb;
+    const faceIds = Object.keys(faceMap);
+    if (faceIds.length > 0) {
+      await this.faceIndexer.batchGet(faceIds);
+      for (const faceId of faceIds) {
+        const found = this.faceIndexer.lookup(faceId);
+        for (const { Face: face } of faceMap[faceId]) {
+          face.Name = (found || {}).celeb || resolveExternalImageId(face.ExternalImageId, false);
         }
-      });
-
-    if (facesToGet.length > 0) {
-      const faceIds = facesToGet
-        .map((x) =>
-          x.FaceId);
-
-      await this.faceIndexer.batchGet(faceIds)
-        .then((res) => {
-          // try look up again!
-          if (res.length > 0) {
-            facesToGet.forEach((face) => {
-              const found = this.faceIndexer.lookup(face.FaceId);
-              if (found && found.celeb) {
-                face.Name = found.celeb;
-              } else {
-                // do not return external image id if it can't resolve the name!
-                face.Name = FaceIndexer.resolveExternalImageId(
-                  face.ExternalImageId,
-                  false
-                );
-              }
-            });
-          }
-          return res;
-        });
+      }
     }
 
     return this.parseFaceMatchResult(
@@ -453,6 +437,24 @@ class DetectFaceMatchIterator extends BaseDetectFrameIterator {
       timestamp,
       boundingbox
     );
+  }
+
+  skipFrame(frame = {}) {
+    let skipped = super.skipFrame(frame);
+    if (skipped) {
+      return skipped;
+    }
+
+    // skip if there is no face in the image
+    if (this.faceapiMap !== undefined) {
+      const { frameNo } = frame;
+      const { faces = [] } = this.faceapiMap[String(frameNo)] || {};
+      if (faces.length === 0) {
+        skipped = true;
+      }
+    }
+
+    return skipped;
   }
 }
 

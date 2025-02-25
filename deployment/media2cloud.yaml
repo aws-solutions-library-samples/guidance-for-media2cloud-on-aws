@@ -58,6 +58,9 @@ Mappings:
         ZeroshotObject:
             Repo: "%%ZEROSHOT_OBJECT_REPO%%"
             Version: "%%ZEROSHOT_OBJECT_VER%%"
+        FaceApi:
+            Repo: "%%FACEAPI_REPO%%"
+            Version: "%%FACEAPI_VER%%"
     AnthropicClaude:
         Sonnet:
             Name: Anthropic Claude 3 Sonnet
@@ -85,6 +88,7 @@ Parameters:
             - Suitable for Production Workload (t3.medium=3,m5.large=2,gp2=20,az=2)
             - Recommended for Production Workload (t3.medium=3,m5.large=4,gp2=20,az=2)
             - Recommended for Large Production Workload (t3.medium=3,m5.large=6,gp2=40,az=3)
+            - Disable Amazon OpenSearch Service
     # AI/ML Settings
     DefaultAIOptions:
         Type: String
@@ -262,9 +266,17 @@ Conditions:
             - Template
             - SingleRegion
         - "true"
+    bDisableOpenSearch: !Equals
+        - !Ref OpenSearchCluster
+        - Disable Amazon OpenSearch Service
     bOpenSearchServerless: !Equals
         - !Ref OpenSearchCluster
         - Use Amazon OpenSearch Serverless
+    bOpenSearchCluster: !And
+        - !Not
+            - !Condition bDisableOpenSearch
+        - !Not
+            - !Condition bOpenSearchServerless
     bEnableKnowledgeGraph: !Equals
         - !Ref EnableKnowledgeGraph
         - "YES"
@@ -542,8 +554,7 @@ Resources:
                 CustomResourcesRoleArn: !GetAtt CustomResourcesRole.Arn
                 UserDefinedIngestBucket: !Ref UserDefinedIngestBucket
                 OpenSearchDedicatedMaster: !If
-                    - bOpenSearchServerless
-                    - skip=1
+                    - bOpenSearchCluster
                     - !Select
                         - 0
                         - !Split
@@ -557,9 +568,9 @@ Resources:
                                         - !Split
                                             - "("
                                             - !Ref OpenSearchCluster
-                OpenSearchInstance: !If
-                    - bOpenSearchServerless
                     - skip=1
+                OpenSearchInstance: !If
+                    - bOpenSearchCluster
                     - !Select
                         - 1
                         - !Split
@@ -573,9 +584,9 @@ Resources:
                                         - !Split
                                             - "("
                                             - !Ref OpenSearchCluster
-                OpenSearchVolume: !If
-                    - bOpenSearchServerless
                     - skip=1
+                OpenSearchVolume: !If
+                    - bOpenSearchCluster
                     - !Select
                         - 2
                         - !Split
@@ -589,9 +600,9 @@ Resources:
                                         - !Split
                                             - "("
                                             - !Ref OpenSearchCluster
-                OpenSearchAvailabilityZone: !If
-                    - bOpenSearchServerless
                     - skip=1
+                OpenSearchAvailabilityZone: !If
+                    - bOpenSearchCluster
                     - !Select
                         - 3
                         - !Split
@@ -605,6 +616,7 @@ Resources:
                                         - !Split
                                             - "("
                                             - !Ref OpenSearchCluster
+                    - skip=1
                 OpenSearchServerless: !If
                     - bOpenSearchServerless
                     - true
@@ -929,6 +941,7 @@ Resources:
                         - AnthropicClaude
                         - Haiku
                         - ModelVersion
+                FaceApiImageUri: !GetAtt CodeBuildStack.Outputs.FaceApiImageUri
 
     ################################################################################
     #
@@ -1014,6 +1027,10 @@ Resources:
                 ZeroshotObjectRepositoryName: !GetAtt ECRDescribeImages.ZeroshotObjectRepositoryName
                 ZeroshotObjectImageTag: !GetAtt ECRDescribeImages.ZeroshotObjectImageTag
                 ZeroshotObjectImageUri: !GetAtt ECRDescribeImages.ZeroshotObjectImageUri
+                # FaceApi
+                FaceApiRepositoryName: !GetAtt ECRDescribeImages.FaceApiRepositoryName
+                FaceApiImageTag: !GetAtt ECRDescribeImages.FaceApiImageTag
+                FaceApiImageUri: !GetAtt ECRDescribeImages.FaceApiImageUri
 
     ################################################################################
     # Custom::ECRDescribeImages
@@ -1066,6 +1083,13 @@ Resources:
                                         - DockerImage
                                         - ZeroshotObject
                                         - Repo
+                            - !Sub
+                                - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${repo}
+                                -
+                                    repo: !FindInMap
+                                        - DockerImage
+                                        - FaceApi
+                                        - Repo
 
     ECRDescribeImages:
         DependsOn: CustomResourcesRoleECR
@@ -1117,6 +1141,17 @@ Resources:
                             - DockerImage
                             - ZeroshotObject
                             - Version
+                FaceApi:
+                    registryId: !Ref AWS::AccountId
+                    repositoryName: !FindInMap
+                        - DockerImage
+                        - FaceApi
+                        - Repo
+                    imageIds:
+                        - imageTag: !FindInMap
+                            - DockerImage
+                            - FaceApi
+                            - Version
 
     ################################################################################
     #
@@ -1166,7 +1201,7 @@ Resources:
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.IngestMainStateMachineName}:*
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.AnalysisMainStateMachineName}:*
                             - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.AssetRemovalStateMachineName}:*
-                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.UpdateFaceIndexerStateMachine}:*
+                            - !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${BackendStack.Outputs.UpdateFaceIndexerStateMachineName}:*
                     # DynamoDB - read/write/delete from ingest and analysis tables
                     -
                         Effect: Allow
@@ -1351,6 +1386,7 @@ Resources:
                         - !GetAtt KnowledgeGraphStack.Outputs.ApiKey
                         - ""
                 FoundationModels: !GetAtt WebAppStack.Outputs.FoundationModels
+                SearchEngineVersion: !GetAtt CoreStack.Outputs.OpenSearchEngineVersion
                 # (OPTIONAL) Shoppable
                 Shoppable:
                     Endpoint: !If

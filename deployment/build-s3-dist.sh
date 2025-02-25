@@ -174,6 +174,10 @@ ZEROSHOT_OBJECT_REPO=
 ZEROSHOT_OBJECT_VER=
 ZEROSHOT_OBJECT_PKG=
 
+FACEAPI_REPO=
+FACEAPI_VER=
+FACEAPI_PKG=
+
 ## Ingest Workflow packages ##
 PKG_INGEST_MAIN=
 PKG_INGEST_FIXITY=
@@ -490,6 +494,7 @@ function build_docker_packages() {
   build_docker_shoppable_package
   build_docker_zeroshot_classifier_package
   build_docker_zeroshot_object_package
+  build_docker_faceapi_package
 }
 
 function build_docker_faiss_package() {
@@ -549,6 +554,21 @@ function build_docker_zeroshot_object_package() {
   ZEROSHOT_OBJECT_VER="${version}"
   ZEROSHOT_OBJECT_PKG="${name}-${version}.zip"
   zip -rq "$BUILD_DIST_DIR/$ZEROSHOT_OBJECT_PKG" .
+  popd
+}
+
+function build_docker_faceapi_package() {
+  echo "------------------------------------------------------------------------------"
+  echo "Building Docker FaceAPI package"
+  echo "------------------------------------------------------------------------------"
+  local name="faceapi-on-aws"
+
+  pushd "$SOURCE_DIR/../docker/${name}"
+  local version=$(cat ./.version)
+  FACEAPI_REPO=${name}
+  FACEAPI_VER="${version}"
+  FACEAPI_PKG="${name}-${version}.zip"
+  zip -rq "$BUILD_DIST_DIR/$FACEAPI_PKG" .
   popd
 }
 
@@ -1397,6 +1417,16 @@ function build_cloudformation_templates() {
   echo "Updating %%ZEROSHOT_OBJECT_PKG%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%ZEROSHOT_OBJECT_PKG%%|${ZEROSHOT_OBJECT_PKG}|g" *.yaml || exit 1
 
+  # FaceAPI
+  echo "Updating %%FACEAPI_REPO%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%FACEAPI_REPO%%|${FACEAPI_REPO}|g" *.yaml || exit 1
+
+  echo "Updating %%FACEAPI_VER%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%FACEAPI_VER%%|${FACEAPI_VER}|g" *.yaml || exit 1
+
+  echo "Updating %%FACEAPI_PKG%% param in cloudformation templates..."
+  sed -i'.bak' -e "s|%%FACEAPI_PKG%%|${FACEAPI_PKG}|g" *.yaml || exit 1
+
   # custom resource name
   echo "Updating %%PKG_CUSTOM_RESOURCES%% param in cloudformation templates..."
   sed -i'.bak' -e "s|%%PKG_CUSTOM_RESOURCES%%|${PKG_CUSTOM_RESOURCES}|g" *.yaml || exit 1
@@ -1530,6 +1560,7 @@ function on_complete() {
   echo "** SHOPPABLE_PKG=${SHOPPABLE_PKG}  [${SHOPPABLE_REPO}:${SHOPPABLE_VER}]**"
   echo "** ZEROSHOT_CLASSIFIER_PKG=${ZEROSHOT_CLASSIFIER_PKG} [${ZEROSHOT_CLASSIFIER_REPO}:${ZEROSHOT_CLASSIFIER_VER}] **"
   echo "** ZEROSHOT_OBJECT_PKG=${ZEROSHOT_OBJECT_PKG} [${ZEROSHOT_OBJECT_REPO}:${ZEROSHOT_OBJECT_VER}] **"
+  echo "** FACEAPI_PKG=${FACEAPI_PKG} [${FACEAPI_REPO}:${FACEAPI_VER}] **"
   ## Backlog Service ##
   echo "** PKG_BACKLOG_STATUS_UPDATER=${PKG_BACKLOG_STATUS_UPDATER} **"
   echo "** PKG_BACKLOG_STREAM_CONNECTOR=${PKG_BACKLOG_STREAM_CONNECTOR} **"

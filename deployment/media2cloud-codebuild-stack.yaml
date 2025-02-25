@@ -22,6 +22,8 @@ Mappings:
             Package: "%%ZEROSHOT_CLASSIFIER_PKG%%"
         ZeroshotObject:
             Package: "%%ZEROSHOT_OBJECT_PKG%%"
+        FaceApi:
+            Package: "%%FACEAPI_PKG%%"
     Node:
         Runtime:
             Version: nodejs20.x
@@ -83,6 +85,16 @@ Parameters:
     ZeroshotObjectImageUri:
         Type: String
         Description: ZeroshotObjectImageUri
+    # FaceApi
+    FaceApiRepositoryName:
+        Type: String
+        Description: FaceApiRepositoryName
+    FaceApiImageTag:
+        Type: String
+        Description: FaceApiImageTag
+    FaceApiImageUri:
+        Type: String
+        Description: FaceApiImageUri
 
 Conditions:
     bBuildFaiss: !Equals
@@ -96,6 +108,9 @@ Conditions:
         - ""
     bBuildZeroshotObject: !Equals
         - !Ref ZeroshotObjectImageUri
+        - ""
+    bBuildFaceApi: !Equals
+        - !Ref FaceApiImageUri
         - ""
 
 Resources:
@@ -157,6 +172,7 @@ Resources:
                                     - !GetAtt ShoppableCodeBuild.Arn
                                     - !GetAtt ZeroshotClassifierCodeBuild.Arn
                                     - !GetAtt ZeroshotObjectCodeBuild.Arn
+                                    - !GetAtt FaceApiCodeBuild.Arn
 
     CodeBuildCustomResourceLambda:
         Type: AWS::Lambda::Function
@@ -267,6 +283,13 @@ Resources:
                                                 - DockerImage
                                                 - ZeroshotObject
                                                 - Package
+                                    - !Sub
+                                        - arn:aws:s3:::${S3Bucket}/${KeyPrefix}/${package}
+                                        -
+                                            package: !FindInMap
+                                                - DockerImage
+                                                - FaceApi
+                                                - Package
                             # ECR - push docker image
                             -
                                 Effect: Allow
@@ -287,6 +310,7 @@ Resources:
                                     - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ShoppableRepositoryName}
                                     - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ZeroshotClassifierRepositoryName}
                                     - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ZeroshotObjectRepositoryName}
+                                    - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${FaceApiRepositoryName}
 
     # Faiss docker image
     FaissCodeBuild:
@@ -640,6 +664,94 @@ Resources:
                         value: !Ref ZeroshotObjectImageTag
                         type: PLAINTEXT
 
+    # FaceApi docker image
+    FaceApiCodeBuild:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${ResourcePrefix}-${FaceApiRepositoryName}
+            Description: (FaceApi) Build and publish docker image to Amazon ECR
+            ServiceRole: !GetAtt CodeBuildRole.Arn
+            Source:
+                Type: S3
+                Location: !Sub
+                    - ${S3Bucket}/${KeyPrefix}/${package}
+                    -
+                        package: !FindInMap
+                            - DockerImage
+                            - FaceApi
+                            - Package
+                BuildSpec: |
+                    version: 0.2
+                    phases:
+                        pre_build:
+                            commands:
+                                - echo "== Logging in to Amazon ECR =="
+                                - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        build:
+                            commands:
+                                - echo "== Creating $IMAGE_REPO_NAME repository"
+                                - aws ecr create-repository --region $AWS_REGION --repository-name $IMAGE_REPO_NAME --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256; EXITCODE=$?
+                                - echo "== Creating $IMAGE_REPO_NAME repository (code=$EXITCODE) [COMPLETED]"
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] =="
+                                - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+                                - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Building docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG =="
+                                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+                                - echo "== Pushing docker image, $IMAGE_REPO_NAME:$IMAGE_TAG [$(date)] [COMPLETED] =="
+                        post_build:
+                            commands:
+                                - echo "=== post_build - CODEBUILD_BUILD_SUCCEEDING = $CODEBUILD_BUILD_SUCCEEDING ==="
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -eq 1 ]; then echo "== Sending SUCCESS signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"SUCCESS\",\"Reason\":\"Docker image published\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"ImageUri\":\"$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG\"}}" "$CFN_ResponseURL"; fi
+                                - if [ ! -z "$CFN_ResponseURL" ] && [ $CODEBUILD_BUILD_SUCCEEDING -ne 1 ]; then echo "== Sending FAILED signal to CloudFormation stack =="; curl -X PUT -H "Content-Type:" --data-binary "{\"Status\":\"FAILED\",\"Reason\":\"Docker image failed\",\"PhysicalResourceId\":\"$CFN_PhysicalResourceId\",\"StackId\":\"$CFN_StackId\",\"RequestId\":\"$CFN_RequestId\",\"LogicalResourceId\":\"$CFN_LogicalResourceId\",\"Data\":{\"Error\":\"Failed to build docker image\"}}" "$CFN_ResponseURL"; fi
+            Environment:
+                ComputeType: !FindInMap
+                    - CodeBuild
+                    - Compute
+                    - Type
+                Image: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Name
+                Type: !FindInMap
+                    - CodeBuild
+                    - Image
+                    - Type
+                EnvironmentVariables:
+                    -
+                        Name: AWS_REGION
+                        Value: !Ref AWS::Region
+                    -
+                        Name: AWS_ACCOUNT_ID
+                        Value: !Ref AWS::AccountId
+            Artifacts:
+                Type: NO_ARTIFACTS
+            EncryptionKey: !Sub arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/s3
+            TimeoutInMinutes: 60
+            QueuedTimeoutInMinutes: 60
+            LogsConfig:
+                CloudWatchLogs:
+                    GroupName: /aws/codebuild
+                    StreamName: !Sub ${ResourcePrefix}-${FaceApiRepositoryName}
+                    Status: ENABLED
+
+    FaceApiStartBuild:
+        Condition: bBuildFaceApi
+        Type: Custom::StartBuildDelayResponse
+        Properties:
+            ServiceToken: !GetAtt CodeBuildCustomResourceLambda.Arn
+            Data:
+                projectName: !Ref FaceApiCodeBuild
+                environmentVariablesOverride:
+                    -
+                        name: IMAGE_REPO_NAME
+                        value: !Ref FaceApiRepositoryName
+                        type: PLAINTEXT
+                    -
+                        name: IMAGE_TAG
+                        value: !Ref FaceApiImageTag
+                        type: PLAINTEXT
+
 Outputs:
     FaissImageUri:
         Value: !If
@@ -668,3 +780,9 @@ Outputs:
     SolutionInfo:
         Value: !Sub ${SolutionId} (${SolutionLowerCaseId})
         Description: SolutionInfo
+    FaceApiImageUri:
+        Value: !If
+            - bBuildFaceApi
+            - !GetAtt FaceApiStartBuild.ImageUri
+            - !Ref FaceApiImageUri
+        Description: FaceApiImageUri

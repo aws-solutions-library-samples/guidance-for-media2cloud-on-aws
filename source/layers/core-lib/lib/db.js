@@ -409,39 +409,51 @@ class DB {
   }
 
   async batchGet(pKeys, fieldsToGet = []) {
-    const keys = pKeys.map((key) => ({
-      [this.partitionKey]: key,
-    }));
+    let responses = [];
 
-    const params = {
-      RequestItems: {
-        [this.table]: {
-          Keys: keys,
+    // make sure batch size not exceed 100 items
+    const sliced = pKeys.slice(0);
+
+    while (sliced.length > 0) {
+      const perBatch = sliced.splice(0, 100);
+      const keys = perBatch.map((key) => ({
+        [this.partitionKey]: key,
+      }));
+
+      const params = {
+        RequestItems: {
+          [this.table]: {
+            Keys: keys,
+          },
         },
-      },
-    };
+      };
 
-    if (fieldsToGet.length > 0) {
-      params.RequestItems[this.table].ExpressionAttributeNames =
-        fieldsToGet
-          .reduce((acc, cur, idx) => ({
-            ...acc,
-            [`#p${idx}`]: cur,
-          }), {});
+      if (fieldsToGet.length > 0) {
+        params.RequestItems[this.table].ExpressionAttributeNames =
+          fieldsToGet
+            .reduce((acc, cur, idx) => ({
+              ...acc,
+              [`#p${idx}`]: cur,
+            }), {});
 
-      params.RequestItems[this.table].ProjectionExpression =
-        Object.keys(params.RequestItems[this.table].ExpressionAttributeNames)
-          .join(', ');
+        params.RequestItems[this.table].ProjectionExpression =
+          Object.keys(params.RequestItems[this.table].ExpressionAttributeNames)
+            .join(', ');
+      }
+
+      const marshalled = marshalling(params);
+      const command = new BatchGetItemCommand(marshalled);
+
+      const response = await DB.runCommand(command)
+        .then((res) => {
+          const unmarshalled = unmarshalling(res);
+          return unmarshalled.Responses[this.table];
+        });
+
+      responses = responses.concat(response);
     }
 
-    const marshalled = marshalling(params);
-    const command = new BatchGetItemCommand(marshalled);
-
-    return DB.runCommand(command)
-      .then((res) => {
-        const unmarshalled = unmarshalling(res);
-        return unmarshalled.Responses[this.table];
-      });
+    return responses;
   }
 
   async batchWrite(items = []) {
@@ -806,6 +818,17 @@ class DB {
     }));
 
     return ddbClient.send(command);
+  }
+
+  static async queryCommand(params) {
+    const marshalled = marshalling(params);
+    const command = new QueryCommand(marshalled);
+
+    return DB.runCommand(command)
+      .then((res) => {
+        const unmarshalled = unmarshalling(res);
+        return unmarshalled.Items;
+      });
   }
 }
 

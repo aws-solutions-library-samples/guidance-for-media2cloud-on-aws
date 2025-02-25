@@ -16,6 +16,10 @@ class StateUpdateRecord extends BaseState {
     return this.input.uuid;
   }
 
+  get uuids() {
+    return this.input.uuids;
+  }
+
   get updated() {
     return this.input.updated || [];
   }
@@ -27,16 +31,23 @@ class StateUpdateRecord extends BaseState {
   async process() {
     console.log('==== PROCESSING: StateUpdateRecord: MapItemId:', this.id, '====');
 
-    const uuid = this.uuid;
     const updated = this.updated;
     const deleted = this.deleted;
 
-    return this.processWithUuid(uuid, updated, deleted)
-      .then((res) => {
-        console.log('==== COMPLETED: StateUpdateRecord: MapItemId:', this.id, '====');
-        console.log('response', JSON.stringify(res));
-        return uuid;
-      });
+    let uuids = [];
+    if (this.uuids !== undefined && this.uuids.length > 0) {
+      uuids = this.uuids;
+    } else if (this.uuid !== undefined) {
+      uuids.push(this.uuid);
+    }
+
+    for (const uuid of uuids) {
+      console.log(`==== UPDATING: StateUpdateRecord: ${uuid}: `);
+      const response = await this.processWithUuid(uuid, updated, deleted);
+      console.log(`response: ${JSON.stringify(response)}`);
+    }
+
+    return uuids;
   }
 }
 

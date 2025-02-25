@@ -21,6 +21,7 @@ const {
     FaceIndexer: {
       Table,
       PartitionKey,
+      GSI,
     },
   },
 } = require('../environment');
@@ -28,7 +29,10 @@ const {
   M2CException,
 } = require('../error');
 const DB = require('../db');
-const ValidationHelper = require('../validationHelper');
+const {
+  validateUuid,
+  validateCharacterSet,
+} = require('../validationHelper');
 const {
   Version,
   Actions: {
@@ -36,6 +40,11 @@ const {
     Deleting,
   },
 } = require('./defs');
+
+// query celeb from GSI table
+const GSICelebIndex = GSI.Celeb.Name;
+const GSICelebKey = GSI.Celeb.Key;
+const GSICelebSort = 'timestamp';
 
 const DEFAULT_FIELDS = [
   'faceId',
@@ -46,6 +55,7 @@ const DEFAULT_FIELDS = [
   'key',
   'timestamp',
   'fullImageKey',
+  'coord',
 ];
 const DETECTION_ATTRIBUTES = [
   'GENDER',
@@ -210,8 +220,16 @@ class FaceIndexer {
       .filter((id) =>
         !cached.includes(id));
 
+    // retrieve from cached items
     if (_faceIds.length === 0) {
-      return [];
+      const fromCached = [];
+      for (const faceId of faceIds) {
+        const record = this.itemsCached[faceId];
+        if (record !== undefined) {
+          fromCached.push(record);
+        }
+      }
+      return fromCached;
     }
 
     let _fieldsToGet = DEFAULT_FIELDS;
@@ -237,25 +255,25 @@ class FaceIndexer {
   }
 
   async batchUpdate(items) {
-    const updateItems = [];
+    let updateItems = [];
     const deleteItems = [];
 
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      if (!item.faceId || !ValidationHelper.validateUuid(item.faceId)) {
+    for (const item of items) {
+      const { action, faceId, celeb } = item;
+      if (!faceId || !validateUuid(faceId)) {
         throw new M2CException('invalid faceId');
       }
-      if (item.action === Tagging) {
-        if (!item.celeb || !ValidationHelper.validateCharacterSet(item.celeb)) {
+      if (action === Tagging) {
+        if (!celeb || !validateCharacterSet(celeb)) {
           throw new M2CException('invalid celeb');
         }
         updateItems.push({
-          faceId: item.faceId,
-          celeb: item.celeb,
+          faceId,
+          celeb,
         });
-      } else if (item.action === Deleting) {
+      } else if (action === Deleting) {
         deleteItems.push({
-          faceId: item.faceId,
+          faceId,
         });
       } else {
         throw new M2CException('invalid action');
@@ -264,6 +282,11 @@ class FaceIndexer {
 
     if ((updateItems.length + deleteItems.length) === 0) {
       return undefined;
+    }
+
+    // collect other faceIds associated with the previous tagged names
+    if (updateItems.length > 0) {
+      updateItems = await this.amendUpdateItems(updateItems);
     }
 
     let promises = [];
@@ -277,7 +300,7 @@ class FaceIndexer {
     if (updateItems.length > 0) {
       const conditions = updateItems
         .map((_) =>
-          'attribute_exists(faceId) AND (attribute_not_exists(faceId) OR #celeb <> :celeb)');
+          'attribute_exists(faceId) AND (attribute_not_exists(celeb) OR #celeb <> :celeb)');
 
       promises.push(db.batchUpdateWithConditions(
         updateItems,
@@ -406,6 +429,51 @@ class FaceIndexer {
     return this.itemsCached[faceId];
   }
 
+  async amendUpdateItems(updateItems = []) {
+    const beforeUpdate = updateItems.length;
+    const faceMap = {};
+    const oldToNewMap = {};
+
+    for (const item of updateItems) {
+      const { faceId } = item;
+      faceMap[faceId] = item;
+    }
+
+    const faceIds = Object.keys(faceMap);
+    const items = await this.batchGet(faceIds, ['celeb']);
+
+    for (const { faceId, celeb } of items) {
+      if (celeb) {
+        oldToNewMap[celeb] = faceMap[faceId].celeb;
+        faceMap[faceId].updateFrom = celeb;
+      }
+    }
+
+    let oldNames = Object.keys(oldToNewMap);
+    if (oldNames.length === 0) {
+      return updateItems;
+    }
+    oldNames = [...new Set(oldNames)];
+
+    for (const oldName of oldNames) {
+      const items = await _queryCeleb(oldName);
+      for (const { faceId } of items) {
+        if (faceMap[faceId] === undefined && oldToNewMap[oldName] !== undefined) {
+          faceMap[faceId] = {
+            faceId,
+            celeb: oldToNewMap[oldName],
+            updateFrom: oldName,
+          };
+        }
+      }
+    }
+
+    const itemsToUpdate = Object.values(faceMap);
+    console.log(`amendUpdateItems: ${beforeUpdate} -> ${itemsToUpdate.length} items`);
+
+    return itemsToUpdate;
+  }
+
   // external image id
   static createExternalImageId(
     uuid,
@@ -460,6 +528,24 @@ class FaceIndexer {
       .reduce((a0, c0) =>
         a0 + c0, 0);
   }
+}
+
+async function _queryCeleb(celeb) {
+  const params = {
+    TableName: Table,
+    IndexName: GSICelebIndex,
+    ExpressionAttributeNames: {
+      [`#${GSICelebKey}`]: GSICelebKey,
+      [`#${GSICelebSort}`]: GSICelebSort,
+    },
+    ExpressionAttributeValues: {
+      [`:${GSICelebKey}`]: celeb,
+      [`:${GSICelebSort}`]: 0,
+    },
+    KeyConditionExpression: `#${GSICelebKey} = :${GSICelebKey} AND #${GSICelebSort} > :${GSICelebSort}`,
+  };
+
+  return DB.queryCommand(params);
 }
 
 module.exports = FaceIndexer;

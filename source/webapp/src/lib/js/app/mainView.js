@@ -16,6 +16,10 @@ import {
 } from './shared/cognito/userSession.js';
 
 const {
+  SearchEngineVersion,
+} = SolutionManifest;
+
+const {
   Messages: {
     SolutionName: SOLUTION_NAME,
     CollectionTab: MSG_COLLECTION_TAB,
@@ -70,6 +74,8 @@ const ID_MAIN_TABCONTENT = `main-content-${RANDOM_ID}`;
 const SOLUTION_URL = 'https://aws.amazon.com/solutions/guidance/media2cloud-on-aws/';
 const SOLUTION_ICON = '/images/m2c-short-white.png';
 
+const HASSEARCHENGINE = (SearchEngineVersion === undefined || SearchEngineVersion.length > 0);
+
 function parseHashtag(hashtag = '') {
   let tag = hashtag;
 
@@ -111,7 +117,9 @@ export default class MainView {
     if (session.canRead()) {
       tabControllers[COLLECTION_TAB] = new CollectionTab();
       tabControllers[PROCESSING_TAB] = new ProcessingTab();
-      tabControllers[STATS_TAB] = new StatsTab();
+      if (HASSEARCHENGINE) {
+        tabControllers[STATS_TAB] = new StatsTab();
+      }
     }
     /* read/write access */
     if (session.canWrite()) {

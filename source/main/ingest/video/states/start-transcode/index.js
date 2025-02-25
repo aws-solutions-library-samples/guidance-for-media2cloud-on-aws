@@ -416,11 +416,18 @@ class StateStartTranscode {
         DEFAULT_HEIGHT,
       ];
     }
+
     if (video.width <= DEFAULT_WIDTH && video.height <= DEFAULT_HEIGHT) {
-      return [
-        ((video.width >> 1) << 1),
-        ((video.height >> 1) << 1),
-      ];
+      // return [
+      //   ((video.width >> 1) << 1),
+      //   ((video.height >> 1) << 1),
+      // ];
+
+      // force to upscale to 960x540
+      const scale = Math.min((DEFAULT_WIDTH / video.width), (DEFAULT_HEIGHT / video.height));
+      const w = (Math.round(video.width * scale) >> 1) << 1;
+      const h = (Math.round(video.height * scale) >> 1) << 1;
+      return [w, h];
     }
     let scaleW = 1;
     let scaleH = 1;

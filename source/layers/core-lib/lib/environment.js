@@ -40,6 +40,7 @@ module.exports = {
     GraphIndexer: `${ResourcePrefix}-graph-indexer`,
     AssetRemoval: `${ResourcePrefix}-asset-removal`,
     Shoppable: `${ResourcePrefix}-shoppable`,
+    FaceApiModel: `${ResourcePrefix}-faceapi-model`,
   },
   DynamoDB: {
     Ingest: {

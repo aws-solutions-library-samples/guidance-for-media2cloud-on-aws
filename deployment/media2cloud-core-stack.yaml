@@ -84,8 +84,16 @@ Conditions:
     bOpenSearchServerless: !Equals
         - !Ref OpenSearchServerless
         - "true"
-    bOpenSearchCluster: !Not
+    bOpenSearchCluster: !And
+        - !Not
+            - !Condition bOpenSearchServerless
+        - !Not
+            - !Equals
+                - !Ref OpenSearchInstance
+                - "skip=1"
+    bOpenSearchIsEnabled: !Or
         - !Condition bOpenSearchServerless
+        - !Condition bOpenSearchCluster
     bSingleAZ: !And
         - !Condition bOpenSearchCluster
         - !Equals
@@ -1006,6 +1014,7 @@ Resources:
     #
     ################################################################################
     CreateIndex:
+        Condition: bOpenSearchIsEnabled
         DependsOn: CustomResourcesPolicyCore
         Type: Custom::CreateIndex
         Properties:
@@ -1158,9 +1167,12 @@ Outputs:
     # OpenSearch
     OpenSearchDomainName:
         Value: !If
-            - bOpenSearchServerless
-            - !Ref OSSCollection
-            - !Ref OpenSearchCluster
+            - bOpenSearchIsEnabled
+            - !If
+                - bOpenSearchServerless
+                - !Ref OSSCollection
+                - !Ref OpenSearchCluster
+            - ""
         Description: OpenSearchDomainName
     OpenSearchCollection:
         Value: !If
@@ -1170,18 +1182,24 @@ Outputs:
         Description: OpenSearchCollection
     OpenSearchDomainEndpoint:
         Value: !If
-            - bOpenSearchServerless
-            - !GetAtt OSSCollection.CollectionEndpoint
-            - !Sub https://${OpenSearchCluster.DomainEndpoint}
+            - bOpenSearchIsEnabled
+            - !If
+                - bOpenSearchServerless
+                - !GetAtt OSSCollection.CollectionEndpoint
+                - !Sub https://${OpenSearchCluster.DomainEndpoint}
+            - ""
         Description: OpenSearchDomainEndpoint
     OpenSearchEngineVersion:
         Value: !If
-            - bOpenSearchServerless
-            - serverless
-            - !FindInMap
-                - OpenSearch
-                - Engine
-                - Version
+            - bOpenSearchIsEnabled
+            - !If
+                - bOpenSearchServerless
+                - serverless
+                - !FindInMap
+                    - OpenSearch
+                    - Engine
+                    - Version
+            - ""
         Description: OpenSearchEngineVersion
     # CloudFront
     CloudFrontDistributionId:

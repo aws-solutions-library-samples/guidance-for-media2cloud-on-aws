@@ -1,24 +1,25 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
-
-const Jimp = require('jimp');
+const {
+  JimpHelper: {
+    ignoreKnownHashes,
+    compareHashes,
+  },
+} = require('core-lib');
 
 // ColorBars | EndCredits | BlackFrames | OpeningCredits | StudioLogo | Slate | Content
 const TYPE_STEADY = ['ColorBars', 'BlackFrames', 'StudioLogo', 'Slate'];
 const TYPE_CREDITS = ['EndCredits'];
 const TYPE_OPENING = ['OpeningCredits'];
 const TYPE_CONTENT = ['Content', 'undefined'];
-const HAMMING_DISTANCE_THRESHOLD = 0.85;
+const HAMMING_DISTANCE_THRESHOLD = 0.250;
 const SPLIT_INTERVAL = 2 * 60 * 1000; // 2min
-const SAMPLING_INTERVAL = 3 * 1000; // 3s
+const SAMPLING_INTERVAL = 4 * 1000; // 4s
 const SCAN_MODE = {
   Forward: 0,
   Backward: 1,
 };
-const KNOWN_HASHES = [
-  '00000000000', // BlackFrames
-  '820w820w800', // EBU Color Bars
-];
+const USE_SUBGROUPING = true;
 
 class SelectionHelper {
   static selectFrames(frameHashes, segments) {
@@ -30,6 +31,7 @@ class SelectionHelper {
       selected = _withHammingDistance(frameHashes);
     }
 
+    console.log(`selectFrames: selected ${selected.length} out of ${frameHashes.length} frames. ${((selected.length / frameHashes.length) * 100).toFixed(2)}%`);
     return selected;
   }
 }
@@ -131,7 +133,7 @@ function _withHammingDistance(frameHashes) {
   let selected = [];
 
   if (frameHashes.length === 0) {
-    selected = _selectNone(frameHashes);
+    selected = [];
   } else if (frameHashes.length < 2) {
     selected = _selectByLaplacian(frameHashes, 1);
   } else {
@@ -179,17 +181,14 @@ function _selectFromShotSegment(
   // #3: for end credits, fixed rate of 3s
   // #4: content / opening
   if (shotSegmentFrames.length < 2) {
-    selected = _selectNone(shotSegmentFrames);
-  } else if (shotSegmentFrames.length <= 3 || TYPE_STEADY.includes(technicalCueType)) {
+    selected = _selectAtmostOne(shotSegmentFrames);
+  } else if (TYPE_STEADY.includes(technicalCueType)) {
     selected = _selectByLaplacian(shotSegmentFrames, 1);
   } else if (TYPE_CREDITS.includes(technicalCueType)) {
     selected = _selectByFixedRate(shotSegmentFrames, SAMPLING_INTERVAL);
   } else if (TYPE_OPENING.includes(technicalCueType) || TYPE_CONTENT.includes(technicalCueType)) {
     // budget frames to atmost 1 frame every 3 seconds
-    const maxFrames = Math.max(
-      Math.round((send - ssta) / SAMPLING_INTERVAL),
-      1
-    );
+    const maxFrames = Math.max(Math.round((send - ssta) / SAMPLING_INTERVAL), 1);
     selected = _selectByScanning(shotSegmentFrames, maxFrames);
   } else {
     console.log(`[INFO]: [#${shotIdx}]: ${technicalCueType}: not supported`);
@@ -255,7 +254,10 @@ function _framesInRange(frameHashes, range = []) {
   return frames;
 }
 
-function _selectNone(frames) {
+function _selectAtmostOne(frames) {
+  if (frames.length) {
+    return [frames[0]];
+  }
   return [];
 }
 
@@ -296,81 +298,185 @@ function _selectByLaplacian(frames, numItems = 1) {
 }
 
 function _selectByScanning(frames, maxFrames) {
-  let selected = [];
+  if (USE_SUBGROUPING) {
+    return _selectBySubGrouping(frames, maxFrames);
+  }
+  return _selectAndPrioritizeBoundaryFrames(frames, maxFrames);
+}
 
-  const stats = _computeStatistics(frames
-    .map((x) =>
-      x.laplacian));
+function _selectBySubGrouping(frames, maxFrames) {
+  const numFrames = frames.length;
+  const selectedByGroups = [];
 
-  const startIdx = stats.maxIdx;
-  if (startIdx < 0) {
+  if (frames.length === 0) {
+    return selectedByGroups;
+  }
+
+  const groups = _groupFrames(frames);
+  for (const subGroup of groups) {
+    if (subGroup.length === 0) {
+      throw new Error('No item in subGroup. LOGIC ERROR');
+    }
+
+    const frameA = subGroup[0];
+    const frameB = subGroup[subGroup.length - 1];
+    if (subGroup.length > 1) {
+      frameA.extendFrameDuration = frameB.timestamp - frameA.timestamp;
+    }
+    selectedByGroups.push(frameA);
+  }
+
+  // special case where a shot has just two frames and both are being selected.
+  if (frames.length === 2 && selectedByGroups.length === 2) {
+    const [frameA, frameB] = selectedByGroups;
+    frameA.extendFrameDuration = frameB.timestamp - frameA.timestamp;
+    selectedByGroups.pop();
+  }
+
+  console.log(`[selectByScanning][ByGrouping]: ${numFrames} -> ${selectedByGroups.length}  [dropping ${numFrames - selectedByGroups.length} frames]`);
+
+  return selectedByGroups;
+}
+
+function _groupFrames(frames) {
+  const groups = [];
+
+  if (frames.length === 0) {
+    return groups;
+  }
+
+  if (frames.length === 1) {
+    groups.push([frames[0]]);
+    return groups;
+  }
+
+  let curGroup = [];
+  curGroup.push(frames[0]);
+
+  for (let i = 1; i < frames.length; i += 1) {
+    const pre = curGroup[curGroup.length - 1];
+    const cur = frames[i];
+    const d = _compareHash(pre.hash, cur.hash);
+    cur.distanceToPreviousFrame = d;
+
+    if (d > HAMMING_DISTANCE_THRESHOLD) {
+      groups.push(curGroup);
+      curGroup = [cur];
+      continue;
+    }
+    curGroup.push(cur);
+  }
+
+  if (curGroup.length > 0) {
+    groups.push(curGroup);
+  }
+
+  return groups;
+}
+
+function _selectAndPrioritizeBoundaryFrames(frames, maxFrames) {
+  const numFrames = frames.length;
+
+  let boundaryFrames = [];
+
+  if (frames.length === 0) {
+    return boundaryFrames;
+  }
+
+  // collect frames at the boundary
+  boundaryFrames.push(frames.shift());
+  if (frames.length > 1) {
+    boundaryFrames.push(frames.pop());
+  }
+
+  if (frames.length <= 2) {
+    return boundaryFrames;
+  }
+
+  const extraFrames = maxFrames - 2;
+  if (extraFrames <= 0) {
+    return boundaryFrames;
+  }
+
+  // scan from the boundary frames
+  let scanned = _scanByReference(frames, boundaryFrames[0], SCAN_MODE.Forward);
+
+  // frame reduction
+  scanned = _frameReduction(scanned, boundaryFrames, extraFrames);
+  scanned = scanned.concat(boundaryFrames)
+    .sort((a, b) =>
+      a.timestamp - b.timestamp);
+
+  console.log(`[SelectAndPrioritizeBoundaryFrames]:  ${numFrames} -> ${scanned.length} [dropping ${numFrames - scanned.length} frames]`);
+
+  return scanned;
+}
+
+function _scanByReference(frames, refFrame, mode, distance = HAMMING_DISTANCE_THRESHOLD) {
+  let filtered = 0;
+  let cur = refFrame;
+  const selected = [];
+
+  if (mode === SCAN_MODE.Forward) {
+    for (const frame of frames) {
+      const d = _compareHash(cur.hash, frame.hash);
+      if (d > distance) {
+        selected.push(frame);
+        cur = frame;
+      } else {
+        filtered += 1;
+      }
+    }
+
+    console.log(`ScanR: ${filtered} frames filtered and ${selected.length} frames selected from ${frames.length} frames.`);
     return selected;
   }
 
-  selected.push(frames[startIdx]);
-
-  let scanned = _scanFrames(frames, startIdx, SCAN_MODE.Forward);
-  selected = selected.concat(scanned);
-
-  scanned = _scanFrames(frames, startIdx, SCAN_MODE.Backward);
-  selected = scanned.concat(selected);
-
-  if (selected.length > maxFrames) {
-    const len = selected.length;
-
-    selected
-      .sort((a, b) =>
-        b.laplacian - a.laplacian);
-
-    selected = selected
-      .slice(0, maxFrames);
-
-    selected
-      .sort((a, b) =>
-        a.timestamp - b.timestamp);
-
-    console.log(`[INFO]: _selectByScanning: ${selected.length} / ${len} [dropping ${len - selected.length} frames]`);
+  // scan backward
+  const len = frames.length;
+  for (let i = len - 1; i >= 0; i -= 1) {
+    const frame = frames[i];
+    const d = _compareHash(cur.hash, frame.hash);
+    if (d > distance) {
+      selected.push(frame);
+      cur = frame;
+    } else {
+      filtered += 1;
+    }
   }
 
+  console.log(`ScanL: ${filtered} frames filtered and ${selected.length} frames selected from ${frames.length} frames.`);
   return selected;
 }
 
-function _scanFrames(frames, startIdx, mode, distance = HAMMING_DISTANCE_THRESHOLD) {
-  const selected = [];
+function _frameReduction(candidates, boundaryFrames, maxFrames, distance = HAMMING_DISTANCE_THRESHOLD) {
+  let filtered = [];
 
-  let prev = frames[startIdx];
-  if (mode === SCAN_MODE.Forward) {
-    if (startIdx >= (frames.length - 1)) {
-      return selected;
-    }
-
-    for (let i = startIdx + 1; i < frames.length; i += 1) {
-      const cur = frames[i];
-
-      const _distance = _compareHash(prev.hash, cur.hash);
-      if (_distance > distance) {
-        selected.push(cur);
-        prev = cur;
+  // compare candidates with boundary frames
+  for (const frame of candidates) {
+    let qualified = true;
+    for (const frameB of boundaryFrames) {
+      const d = _compareHash(frame.hash, frameB.hash);
+      if (d < distance) {
+        qualified = false;
+        break;
       }
     }
-    return selected;
-  }
 
-  if (startIdx === 0) {
-    return selected;
-  }
-
-  for (let i = startIdx - 1; i >= 0; i -= 1) {
-    const cur = frames[i];
-
-    const _distance = _compareHash(prev.hash, cur.hash);
-    if (_distance > distance) {
-      selected.push(cur);
-      prev = cur;
+    if (qualified) {
+      filtered.push(frame);
     }
   }
 
-  return selected;
+  // over max. frames, drop based on frame's details
+  if (filtered.length > maxFrames) {
+    filtered.sort((a, b) =>
+      b.laplacian - a.laplacian);
+
+    filtered = filtered.slice(0, maxFrames);
+  }
+
+  return filtered;
 }
 
 function _compareHash(hash1, hash2) {
@@ -381,70 +487,13 @@ function _compareHash(hash1, hash2) {
     return 0;
   }
 
-  // filter out blackframe and EBU colorbars
-  for (let i = 0; i < KNOWN_HASHES.length; i += 1) {
-    const dist = Math.round(
-      Math.abs(
-        Jimp.compareHashes(hash2, KNOWN_HASHES[i]) * 100
-      )
-    );
-
-    if (dist < 10) {
-      return 0;
-    }
+  // ignore blackframe and EBU colorbars
+  if (ignoreKnownHashes(hash2)) {
+    return 0;
   }
 
-  return Jimp.compareHashes(hash1, hash2);
-}
-
-function _computeStatistics(items = [], withSD = false) {
-  let max = Number.MIN_SAFE_INTEGER;
-  let min = Number.MAX_SAFE_INTEGER;
-  let maxIdx = -1;
-  let minIdx = -1;
-  let sum = 0;
-  let mean = 0;
-  let sd = 0;
-
-  for (let i = 0; i < items.length; i += 1) {
-    if (items[i] > max) {
-      max = items[i];
-      maxIdx = i;
-    }
-
-    if (items[i] < min) {
-      min = items[i];
-      minIdx = i;
-    }
-
-    sum += items[i];
-  }
-
-  if (items.length === 0) {
-    mean = sum;
-  } else {
-    mean = sum / items.length;
-  }
-
-  const stats = {
-    max,
-    min,
-    sum,
-    mean,
-    minIdx,
-    maxIdx,
-  };
-
-  if (withSD && items.length > 1) {
-    items.forEach((x) => {
-      sd += (x - mean) ** 2;
-    });
-
-    sd = (sd / (items.length - 1)) ** 0.5;
-    stats.sd = sd;
-  }
-
-  return stats;
+  const d = compareHashes(hash1, hash2);
+  return d;
 }
 
 module.exports = SelectionHelper;

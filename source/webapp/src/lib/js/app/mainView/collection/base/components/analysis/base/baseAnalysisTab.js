@@ -13,6 +13,9 @@ import {
   AWSConsoleS3,
   AWSConsoleStepFunctions,
 } from '../../../../../../shared/awsConsole.js';
+import {
+  GetUserSession,
+} from '../../../../../../shared/cognito/userSession.js';
 
 const {
   Tooltips: {
@@ -53,6 +56,22 @@ export default class BaseAnalysisTab extends mxReadable(BaseTab) {
 
   get media() {
     return (this.$previewComponent || {}).media;
+  }
+
+  // permission based on user role
+  get canRead() {
+    const session = GetUserSession();
+    return session.canRead();
+  }
+
+  get canWrite() {
+    const session = GetUserSession();
+    return session.canWrite();
+  }
+
+  get canModify() {
+    const session = GetUserSession();
+    return session.canModify();
   }
 
   loading(enabled) {

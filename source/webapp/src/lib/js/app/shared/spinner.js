@@ -3,15 +3,16 @@
 
 import AppUtils from './appUtils.js';
 
-const SPINNER_ID = `spinner-${AppUtils.randomHexstring()}`;
+const { randomHexstring } = AppUtils;
+
+const SPINNER_ID = `spinner-${randomHexstring()}`;
 
 export default class Spinner {
   static loading(enabled = true, spinnerId = SPINNER_ID) {
-    const spinner = $(`#${spinnerId}`);
     if (enabled) {
-      return spinner.removeClass('collapse');
+      return _enable(spinnerId);
     }
-    return spinner.addClass('collapse');
+    return _disable(spinnerId);
   }
 
   static useSpinner(spinnerId = SPINNER_ID) {
@@ -20,17 +21,62 @@ export default class Spinner {
       return spinner;
     }
 
-    const body = $('body');
-    spinner = $('<div/>')
-      .attr('id', spinnerId)
-      .addClass('spinner-grow text-secondary loading-4 collapse');
-    body.append(spinner);
+    spinner = _makeSpinner(spinnerId);
 
-    const text = $('<span/>')
-      .addClass('lead-sm sr-only')
-      .html('Loading...');
-    spinner.append(text);
+    const body = $('body');
+    body.append(spinner);
 
     return spinner;
   }
+
+  static makeSpinner(id) {
+    return _makeSpinner(id);
+  }
+
+  static enable(spinner) {
+    return _enable(spinner);
+  }
+
+  static disable(spinner) {
+    return _disable(spinner);
+  }
+}
+
+function _makeSpinner(id) {
+  const spinner = $('<div/>')
+    .addClass('spinner-grow')
+    .addClass('text-secondary loading-4')
+    .addClass('collapse')
+    .attr('id', id)
+
+  const text = $('<span/>')
+    .addClass('lead-sm sr-only')
+    .append('Loading...');
+  spinner.append(text);
+
+  return spinner;
+}
+
+function _enable(spinner) {
+  if (typeof spinner === 'object') {
+    return spinner.removeClass('collapse');
+  }
+
+  if (typeof spinner === 'string') {
+    return $(`#${spinner}`).removeClass('collapse');
+  }
+
+  return spinner;
+}
+
+function _disable(spinner) {
+  if (typeof spinner === 'object') {
+    return spinner.addClass('collapse');
+  }
+
+  if (typeof spinner === 'string') {
+    return $(`#${spinner}`).addClass('collapse');
+  }
+
+  return spinner;
 }

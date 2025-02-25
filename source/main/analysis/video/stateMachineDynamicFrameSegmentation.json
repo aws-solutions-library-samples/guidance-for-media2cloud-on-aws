@@ -84,15 +84,32 @@
         },
         "Prepare segment detection": {
             "Type": "Task",
-            "Resource": "${AnalysisVideoLambda.Arn}",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
             "Parameters": {
-                "operation": "prepare-segment-detection",
-                "uuid.$": "$.uuid",
-                "input.$": "$.input",
-                "data.$": "$.data",
-                "status": "NOT_STARTED",
-                "progress": 0
+                "FunctionName": "${AnalysisVideoLambda.Arn}",
+                "Payload": {
+                    "operation": "prepare-segment-detection",
+                    "uuid.$": "$.uuid",
+                    "input.$": "$.input",
+                    "data.$": "$.data",
+                    "status": "NOT_STARTED",
+                    "progress": 0
+                }
             },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
             "Next": "Run segment detection and wait"
         },
         "Run segment detection and wait": {
@@ -113,15 +130,32 @@
         },
         "Dynamically select frames": {
             "Type": "Task",
-            "Resource": "${AnalysisVideoFrameSegmentationLambda.Arn}",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
             "Parameters": {
-                "operation": "select-segment-frames",
-                "uuid.$": "$.uuid",
-                "input.$": "$$.Execution.Input.input",
-                "data.$": "$.data",
-                "status": "NOT_STARTED",
-                "progress": 0
+                "FunctionName": "${AnalysisVideoFrameSegmentationLambda.Arn}",
+                "Payload": {
+                    "operation": "select-segment-frames",
+                    "uuid.$": "$.uuid",
+                    "input.$": "$$.Execution.Input.input",
+                    "data.$": "$.data",
+                    "status": "NOT_STARTED",
+                    "progress": 0
+                }
             },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
             "Next": "More frames?"
         },
         "More frames?": {
@@ -136,7 +170,64 @@
             "Default": "Dynamically select frames"
         },
         "Frame segmentation completed": {
-            "Type": "Succeed"
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+                "FunctionName": "${AnalysisVideoLambda.Arn}",
+                "Payload": {
+                    "operation": "StateFrameSegmentationCompleted",
+                    "uuid.$": "$.uuid",
+                    "input.$": "$.input",
+                    "data.$": "$.data",
+                    "status": "NOT_STARTED",
+                    "progress": 0
+                }
+            },
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "CodeArtifactUserPendingException"
+                    ],
+                    "MaxAttempts": 4,
+                    "IntervalSeconds": 10,
+                    "BackoffRate": 1.2
+                },
+                {
+                    "ErrorEquals": [
+                        "AccessDeniedException",
+                        "ResourceNotFoundException",
+                        "ValidationException"
+                    ],
+                    "MaxAttempts": 0
+                },
+                {
+                    "ErrorEquals": [
+                        "InternalServerException",
+                        "ModelErrorException",
+                        "ModelNotReadyException",
+                        "ModelTimeoutException",
+                        "ServiceQuotaExceededException",
+                        "ThrottlingException",
+                        "ServiceUnavailableException"
+                    ],
+                    "IntervalSeconds": 60,
+                    "MaxAttempts": 10,
+                    "BackoffRate": 1.2
+                },
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 1.2
+                }
+            ],
+            "End": true
         }
     }
 }

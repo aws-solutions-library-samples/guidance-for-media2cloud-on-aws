@@ -678,7 +678,7 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
       .addClass('rekog-tab');
 
     container.ready(async () => {
-      await this.delayContentLoad(container);
+      this.createObserver(container);
     });
 
     if (tabContent) {
@@ -686,6 +686,33 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
     }
 
     return container;
+  }
+
+  createObserver(container) {
+    const options = {
+      root: null,
+      rootMargin: '0px',
+      threshold: [0.1],
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(async (entry) => {
+        if (entry.intersectionRatio > options.threshold[0]) {
+          console.log(
+            'BaseRekognitionTab.createObserver',
+            'entry.intersectionRatio',
+            entry.intersectionRatio
+          );
+
+          await this.delayContentLoad(container);
+          observer.unobserve(container[0]);
+        }
+      });
+    }, options);
+
+    observer.observe(container[0]);
+
+    return observer;
   }
 
   async registerVttTracksFromJson(
@@ -716,12 +743,14 @@ export default class BaseRekognitionTab extends BaseRekognitionImageTab {
         vtts = await vtts.Body.transformToString()
           .then((res) =>
             JSON.parse(res));
-
-        await this.datasetStore
-          .putItem(jsonKey, vtts)
-          .catch(() =>
-            undefined);
       }
+    }
+
+    if (vtts && this.shouldCache) {
+      await this.datasetStore
+        .putItem(jsonKey, vtts)
+        .catch(() =>
+          undefined);
     }
 
     return Object.keys(vtts || {})

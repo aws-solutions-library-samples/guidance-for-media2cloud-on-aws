@@ -3,7 +3,6 @@
 
 const FS = require('node:fs');
 const PATH = require('node:path');
-const Jimp = require('jimp');
 const {
   AnalysisTypes: {
     AdBreak,
@@ -16,6 +15,12 @@ const {
   CommonUtils,
   CSVParser,
   WebVttHelper,
+  JimpHelper: {
+    MIME_JPEG,
+    imageFromBuffer,
+    imageFromScratch,
+    compareHashes,
+  },
 } = require('core-lib');
 const Regression = require('core-lib/node_modules/regression');
 const BaseState = require('../shared/base');
@@ -1366,10 +1371,7 @@ function _computePerceptualChangeRate(
   for (let i = 1; i < frames.length; i += 1) {
     const prev = frames[i - 1];
     const cur = frames[i];
-    const perceptual = Math.abs(
-      Jimp.compareHashes(prev.hash, cur.hash)
-    );
-
+    const perceptual = compareHashes(prev.hash, cur.hash);
     datapoints.push([
       cur.timestamp / 1000,
       perceptual,
@@ -1783,7 +1785,7 @@ async function _debugDump(
     framePrefix,
     frames
   );
-  image = await image.getBufferAsync(Jimp.MIME_JPEG);
+  image = await image.getBufferAsync(MIME_JPEG);
 
   // ranking, break#, weight, smpte
   // 01_02_0.4321_00-01-23-12.jpg
@@ -1816,15 +1818,7 @@ async function _tileImages(bucket, prefix, frames) {
   const imgW = TILE_W * frames.length;
   const imgH = TILE_H;
 
-  const combined = await new Promise((resolve, reject) => {
-    const _ = new Jimp(imgW, imgH, 0xffffffff, (e, img) => {
-      if (e) {
-        reject(e);
-      } else {
-        resolve(img);
-      }
-    });
-  });
+  const combined = await imageFromScratch(imgW, imgH);
 
   let promises = frames.map((frame) =>
     CommonUtils.download(
@@ -1846,20 +1840,13 @@ async function _tileImages(bucket, prefix, frames) {
     // buf = Buffer.from(buf);
     const buf = Buffer.from(promises[col]);
 
-    const tile = await new Promise((resolve, reject) => {
-      Jimp.read(buf)
-        .then((img) => {
-          const factor = TILE_W / img.bitmap.width;
-          const scaled = img.scale(factor);
-          const w = scaled.bitmap.width - 4;
-          const h = scaled.bitmap.height - 4;
-          const cropped = scaled.crop(2, 2, w, h);
-          resolve(cropped);
-        })
-        .catch((e) => {
-          reject(e);
-        });
-    });
+    let tile = await imageFromBuffer(buf);
+
+    const factor = TILE_W / tile.bitmap.width;
+    const scaled = tile.scale(factor);
+    const w = scaled.bitmap.width - 4;
+    const h = scaled.bitmap.height - 4;
+    tile = tile.crop(2, 2, w, h);
 
     const l = col * TILE_W + 2;
     const t = 2;

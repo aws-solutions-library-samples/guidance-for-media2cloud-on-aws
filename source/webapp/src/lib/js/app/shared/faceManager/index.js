@@ -18,6 +18,12 @@ const {
   AnalysisTypes: {
     AutoFaceIndexer,
   },
+  FaceIndexerDefs: {
+    Actions: {
+      Tagging: TAGGING_FACE,
+      Deleting: DELETING_FACE,
+    },
+  },
 } = SolutionManifest;
 const {
   Buffer,
@@ -180,17 +186,33 @@ class FaceManager {
   ) {
     try {
       if (!token
-      && this.facesByCollection[collectionId]
-      && this.facesByCollection[collectionId].faces.length) {
+        && this.facesByCollection[collectionId]
+        && this.facesByCollection[collectionId].faces.length) {
         return this.facesByCollection[collectionId];
       }
 
-      const response = await ApiHelper.getFacesInCollection(
-        collectionId,
-        {
-          token,
+      const response = await ApiHelper.getFacesInCollection(collectionId, { token });
+
+      // sort the results based on timestamp than celeb
+      response.faces.sort((a, b) => {
+        const { celeb: celebA } = a;
+        const { celeb: celebB } = b;
+
+        if (!celebA && celebB) {
+          return 1;
         }
-      );
+        if (!celebB && celebA) {
+          return -1;
+        }
+
+        if (celebA === celebB) {
+          const { timestamp: timeA } = a;
+          const { timestamp: timeB } = b;
+          return timeB - timeA;
+        }
+
+        return celebA.localeCompare(celebB);
+      });
 
       if (this.facesByCollection[collectionId] === undefined) {
         this.facesByCollection[collectionId] = {
@@ -211,7 +233,7 @@ class FaceManager {
     }
   }
 
-  async getFaceImage(key) {
+  async getFaceImage(key, fullSize = false) {
     try {
       if (!key) {
         return undefined;
@@ -228,7 +250,8 @@ class FaceManager {
 
         blob = await this.storeFace(
           key,
-          url
+          url,
+          fullSize
         );
       }
 
@@ -401,9 +424,15 @@ class FaceManager {
 
   async storeFace(
     name,
-    blobOrUrl
+    blobOrUrl,
+    fullSize = false
   ) {
-    let blob = await AppUtils.downscale(blobOrUrl);
+    let blob;
+    if (fullSize) {
+      blob = await AppUtils.loadImage(blobOrUrl);
+    } else {
+      blob = await AppUtils.downscale(blobOrUrl);
+    }
 
     blob = await fetch(blob);
     blob = await blob.blob();
@@ -488,6 +517,36 @@ class FaceManager {
       });
   }
 
+  async startFaceIndexing(params, progressFn = undefined) {
+    let response = await ApiHelper.indexFaceV2(params);
+    const { executionArn } = response;
+
+    if (typeof progressFn !== 'function') {
+      return response;
+    }
+
+    const t0 = Date.now();
+    response = undefined;
+    do {
+      // Take longer than 8 minutes
+      if ((Date.now() - t0) > 8 * 60 * 1000) {
+        response = { status: 'ATTENTION_REQUIRED', executionArn };
+        progressFn(response);
+        return response;
+      }
+
+      try {
+        await _pause(2000);
+        response = await ApiHelper.getWorkflowStatus(executionArn);
+        progressFn(response);
+      } catch (e) {
+        console.log(e);
+      }
+    } while ((response || {}).status === 'RUNNING');
+
+    return response;
+  }
+
   // static functions
   static isExternalImageIdCompatible(id) {
     return REGEX_EXTERNAL_IMAGE_ID.test(id);
@@ -522,6 +581,14 @@ class FaceManager {
   }
 }
 
+async function _pause(delay) {
+  return await new Promise((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, delay);
+  });
+}
+
 const GetFaceManager = () => {
   if (_singleton === undefined) {
     const notused_ = new FaceManager();
@@ -543,6 +610,9 @@ const UnregisterFaceManagerEvent = (name) => {
   delete _receivers[name];
 };
 
+const GetFaceManagerS3Prefix = () =>
+  AutoFaceIndexer;
+
 export {
   FaceManager,
   GetFaceManager,
@@ -552,4 +622,7 @@ export {
   ON_FACE_COLLECTION_REMOVED,
   ON_FACE_ADDED,
   ON_FACE_REMOVED,
+  TAGGING_FACE,
+  DELETING_FACE,
+  GetFaceManagerS3Prefix,
 };

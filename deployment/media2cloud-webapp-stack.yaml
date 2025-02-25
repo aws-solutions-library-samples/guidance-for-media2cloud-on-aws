@@ -121,6 +121,10 @@ Conditions:
         - !Equals
             - !Ref OpenSearchCollection
             - ""
+    bOpenSearchIsEnabled: !Not
+        - !Equals
+            - !Ref OpenSearchDomainEndpoint
+            - ""
     # allow access to Bedrock service if BedrockSecondaryRegionAccess is set
     bBedrockSecondaryRegionAccess: !Not
         - !Equals
@@ -268,24 +272,35 @@ Resources:
                                     - s3:PutObject
                                     - s3:DeleteObject
                                 Resource: !Sub arn:aws:s3:::${ProxyBucket}/*
-                            # OpenSearch
-                            -
-                                Effect: Allow
-                                Action:
-                                    - es:ESHttpGet
-                                    - es:ESHttpHead
-                                    - es:ESHttpPost
-                                    - es:ESHttpPut
-                                    - es:ESHttpDelete
-                                Resource:
-                                    - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}
-                                    - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*
-                            # OpenSearch Serverless
-                            -
-                                Effect: Allow
-                                Action: aoss:APIAccessAll
-                                Resource: !Sub arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${OpenSearchDomainName}
                             # Note: Attach Backend resources such as Step Functions and DynamoDB in the main stack
+
+    OpenSearchPolicy:
+        Condition: bOpenSearchIsEnabled
+        Type: AWS::IAM::Policy
+        Properties:
+            Roles:
+                - !Ref ApiRole
+            PolicyName: OpenSearchApiAccess
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # OpenSearch
+                    -
+                        Effect: Allow
+                        Action:
+                            - es:ESHttpGet
+                            - es:ESHttpHead
+                            - es:ESHttpPost
+                            - es:ESHttpPut
+                            - es:ESHttpDelete
+                        Resource:
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}
+                            - !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${OpenSearchDomainName}/*
+                    # OpenSearch Serverless
+                    -
+                        Effect: Allow
+                        Action: aoss:APIAccessAll
+                        Resource: !Sub arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/${OpenSearchDomainName}
 
     FoundationModelPolicy:
         Condition: bBedrockSecondaryRegionAccess

@@ -40,6 +40,7 @@
     "@smithy/middleware-retry": "^2.3.1",
     "@smithy/service-error-classification": "^2.1.5",
     "@smithy/smithy-client": "^2.5.1",
+    "any-base": "^1.1.0",
     "aws-xray-sdk-core": "^3.10.3"
   },
   "devDependencies": {

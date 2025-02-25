@@ -7,6 +7,10 @@ const {
 const StateImportCollection = require('./states/import-collection');
 const StatePrepareIterators = require('./states/prepare-iterators');
 const StateUpdateRecord = require('./states/update-record');
+const StatePrepareFaceIndexingIterators = require('./states/prepare-face-indexing-iterators');
+// StateRunFaceApiModel runs docker image in lambda
+const StateIndexFacesToCollection = require('./states/index-faces-to-collection');
+const StateFaceIndexingIteratorsCompleted = require('./states/face-indexing-iterators-completed');
 
 const REQUIRED_ENVS = [
   'ENV_EXPECTED_BUCKET_OWNER',
@@ -42,6 +46,12 @@ exports.handler = async (event, context) => {
       instance = new StatePrepareIterators(event, context);
     } else if (event.operation === 'StateUpdateRecord') {
       instance = new StateUpdateRecord(event, context);
+    } else if (event.operation === 'StatePrepareFaceIndexingIterators') {
+      instance = new StatePrepareFaceIndexingIterators(event, context);
+    } else if (event.operation === 'StateIndexFacesToCollection') {
+      instance = new StateIndexFacesToCollection(event, context);
+    } else if (event.operation === 'StateFaceIndexingIteratorsCompleted') {
+      instance = new StateFaceIndexingIteratorsCompleted(event, context);
     } else {
       throw new M2CException('invalid operation');
     }

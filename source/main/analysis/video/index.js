@@ -28,10 +28,17 @@ const StateIndexAnalysisIterator = require('./states/index-analysis-iterator');
 /* Prerun states */
 const StatePrepareSegmentDetection = require('./states/prepare-segment-detection');
 const StateSelectSegmentFrames = require('./states/select-segment-frames');
+const StateFrameSegmentationCompleted = require('./states/frame-segmentation-completed');
 /* job completed */
 const StateJobCompleted = require('./states/job-completed');
 // advanced feature
 const StateCreateSceneEvents = require('./states/create-scene-events');
+// pre-analysis branch
+const StateConfigurePreAnalysisIterators = require('./states/configure-preanalysis-iterators');
+const StatePreAnalysisIteratorsCompleted = require('./states/preanalysis-iterators-completed');
+// faceapi model
+const StatePrepareFaceApiModelIterators = require('./states/prepare-faceapi-model-iterators');
+const StateRunFaceApiModelCompleted = require('./states/run-faceapi-model-completed');
 
 const REQUIRED_ENVS = [
   'ENV_SOLUTION_ID',
@@ -140,9 +147,12 @@ exports.handler = async (event, context) => {
     }
     /* merge parallel state outputs */
     const stateData = parseEvent(event, context);
+
     /* state routing */
+    const { operation } = stateData;
+
     let instance;
-    switch (stateData.operation) {
+    switch (operation) {
       /* frame-based analysis */
       case StateData.States.PrepareFrameDetectionIterators:
         instance = new StatePrepareFrameDetectionIterators(stateData);
@@ -189,11 +199,30 @@ exports.handler = async (event, context) => {
       default:
         break;
     }
+
+    if (!instance) {
+      if (StateConfigurePreAnalysisIterators.opSupported(operation)) {
+        instance = new StateConfigurePreAnalysisIterators(stateData);
+      } else if (StatePreAnalysisIteratorsCompleted.opSupported(operation)) {
+        instance = new StatePreAnalysisIteratorsCompleted(stateData);
+      } else if (StatePrepareFaceApiModelIterators.opSupported(operation)) {
+        instance = new StatePrepareFaceApiModelIterators(stateData);
+      } else if (StateRunFaceApiModelCompleted.opSupported(operation)) {
+        instance = new StateRunFaceApiModelCompleted(stateData);
+      } else if (StateFrameSegmentationCompleted.opSupported(operation)) {
+        instance = new StateFrameSegmentationCompleted(stateData);
+      }
+    }
+
     if (!instance) {
       throw new AnalysisError(`${event.operation} not supported`);
     }
-    await instance.process();
-    return stateData.toJSON();
+
+    const response = await instance.process();
+    if (response instanceof StateData) {
+      return stateData.toJSON();
+    }
+    return response;
   } catch (e) {
     console.error(e);
     throw e;

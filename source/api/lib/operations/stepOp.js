@@ -45,11 +45,43 @@ class StepOp extends BaseOp {
     });
 
     const response = await stepfunctionClient.send(command)
-      .then((res) => ({
-        ...res,
-        $metadata: undefined,
-      }));
+      .then((res) => {
+        const {
+          executionArn,
+          name,
+          startDate,
+          stopDate,
+          status,
+          input,
+          output,
+          cause,
+          error,
+        } = res;
 
+        const responseData = {
+          executionArn,
+          name,
+          startDate,
+          stopDate,
+          status,
+          input: JSON.parse(input),
+        };
+
+        if (output !== undefined) {
+          responseData.output = JSON.parse(output);
+        }
+
+        if (cause !== undefined) {
+          responseData.cause = JSON.parse(cause);
+          delete responseData.cause.trace;
+        }
+
+        if (error !== undefined) {
+          responseData.error = error;
+        }
+
+        return responseData;
+      });
     return super.onGET(response);
   }
 }

@@ -61,6 +61,24 @@ class DetectCelebIterator extends BaseDetectFrameIterator {
           x.Celebrity.Name)),
     ];
   }
+
+  skipFrame(frame = {}) {
+    let skipped = super.skipFrame(frame);
+    if (skipped) {
+      return skipped;
+    }
+
+    // skip if there is face in the image
+    if (this.faceapiMap !== undefined) {
+      const { frameNo } = frame;
+      const { faces = [] } = this.faceapiMap[String(frameNo)] || {};
+      if (faces.length === 0) {
+        skipped = true;
+      }
+    }
+
+    return skipped;
+  }
 }
 
 module.exports = DetectCelebIterator;

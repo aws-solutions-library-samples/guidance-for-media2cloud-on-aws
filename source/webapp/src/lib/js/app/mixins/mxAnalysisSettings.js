@@ -187,6 +187,7 @@ const FILTER_SETTINGS = {
   [OPT_SEGMENT]: {
     maxPixelThreshold: 0.15,
     minCoveragePercentage: 98,
+    enableTechnicalCue: true,
   },
   [OPT_AUTO_FACE_INDEXER]: {
     minFaceW: 64,
@@ -197,6 +198,7 @@ const FILTER_SETTINGS = {
     minBrightness: 30,
     minSharpness: 12, // 18,
     minCelebConfidence: 100,
+    occludedFaceFiltering: true,
   },
   [OPT_SCENE]: {
     enhanceWithTranscript: true,
@@ -304,6 +306,20 @@ const mxAnalysisSettings = (Base) => class extends Base {
       this.filters[OPT_SEGMENT] = {};
     }
     this.filters[OPT_SEGMENT].minCoveragePercentage = val;
+  }
+
+  get enableTechnicalCue() {
+    if ((this.filters[OPT_SEGMENT] || {}).enableTechnicalCue === undefined) {
+      return FILTER_SETTINGS[OPT_SEGMENT].enableTechnicalCue;
+    }
+    return this.filters[OPT_SEGMENT].enableTechnicalCue;
+  }
+
+  set enableTechnicalCue(val) {
+    if (!this.filters[OPT_SEGMENT]) {
+      this.filters[OPT_SEGMENT] = {};
+    }
+    this.filters[OPT_SEGMENT].enableTechnicalCue = val;
   }
 
   get enhanceWithTranscript() {
@@ -543,6 +559,20 @@ const mxAnalysisSettings = (Base) => class extends Base {
       this.filters[OPT_AUTO_FACE_INDEXER] = {};
     }
     this.filters[OPT_AUTO_FACE_INDEXER].minCelebConfidence = val;
+  }
+
+  get occludedFaceFiltering() {
+    if ((this.filters[OPT_AUTO_FACE_INDEXER] || {}).occludedFaceFiltering === undefined) {
+      return FILTER_SETTINGS[OPT_AUTO_FACE_INDEXER].occludedFaceFiltering;
+    }
+    return this.filters[OPT_AUTO_FACE_INDEXER].occludedFaceFiltering;
+  }
+
+  set occludedFaceFiltering(val) {
+    if (!this.filters[OPT_AUTO_FACE_INDEXER]) {
+      this.filters[OPT_AUTO_FACE_INDEXER] = {};
+    }
+    this.filters[OPT_AUTO_FACE_INDEXER].occludedFaceFiltering = val;
   }
 
   get cropX() {
@@ -1457,6 +1487,13 @@ const mxAnalysisSettings = (Base) => class extends Base {
       formItems.push(formGroup);
     });
 
+    [
+      ['enableTechnicalCue', Messages.EnableTechnicalCue, Tooltips.EnableTechnicalCue],
+    ].forEach((item) => {
+      const formGroup = this.createFilterToggle(item);
+      formItems.push(formGroup);
+    });
+
     return formItems;
   }
 
@@ -1598,6 +1635,13 @@ const mxAnalysisSettings = (Base) => class extends Base {
         tooltip,
         minMaxStep
       );
+      formItems.push(formGroup);
+    });
+
+    [
+      ['occludedFaceFiltering', Messages.OccludedFaceFiltering, Tooltips.OccludedFaceFiltering],
+    ].forEach((item) => {
+      const formGroup = this.createFilterToggle(item);
       formItems.push(formGroup);
     });
 
@@ -1886,7 +1930,7 @@ const mxAnalysisSettings = (Base) => class extends Base {
       } else {
         option.removeAttr('disabled');
         if (this.aiOptions[custom.name] !== undefined
-        && this.aiOptions[custom.name] === x.value) {
+          && this.aiOptions[custom.name] === x.value) {
           option.attr('selected', 'selected');
         }
       }
@@ -2154,7 +2198,7 @@ const mxAnalysisSettings = (Base) => class extends Base {
 
   async getAvailableCustomEntityRecognizers() {
     if (this.serviceAvailability[ServiceNames.Transcribe]
-    && this.serviceAvailability[ServiceNames.Comprehend]) {
+      && this.serviceAvailability[ServiceNames.Comprehend]) {
       return ApiHelper.getComprehendCustomEntityRecognizers();
     }
 
@@ -2549,7 +2593,7 @@ const mxAnalysisSettings = (Base) => class extends Base {
 
       // depends on facematch/facecollection, celeb, framecapture mode
       [
-        [ServiceNames.Rekognition, OPT_CELEB],
+        // [ServiceNames.Rekognition, OPT_CELEB],
       ].forEach((params) => {
         const input = this.findCheckboxInput(...params).first();
 
@@ -2665,7 +2709,7 @@ const mxAnalysisSettings = (Base) => class extends Base {
     // remove model from list
     if (!enabled && idx >= 0) {
       this.aiOptions[opt].splice(idx, 1);
-    // add model to the list
+      // add model to the list
     } else if (enabled && idx < 0) {
       this.aiOptions[opt].push(model);
     }
@@ -2738,7 +2782,7 @@ const mxAnalysisSettings = (Base) => class extends Base {
 
     // force changes if mode is none
     if (from === 'undefined'
-    || from === String(FrameCaptureMode.MODE_NONE)) {
+      || from === String(FrameCaptureMode.MODE_NONE)) {
       select.val(String(frameCaptureMode))
         .trigger('change');
     }
