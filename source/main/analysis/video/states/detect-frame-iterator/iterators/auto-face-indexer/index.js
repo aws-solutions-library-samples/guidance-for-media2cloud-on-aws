@@ -1024,7 +1024,7 @@ function _filterDuplicated(faces) {
     const face = faces.shift();
     const found = _findOverlappedFace(face, filtered);
     if (found === undefined) {
-      filtered.push(found);
+      filtered.push(face);
       continue;
     }
 
