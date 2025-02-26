@@ -566,8 +566,8 @@ class StateStartImageAnalysis {
     // load image
     let image = await imageFromS3(proxyBucket, imageKey);
 
-    const scaleW = MAX_W / img.bitmap.width;
-    const scaleH = MAX_H / img.bitmap.height;
+    const scaleW = MAX_W / image.bitmap.width;
+    const scaleH = MAX_H / image.bitmap.height;
     const factor = Math.min(scaleW, scaleH);
     if (factor < 1.0) {
       image = image.scale(factor);
@@ -584,7 +584,12 @@ class StateStartImageAnalysis {
       [latitude, longitude]
     );
 
-    const response = await _invokeEndpoint(params);
+    const response = await _invokeEndpoint(params)
+      .catch(() => undefined);
+
+    if (response === undefined) {
+      return response;
+    }
 
     const {
       usage: {
