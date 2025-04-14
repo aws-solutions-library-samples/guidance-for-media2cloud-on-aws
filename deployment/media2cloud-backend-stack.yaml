@@ -1343,6 +1343,12 @@ Resources:
 
     BacklogCustomLabelsStateMachineServiceRole:
         Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -1363,6 +1369,37 @@ Resources:
                                 Effect: Allow
                                 Action: lambda:InvokeFunction
                                 Resource: !GetAtt BacklogCustomLabelsLambda.Arn
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
+
+    BacklogCustomLabelsStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - BacklogCustomLabels
+                    - Name
+            RetentionInDays: 7
 
     BacklogCustomLabelsStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -1374,6 +1411,12 @@ Resources:
                     - BacklogCustomLabels
                     - Name
             RoleArn: !GetAtt BacklogCustomLabelsStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt BacklogCustomLabelsStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -2041,6 +2084,9 @@ Resources:
                     -
                         id: W76
                         reason: Suppress SPCM warning to have fine grained permission
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -2147,6 +2193,20 @@ Resources:
                                     - events:PutRule
                                     - events:DescribeRule
                                 Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
 
     ################################################################################
     # Ingest Fixty State Machine resources
@@ -2261,6 +2321,23 @@ Resources:
                     ENV_IOT_TOPIC: !Ref IotTopic
                     ENV_INGEST_BUCKET: !Ref IngestBucket
 
+    IngestFixityStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestFixity
+                    - Name
+            RetentionInDays: 7
+
     IngestFixityStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -2271,6 +2348,12 @@ Resources:
                     - IngestFixity
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestFixityStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -2646,6 +2729,23 @@ Resources:
                     ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
                     ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
 
+    IngestVideoStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestVideo
+                    - Name
+            RetentionInDays: 7
+
     IngestVideoStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -2656,6 +2756,12 @@ Resources:
                     - IngestVideo
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestVideoStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -2938,6 +3044,23 @@ Resources:
                     ENV_BACKLOG_TOPIC_ARN: !Ref BacklogTopic
                     ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
 
+    IngestAudioStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestAudio
+                    - Name
+            RetentionInDays: 7
+
     IngestAudioStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -2948,6 +3071,12 @@ Resources:
                     - IngestAudio
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestAudioStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -3130,6 +3259,23 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
 
+    IngestImageStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestImage
+                    - Name
+            RetentionInDays: 7
+
     IngestImageStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -3140,6 +3286,12 @@ Resources:
                     - IngestImage
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestImageStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -3303,6 +3455,23 @@ Resources:
                     ENV_INGEST_BUCKET: !Ref IngestBucket
                     ENV_PROXY_BUCKET: !Ref ProxyBucket
 
+    IngestDocumentStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestDocument
+                    - Name
+            RetentionInDays: 7
+
     IngestDocumentStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -3313,6 +3482,12 @@ Resources:
                     - IngestDocument
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestDocumentStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -3531,6 +3706,23 @@ Resources:
                     ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
                     ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
 
+    IngestMainStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - IngestMain
+                    - Name
+            RetentionInDays: 7
+
     IngestMainStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -3541,6 +3733,12 @@ Resources:
                     - IngestMain
                     - Name
             RoleArn: !GetAtt IngestStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt IngestMainStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -4013,6 +4211,9 @@ Resources:
                     -
                         id: W76
                         reason: Suppress SPCM warning to have fine grained permission
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -4183,6 +4384,20 @@ Resources:
                                     - events:PutRule
                                     - events:DescribeRule
                                 Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
 
     ################################################################################
     # Analysis Video State Machine resources
@@ -4500,6 +4715,23 @@ Resources:
                     ENV_BACKLOG_TOPIC_ROLE_ARN: !GetAtt BacklogTopicRole.Arn
                     ENV_ATOMICLOCK_TABLE: !Ref AtomicLockTable
 
+    VideoBasedDetectionStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - VideoBasedDetection
+                    - Name
+            RetentionInDays: 7
+
     VideoBasedDetectionStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -4510,6 +4742,12 @@ Resources:
                     - VideoBasedDetection
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt VideoBasedDetectionStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -4624,6 +4862,23 @@ Resources:
                         }
                     }
 
+    DynamicFrameSegmentationStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - DynamicFrameSegmentation
+                    - Name
+            RetentionInDays: 7
+
     DynamicFrameSegmentationStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -4634,6 +4889,12 @@ Resources:
                     -  DynamicFrameSegmentation
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt DynamicFrameSegmentationStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -4870,6 +5131,23 @@ Resources:
                         }
                     }
 
+    FaceApiModelStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - FaceApiModel
+                    - Name
+            RetentionInDays: 7
+
     FaceApiModelStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -4880,6 +5158,12 @@ Resources:
                     - FaceApiModel
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt FaceApiModelStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -5008,6 +5292,23 @@ Resources:
                         }
                     }
 
+    FrameBasedDetectionStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - FrameBasedDetection
+                    - Name
+            RetentionInDays: 7
+
     FrameBasedDetectionStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -5018,6 +5319,12 @@ Resources:
                     - FrameBasedDetection
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt FrameBasedDetectionStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -5126,6 +5433,23 @@ Resources:
                         }
                     }
 
+    CustomModelDetectionStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - CustomModelDetection
+                    - Name
+            RetentionInDays: 7
+
     CustomModelDetectionStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -5136,6 +5460,12 @@ Resources:
                     - CustomModelDetection
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt CustomModelDetectionStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -5391,6 +5721,23 @@ Resources:
                         }
                     }
 
+    AnalysisVideoStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisVideo
+                    - Name
+            RetentionInDays: 7
+
     AnalysisVideoStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -5401,6 +5748,12 @@ Resources:
                     - AnalysisVideo
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisVideoStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -5945,6 +6298,23 @@ Resources:
                     ENV_BEDROCK_MODEL_ID: !Ref BedrockModelId
                     ENV_BEDROCK_MODEL_VER: !Ref BedrockModelVersion
 
+    AnalysisAudioStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisAudio
+                    - Name
+            RetentionInDays: 7
+
     AnalysisAudioStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -5955,6 +6325,12 @@ Resources:
                     - AnalysisAudio
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisAudioStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -6600,6 +6976,23 @@ Resources:
                     ENV_BEDROCK_MODEL_ID: !Ref BedrockModelId
                     ENV_BEDROCK_MODEL_VER: !Ref BedrockModelVersion
 
+    AnalysisImageStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisImage
+                    - Name
+            RetentionInDays: 7
+
     AnalysisImageStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -6610,6 +7003,12 @@ Resources:
                     - AnalysisImage
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisImageStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -6855,6 +7254,23 @@ Resources:
                     ENV_BEDROCK_MODEL_ID: !Ref BedrockModelId
                     ENV_BEDROCK_MODEL_VER: !Ref BedrockModelVersion
 
+    AnalysisDocumentStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisDocument
+                    - Name
+            RetentionInDays: 7
+
     AnalysisDocumentStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -6865,6 +7281,12 @@ Resources:
                     - AnalysisDocument
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisDocumentStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -7053,6 +7475,23 @@ Resources:
                     ENV_BEDROCK_MODEL_ID: !Ref BedrockModelId
                     ENV_BEDROCK_MODEL_VER: !Ref BedrockModelVersion
 
+    AnalysisPostProcessStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisPostProcess
+                    - Name
+            RetentionInDays: 7
+
     AnalysisPostProcessStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -7063,6 +7502,12 @@ Resources:
                     - AnalysisPostProcess
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisPostProcessStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -7334,6 +7779,23 @@ Resources:
                     ENV_DEFAULT_MINCONFIDENCE: !Ref DefaultMinConfidence
                     ENV_AI_OPTIONS_S3KEY: !Ref AIOptionsS3Key
 
+    AnalysisMainStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AnalysisMain
+                    - Name
+            RetentionInDays: 7
+
     AnalysisMainStateMachine:
         Type: AWS::StepFunctions::StateMachine
         Properties:
@@ -7344,6 +7806,12 @@ Resources:
                     - AnalysisMain
                     - Name
             RoleArn: !GetAtt AnalysisStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AnalysisMainStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -8027,6 +8495,12 @@ Resources:
     ################################################################################
     MainStateMachineServiceRole:
         Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -8066,6 +8540,37 @@ Resources:
                                     - events:PutRule
                                     - events:DescribeRule
                                 Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
+
+    MainStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - Main
+                    - Name
+            RetentionInDays: 7
 
     MainStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -8077,6 +8582,12 @@ Resources:
                     - Main
                     - Name
             RoleArn: !GetAtt MainStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt MainStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -8677,6 +9188,12 @@ Resources:
 
     AssetRemovalStateMachineServiceRole:
         Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -8729,6 +9246,37 @@ Resources:
                                     - events:PutRule
                                     - events:DescribeRule
                                 Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
+
+    AssetRemovalStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - AssetRemoval
+                    - Name
+            RetentionInDays: 7
 
     AssetRemovalStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -8740,6 +9288,12 @@ Resources:
                     - AssetRemoval
                     - Name
             RoleArn: !GetAtt AssetRemovalStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt AssetRemovalStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
@@ -8994,6 +9548,12 @@ Resources:
 
     UpdateFaceIndexerStateMachineServiceRole:
         Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -9047,6 +9607,37 @@ Resources:
                                     - events:PutRule
                                     - events:DescribeRule
                                 Resource: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
+
+    UpdateFaceIndexerStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - UpdateFaceIndexer
+                    - Name
+            RetentionInDays: 7
 
     UpdateFaceIndexerStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -9058,6 +9649,12 @@ Resources:
                     - UpdateFaceIndexer
                     - Name
             RoleArn: !GetAtt UpdateFaceIndexerStateMachineServiceRole.Arn
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt UpdateFaceIndexerStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
