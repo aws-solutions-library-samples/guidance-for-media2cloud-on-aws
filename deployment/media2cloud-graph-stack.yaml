@@ -777,6 +777,12 @@ Resources:
 
     GraphIndexerStateMachineServiceRole:
         Type: AWS::IAM::Role
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W11
+                        reason: CloudWatch API actions, such as CreateLogDelivery and DescribeLogGroups, do not support Resource types defined by Amazon CloudWatch Logs. Refer to https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html
         Properties:
             AssumeRolePolicyDocument:
                 Version: "2012-10-17"
@@ -799,6 +805,37 @@ Resources:
                                 Effect: Allow
                                 Action: lambda:InvokeFunction
                                 Resource: !GetAtt GraphIndexerLambda.Arn
+                            -
+                                Effect: Allow
+                                Action:
+                                    - logs:CreateLogDelivery
+                                    - logs:GetLogDelivery
+                                    - logs:UpdateLogDelivery
+                                    - logs:DeleteLogDelivery
+                                    - logs:ListLogDeliveries
+                                    - logs:PutResourcePolicy
+                                    - logs:DescribeResourcePolicies
+                                    - logs:DescribeLogGroups
+                                    - logs:CreateLogStream
+                                    - logs:PutLogEvents
+                                Resource: "*"
+
+    GraphIndexerStateMachineLogGroup:
+        Type: AWS::Logs::LogGroup
+        Metadata:
+            cfn_nag:
+                rules_to_suppress:
+                    -
+                        id: W84
+                        reason: Use default encryption. Disable additional KMS encryption requirement. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html
+        Properties:
+            LogGroupName: !Sub
+                - /aws/stepfunctions/${ResourcePrefix}-${name}
+                - name: !FindInMap
+                    - Workflow
+                    - GraphIndexer
+                    - Name
+            RetentionInDays: 7
 
     GraphIndexerStateMachine:
         Type: AWS::StepFunctions::StateMachine
@@ -813,6 +850,12 @@ Resources:
             RoleArn: !GetAtt GraphIndexerStateMachineServiceRole.Arn
             TracingConfiguration:
                 Enabled: true
+            LoggingConfiguration:
+                Destinations:
+                    - CloudWatchLogsLogGroup:
+                        LogGroupArn: !GetAtt GraphIndexerStateMachineLogGroup.Arn
+                IncludeExecutionData: true
+                Level: ALL
             DefinitionString:
                 !Sub |-
                     {
