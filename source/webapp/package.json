@@ -9,7 +9,7 @@
     "pretest": "npm install",
     "test": "jest --coverage",
     "build:clean": "rm -rf dist && mkdir -p dist",
-    "build:copy": "cp -rv css images src favicon.ico index.html 404.html ./dist",
+    "build:copy": "cp -rv css images src favicon.ico index.html 404.html embedded.html ./dist",
     "build": "npm-run-all -s build:clean build:copy",
     "zip": "cd dist && zip -rq"
   },
