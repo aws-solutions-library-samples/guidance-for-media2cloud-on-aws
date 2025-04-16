@@ -1181,6 +1181,11 @@ function build_webapp_package() {
   # build index html and inject integrity check
   build_index_html "$SOURCE_DIR/${package}/dist/index.html"
 
+  # embedded player
+  rollup_appjs "$SOURCE_DIR/${package}/dist/src/lib/js/embedded/app.js" "$SOURCE_DIR/${package}/dist/embedded.min.js"
+  # build embedded html and inject integrity check
+  build_index_html "$SOURCE_DIR/${package}/dist/embedded.html"
+
   # now, zip and package all the files
   npm run zip -- "$PKG_WEBAPP" . -x ./dev**
   cp -v "./dist/$PKG_WEBAPP" "$BUILD_DIST_DIR"

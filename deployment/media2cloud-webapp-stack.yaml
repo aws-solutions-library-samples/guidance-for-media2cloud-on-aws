@@ -1497,6 +1497,8 @@ Resources:
                     - /css*
                     - /src*
                     - /third_party*
+                    - /embedded.html
+                    - /embedded.min.js
                 LastUpdated: !GetAtt CopyWebContent.LastUpdated
 
     UpdateIngestCorsRule:
