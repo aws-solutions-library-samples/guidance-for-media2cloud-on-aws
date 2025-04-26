@@ -19,10 +19,20 @@ class IndexCustomLabelIterator extends BaseAnalysisIndexer {
 
   parseMetadata(data) {
     const model = this.stateData.data[SUBCATEGORY].customLabelModels;
-    return {
-      ...super.parseMetadata(data),
-      model,
-    };
+    const datasets = [];
+
+    for (const [name, value] of Object.entries(data)) {
+      const timecodes = [];
+      for (const { begin, end } of value) {
+        timecodes.push({ begin, end });
+      }
+
+      if (timecodes.length > 0) {
+        datasets.push({ model, name, timecodes });
+      }
+    }
+
+    return datasets;
   }
 }
 
