@@ -1,8 +1,8 @@
 import EmbeddedApp from './embeddedApp.js';
 import {
-  SignInFlow,
+  LazySignIn,
   ON_SIGNIN_VIEW_HIDDEN,
-} from '../app/signInFlow.js';
+} from './lazySignIn.js';
 
 const ID_DEMOAPP = '#demo-app';
 const TITLE = 'Media2Cloud Embedded Video';
@@ -13,7 +13,7 @@ $(document).ready(async () => {
   $(ID_DEMOAPP).append(appContainer);
 
   // attach signin flow
-  const signIn = new SignInFlow(TITLE);
+  const signIn = new LazySignIn(TITLE);
   signIn.appendTo(appContainer);
 
   // event handlings

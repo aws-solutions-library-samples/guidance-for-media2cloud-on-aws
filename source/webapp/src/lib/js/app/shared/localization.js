@@ -409,6 +409,7 @@ export default class Localization {
           Group: 'Group',
           Permission: 'Permission',
           RemoveUser: 'Remove user?',
+          GenerateUserToken: 'Generate token',
           PermissionViewer: 'Can view assets',
           PermissionCreator: 'Can view and ingest assets',
           PermissionAdmin: 'Full admin access',
@@ -525,6 +526,7 @@ export default class Localization {
           IndexFace: 'Enter a name of the cropped face and select a face collection to store the face',
           /* user management */
           RemoveUserFromCognito: 'Remove user from user directory',
+          GenerateUserToken: 'Generate token for Amazon QuickSight embedded video. User must be in viewer group and verified.',
           RefreshUserTable: 'Fetch users from Amazon Cognito User Pool again',
           SendRequest: 'Send request to foundation model to summary text. This may take up to 30 seconds.',
           Prompt: 'Specify what you want the foundation model to generate; i.e., "Summarize text", "Sentiment of the text", and etc',

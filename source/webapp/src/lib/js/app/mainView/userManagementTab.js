@@ -8,8 +8,34 @@ import Spinner from '../shared/spinner.js';
 import {
   AWSConsoleCongito,
 } from '../shared/awsConsole.js';
+import {
+  GetS3Utils,
+} from '../shared/s3utils.js';
 import mxAlert from '../mixins/mxAlert.js';
 import BaseTab from '../shared/baseTab.js';
+
+const {
+  MD5,
+  AES: {
+    decrypt,
+    encrypt,
+  },
+  enc: {
+    Utf8,
+  },
+} = window.CryptoJS;
+
+const {
+  Cognito: {
+    Group: UserGroup,
+    UserPoolId,
+  },
+  StackName,
+  Web: {
+    Bucket: WebBucket,
+  },
+} = SolutionManifest;
+const { Admin, Creator, Viewer } = UserGroup;
 
 const {
   Messages: {
@@ -21,6 +47,7 @@ const {
     Status: MSG_STATUS,
     LastModified: MSG_LASTMODIFIED,
     RemoveUser: MSG_REMOVE_USER,
+    GenerateUserToken: MSG_GENERATE_USER_TOKEN,
     PermissionViewer: VIEWER_PERMISSION,
     PermissionCreator: CREATOR_PERMISSION,
     PermissionAdmin: ADMIN_PERMISSION,
@@ -30,6 +57,7 @@ const {
   },
   Tooltips: {
     RemoveUserFromCognito: TOOLTIP_REMOVE_USER,
+    GenerateUserToken: TOOLTIP_GENERATE_USER_TOKEN,
     RefreshUserTable: TOOLTIP_REFRESH_USER_TABLE,
   },
   Buttons: {
@@ -50,6 +78,7 @@ const {
 } = Localization;
 
 const HASHTAG = TITLE.replaceAll(' ', '');
+const PREFIX_TOKEN = '.token';
 
 const TABLE_HEADER = [
   MSG_USERNAME,
@@ -58,6 +87,7 @@ const TABLE_HEADER = [
   MSG_STATUS,
   MSG_LASTMODIFIED,
   MSG_REMOVE_USER,
+  MSG_GENERATE_USER_TOKEN,
 ];
 
 export default class UserManagementTab extends mxAlert(BaseTab) {
@@ -101,7 +131,7 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
     const container = $('<div/>')
       .addClass('col-9 p-0 mx-auto mt-4');
 
-    const url = AWSConsoleCongito.getUserPoolLink(SolutionManifest.Cognito.UserPoolId);
+    const url = AWSConsoleCongito.getUserPoolLink(UserPoolId);
     let desc = DESCRIPTION.replace('{{CONSOLE_USERPOOL}}', url);
     desc = $('<p/>').addClass('lead')
       .html(desc);
@@ -175,11 +205,12 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
     const tr = $('<tr/>')
       .attr('data-username', user.username);
 
-    let permission = (user.group === SolutionManifest.Cognito.Group.Admin)
-      ? ADMIN_PERMISSION
-      : (user.group === SolutionManifest.Cognito.Group.Creator)
-        ? CREATOR_PERMISSION
-        : VIEWER_PERMISSION;
+    let permission = VIEWER_PERMISSION;
+    if (user.group === Admin) {
+      permission = ADMIN_PERMISSION;
+    } else if (user.group === Creator) {
+      permission = CREATOR_PERMISSION;
+    }
     permission = `${user.group}<br/>(${permission})`;
 
     const removeBtn = $('<button/>').addClass('btn btn-sm btn-outline-danger')
@@ -202,6 +233,30 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
       this.loading(false);
     });
 
+    const generateTokenBtn = $('<button/>')
+      .addClass('btn btn-sm btn-outline-success')
+      .attr('type', 'button')
+      .attr('data-toggle', 'tooltip')
+      .attr('data-placement', 'bottom')
+      .attr('title', TOOLTIP_GENERATE_USER_TOKEN)
+      .append($('<i/>').addClass('fas fa-key'))
+      .tooltip({
+        trigger: 'hover',
+      });
+
+    if (user.status !== 'CONFIRMED' || user.group !== Viewer) {
+      generateTokenBtn.addClass('disabled')
+        .attr('disabled', 'disabled');
+    }
+
+    generateTokenBtn.on('click', async () => {
+      generateTokenBtn.tooltip('hide');
+      const parent = this.tabContent
+        .find(`table#table-${this.id}`)
+        .parent();
+      await this.onGenerateToken(parent, user);
+    });
+
     const tds = [
       user.username,
       user.email,
@@ -209,6 +264,7 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
       user.status,
       new Date(user.lastModified).toISOString(),
       removeBtn,
+      generateTokenBtn,
     ].map((item) =>
       $('<td/>')
         .addClass('h-100 align-middle text-center col-2')
@@ -350,7 +406,7 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
       .attr('id', `select-${this.id}`);
     inputGrp.append(select);
 
-    const options = Object.values(SolutionManifest.Cognito.Group).map((group) =>
+    const options = Object.values(UserGroup).map((group) =>
       $('<option/>')
         .attr('value', group)
         .html(group));
@@ -448,4 +504,245 @@ export default class UserManagementTab extends mxAlert(BaseTab) {
 
     return confirmed;
   }
+
+  async onGenerateToken(parent, user) {
+    console.log(`onGenerateToken: ${JSON.stringify(user)}`);
+    let id = `token-generation-${this.id}`;
+
+    const [modal, body] = this.createModelElement(id);
+    parent.append(modal);
+
+    const formContainer = $('<form/>')
+      .addClass('form-signin text-center needs-validation')
+      .addClass('p-0')
+      .attr('novalidate', 'novalidate');
+    body.append(formContainer);
+
+    id = `password-${this.id}`;
+    const [passwdContainer, passwdInput] = this.createPasswordInput(id, user.username);
+    formContainer.append(passwdContainer);
+
+    id = `randomcode-${this.id}`;
+    const [codeContainer, codeInput] = this.createCodeInput(id);
+    formContainer.append(codeContainer);
+
+    id = `token-${this.id}`;
+    const [tokenContainer, tokenInput] = this.createTokenInput(id);
+    formContainer.append(tokenContainer);
+    tokenContainer.addClass('collapse');
+
+    const [submitContainer, submitBtn] = this.createSubmitButton();
+    formContainer.append(submitContainer);
+
+    formContainer.submit(async (event) => {
+      event.preventDefault();
+      submitBtn.blur();
+
+      if (formContainer[0].checkValidity() === false) {
+        event.stopPropagation();
+        this.shake(modal);
+        return;
+      }
+
+      const passwd = passwdInput.val();
+      const passphrase = codeInput.val();
+
+      const encrypted = this.encryptMessage(user.username, passwd, passphrase);
+      const md5 = MD5(encrypted).toString();
+      await this.uploadMessage(md5, encrypted);
+
+      submitBtn.attr('disabled', 'disabled')
+        .addClass('disabled');
+      passwdContainer.addClass('collapse');
+      codeContainer.addClass('collapse');
+
+      tokenContainer.removeClass('collapse');
+      tokenInput.val(md5);
+
+
+      // const decrypted = this.decryptMessage(encrypted);
+      // console.log(JSON.stringify(decrypted, null, 2));
+    });
+
+    // dispose itself
+    modal.on('hidden.bs.modal', () => {
+      modal.remove();
+    });
+
+    modal.modal({
+      backdrop: 'static',
+      keyboard: true,
+      show: true,
+    });
+  }
+
+  createModelElement(id) {
+    const modal = $('<div/>')
+      .addClass('modal fade')
+      .attr('aria-labelledby', id)
+      .attr('tabindex', -1)
+      .attr('role', 'dialog');
+
+    const modalDialog = $('<div/>')
+      .addClass('modal-dialog') //  modal-lg
+      .attr('role', 'document');
+    modal.append(modalDialog);
+
+    const content = $('<div/>')
+      .attr('id', id)
+      .addClass('modal-content');
+    modalDialog.append(content);
+
+    const header = $('<div/>')
+      .addClass('modal-header');
+    content.append(header);
+
+    const title = $('<div/>')
+      .addClass('modal-title');
+    header.append(title);
+
+    const icon = $('<i/>')
+      .addClass('fas fa-key')
+      .addClass('text-dark');
+    title.append(icon);
+    title.append('&nbsp;&nbsp;Generate user token for Amazon QuickSight');
+
+    const dismissBtn = $('<button/>')
+      .addClass('close')
+      .attr('type', 'button')
+      .attr('data-dismiss', 'modal')
+      .attr('aria-label', 'Close');
+    header.append(dismissBtn);
+
+    const X = $('<span/>')
+      .attr('aria-hidden', 'true')
+      .append('&times;');
+    dismissBtn.append(X);
+
+    const body = $('<div/>')
+      .addClass('modal-body');
+    content.append(body);
+
+    return [modal, body];
+  }
+
+  createPasswordInput(id, username) {
+    const container = $('<div/>')
+      .addClass('text-left');
+
+    const label = $('<label/>')
+      .html('User Password');
+    container.append(label);
+
+    const input = $('<input/>')
+      .addClass('form-control')
+      .attr('type', 'password')
+      .attr('id', id)
+      .attr('pattern', '(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z]).{8,}')
+      .attr('placeholder', `Enter password for ${username}`)
+      .attr('autocomplete', 'current-password')
+      .attr('required', 'required');
+    container.append(input);
+
+    const invalid = $('<div/>')
+      .addClass('invalid-feedback')
+      .html('Invalid password');
+    container.append(invalid);
+
+    return [container, input];
+  }
+
+  createCodeInput(id) {
+    const container = $('<div/>')
+      .addClass('text-left mb-2');
+
+    const label = $('<label/>')
+      .attr('for', id)
+      .html('Passphrase');
+    container.append(label);
+
+    const input = $('<input/>').addClass('form-control')
+      .attr('type', 'text')
+      .attr('id', id)
+      .attr('pattern', '(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z]).{6,}')
+      .attr('placeholder', '6 characters or more')
+      .attr('autocomplete', 'one-time-code')
+      .attr('required', 'required')
+      .attr('autofocus', 'autofocus');
+    container.append(input);
+
+    const invalid = $('<div/>')
+      .addClass('invalid-feedback')
+      .html('Invalid code');
+    container.append(invalid);
+
+    return [container, input];
+  }
+
+  createTokenInput(id) {
+    const container = $('<div/>')
+      .addClass('text-left mb-2');
+
+    const label = $('<label/>')
+      .attr('for', id)
+      .html('Token to use for Amazon QuickSight');
+    container.append(label);
+
+    const input = $('<input/>').addClass('form-control')
+      .attr('type', 'text')
+      .attr('disabled', 'disabled')
+      .attr('readonly', 'readonly')
+      .attr('id', id);
+    container.append(input);
+
+    return [container, input];
+  }
+
+  createSubmitButton(text = 'Generate token') {
+    const container = $('<div/>')
+      .addClass('col-8 mx-auto my-4');
+
+    const button = $('<button/>')
+      .addClass('btn btn-sm btn-outline-success btn-block')
+      .attr('type', 'submit')
+      .html(text);
+    container.append(button);
+
+    return [container, button];
+  }
+
+  encryptMessage(username, passwd, passphrase) {
+    let encrypted = encrypt(JSON.stringify({
+      username,
+      password: passwd,
+    }), passphrase).toString();
+
+    encrypted = encrypt(JSON.stringify({
+      sk: passphrase,
+      message: encrypted,
+    }), StackName).toString();
+
+    return encrypted;
+  }
+
+  decryptMessage(message) {
+    let decrypted = decrypt(message, StackName).toString(Utf8)
+    decrypted = JSON.parse(decrypted);
+    decrypted = decrypt(decrypted.message, decrypted.sk).toString(Utf8);
+    decrypted = JSON.parse(decrypted);
+    return decrypted;
+  }
+
+  async uploadMessage(md5, message) {
+    const s3utils = GetS3Utils();
+    const key = `${PREFIX_TOKEN}/${md5}`;
+
+    return await s3utils.upload({
+      Bucket: WebBucket,
+      Key: key,
+      Body: message,
+      ContentType: 'plain/text',
+    });
+  }
+
 }
