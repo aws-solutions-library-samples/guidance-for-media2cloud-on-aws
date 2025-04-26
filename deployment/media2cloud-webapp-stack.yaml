@@ -1305,6 +1305,21 @@ Resources:
                 - !Ref UserPoolGroupCreatorRole
                 - !Ref UserPoolGroupAdminRole
 
+    UserPoolGroupAdminAccessPolicy:
+        Type: AWS::IAM::Policy
+        Properties:
+            PolicyName: !Sub ${ResourcePrefix}-UserPoolGroupAdminAccessPolicy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                    # S3 - Write on web bucket
+                    -
+                        Effect: Allow
+                        Action: s3:PutObject
+                        Resource: !Sub arn:aws:s3:::${WebBucket}/*
+            Roles:
+                - !Ref UserPoolGroupAdminRole
+
     CognitoAppClient:
         Type: AWS::Cognito::UserPoolClient
         Properties:
