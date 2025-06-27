@@ -484,7 +484,6 @@ async function _checkBlackFrames(
 
   // entire shot are black frames?
   let laplacians = candidates.map(({ laplacian }) => laplacian);
-  debugger;
 
   laplacians = [...new Set(laplacians)];
 
