@@ -480,17 +480,26 @@ async function _checkBlackFrames(
   prefix,
   candidates
 ) {
-  const minLaplacian = Math.min(
-    ...candidates
-      .map((x) =>
-        x.laplacian)
-  );
+  let qualified = candidates;
+
+  // entire shot are black frames?
+  let laplacians = candidates.map(({ laplacian }) => laplacian);
+  debugger;
+
+  laplacians = [...new Set(laplacians)];
+
+  if (laplacians.length === 1 && candidates.length > 2) {
+    candidates.sort((a, b) => a.frameIdx - b.frameIdx);
+    qualified = [candidates[0], candidates[candidates.length - 1]];
+  }
 
   const promises = [];
   const blackFrames = [];
 
-  for (let i = 0; i < candidates.length; i += 1) {
-    const candidate = candidates[i];
+  const minLaplacian = Math.min(...laplacians);
+
+  for (let i = 0; i < qualified.length; i += 1) {
+    const candidate = qualified[i];
 
     if (candidate.laplacian === minLaplacian) {
       promises.push(_analyseBlackLevel(
