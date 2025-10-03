@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.7] - 2025-10-03
+### Features
+- Auto extract face name from the file name. Strip any ending numbers from the file name, i.e, John Doe 2.jpg would have the name as John Doe instead of John Doe 2.
+
 ## [4.0.6] - 2025-09-16
 ### Bugfixes
 - Pinned python package versions for all docker images to avoid dependency issues

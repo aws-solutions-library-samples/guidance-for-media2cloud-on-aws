@@ -1671,6 +1671,19 @@ export default class FaceCollectionTab extends mxAlert(BaseTab) {
 
     let base = name.lastIndexOf('.');
     base = name.substring(0, base);
+    base = base.trim();
+
+    // if base name ends with number, strips it.
+    if (/[0-9]+$/.test(base)) {
+      const reversed = base.split(' ').reverse();
+      while (reversed.length > 0) {
+        if (Number.isNaN(Number(reversed[0]))) {
+          break;
+        }
+        reversed.shift();
+      }
+      base = reversed.reverse().join(' ');
+    }
 
     const formContainer = $('<form/>')
       .addClass('form-inline')
