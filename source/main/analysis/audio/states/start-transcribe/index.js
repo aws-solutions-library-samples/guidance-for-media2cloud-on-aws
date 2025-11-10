@@ -101,7 +101,7 @@ class StateStartTranscribe {
       MediaFormat: 'mp4',
       OutputBucketName: bucket,
       OutputKey: outPrefix,
-      OutputEncryptionKMSKeyId: 'alias/aws/s3',
+      // OutputEncryptionKMSKeyId: 'alias/aws/s3',
       IdentifyLanguage: (languageCode === undefined),
       IdentifyMultipleLanguages: (languageCode === undefined),
       LanguageCode: languageCode,
