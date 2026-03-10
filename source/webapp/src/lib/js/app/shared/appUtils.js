@@ -12,7 +12,7 @@ const REGEX_UUID = /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}
  * @class AppUtils
  * @description common utility class for static functions
  */
-export default class AppUtils extends mxReadable(mxZero(class {})) {
+export default class AppUtils extends mxReadable(mxZero(class { })) {
   /**
    * @function sanitize
    * @description prevent xss ingestion
@@ -177,5 +177,37 @@ export default class AppUtils extends mxReadable(mxZero(class {})) {
 
   static validateUuid(uuid = '') {
     return REGEX_UUID.test(uuid);
+  }
+
+  // Validates filename: Unicode letters/numbers, spaces, dots, underscores, hyphens, and parens.
+  // Prevents XSS by excluding < > " ' & and other control characters.
+  static validateFilename(filename) {
+    if (typeof filename !== 'string' || filename.length === 0) {
+      return false;
+    }
+
+    // 2. Normalize Unicode (NFC)
+    // This combines characters like 'e' + '´' into 'é' for consistent regex matching.
+    const normalized = filename.normalize('NFC');
+
+    /**
+     * Regex Breakdown:
+     * ^            : Start of string
+     * [\p{L}\p{N}  : Any Unicode letter or number
+     *  ._\-\(\)' ] : Allowed symbols: . _ - ( ) ' and [space]
+     * \u2019       : Smart Apostrophe/Right Single Quote
+     * \u2018       : Left Single Quote
+     * +            : One or more of the above
+     * $            : End of string
+     * u            : Unicode flag (required for \p)
+     */
+    const safePattern = /^[\p{L}\p{N}._\-\(\)'\u2018\u2019 ]+$/u;
+
+    return (
+      safePattern.test(normalized) &&
+      !normalized.includes('..') &&    // Prevent directory traversal
+      !normalized.startsWith('.') &&   // Prevent hidden files
+      normalized.trim() === normalized // Prevent bypasses via leading/trailing spaces
+    );
   }
 }

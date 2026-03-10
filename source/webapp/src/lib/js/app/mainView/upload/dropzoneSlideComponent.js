@@ -11,6 +11,9 @@ import BaseUploadSlideComponent from './baseUploadSlideComponent.js';
 const {
   MimeGetKind,
 } = window.MimeWrapper;
+const {
+  validateFilename,
+} = AppUtils;
 
 export default class DropzoneSlideComponent extends mxDropzone(BaseUploadSlideComponent) {
   constructor() {
@@ -39,6 +42,9 @@ export default class DropzoneSlideComponent extends mxDropzone(BaseUploadSlideCo
 
   // override mxDropzone
   canSupport(file) {
+    if (!validateFilename(file.name)) {
+      return false;
+    }
     const kindOf = MimeGetKind(file);
     return kindOf === MediaTypes.Video
       || kindOf === MediaTypes.Audio

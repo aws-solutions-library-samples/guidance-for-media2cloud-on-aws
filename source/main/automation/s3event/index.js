@@ -180,6 +180,11 @@ exports.handler = async (event, context) => {
       return undefined;
     }
 
+    // Validate file path
+    if (!CommonUtils.validateFilepath(key)) {
+      return undefined;
+    }
+
     /* check magic number and mime type */
     const mime = MimeTypeHelper.getMime(key);
     const magic = await getMagic(bucket, key);

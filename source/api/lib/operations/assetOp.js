@@ -56,12 +56,20 @@ class AssetOp extends BaseOp {
     if (!(input.uuid || (input.bucket && input.key))) {
       throw new M2CException('uuid or bucket and key must be specified');
     }
+    if (!CommonUtils.validateFilepath(input.key)) {
+      throw new M2CException('invalid key name');
+    }
     if (input.uuid && !CommonUtils.validateUuid(input.uuid)) {
       throw new M2CException('invalid uuid');
     }
+
     if ((input.destination || {}).bucket && !CommonUtils.validateBucket(input.destination.bucket)) {
       throw new M2CException('invalid destination bucket name');
     }
+    if ((input.destination || {}).prefix && !CommonUtils.validateFilepath(input.destination.prefix)) {
+      throw new M2CException('invalid destination prefix');
+    }
+
     if ((input.group) && !CommonUtils.validateGroupName(input.group)) {
       throw new M2CException('invalid group name');
     }

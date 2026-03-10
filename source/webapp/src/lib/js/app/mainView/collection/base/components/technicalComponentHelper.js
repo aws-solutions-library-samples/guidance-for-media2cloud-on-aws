@@ -22,7 +22,7 @@ export default class TechnicalComponentHelper {
 
     const title = $('<h5/>')
       .addClass('lead my-2 text-left')
-      .html(`${media.basename} (${media.readableDuration || media.readableFileSize})`);
+      .text(`${media.basename} (${media.readableDuration || media.readableFileSize})`);
     titleContainer.append(title);
 
     /* general group */
