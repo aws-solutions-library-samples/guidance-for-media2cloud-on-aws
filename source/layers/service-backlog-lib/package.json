@@ -15,14 +15,14 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@aws-sdk/client-comprehend": "^3.743.0",
-    "@aws-sdk/client-dynamodb": "^3.743.0",
-    "@aws-sdk/client-eventbridge": "^3.743.0",
-    "@aws-sdk/client-mediaconvert": "^3.743.0",
-    "@aws-sdk/client-rekognition": "^3.743.0",
-    "@aws-sdk/client-sfn": "^3.743.0",
-    "@aws-sdk/client-textract": "^3.743.0",
-    "@aws-sdk/client-transcribe": "^3.743.0",
-    "@aws-sdk/util-dynamodb": "^3.743.0"
+    "@aws-sdk/client-comprehend": "^3.1005.0",
+    "@aws-sdk/client-dynamodb": "^3.1005.0",
+    "@aws-sdk/client-eventbridge": "^3.1005.0",
+    "@aws-sdk/client-mediaconvert": "^3.1005.0",
+    "@aws-sdk/client-rekognition": "^3.1005.0",
+    "@aws-sdk/client-sfn": "^3.1005.0",
+    "@aws-sdk/client-textract": "^3.1005.0",
+    "@aws-sdk/client-transcribe": "^3.1005.0",
+    "@aws-sdk/util-dynamodb": "^3.996.2"
   }
 }

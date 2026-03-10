@@ -12,7 +12,7 @@
     "mime": "^3.0.0",
     "node-webvtt": "^1.9.4",
     "regression": "^2.0.1",
-    "tar-stream": "^3.1.7"
+    "tar-stream": "^3.1.8"
   },
   "scripts": {
     "pretest": "npm install",
@@ -25,10 +25,10 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@aws-sdk/client-dynamodb": "^3.743.0",
-    "@aws-sdk/client-iot-data-plane": "^3.743.0",
-    "@aws-sdk/client-s3": "^3.743.0",
-    "@aws-sdk/client-sns": "^3.743.0",
-    "@aws-sdk/s3-request-presigner": "^3.743.0"
+    "@aws-sdk/client-dynamodb": "^3.1005.0",
+    "@aws-sdk/client-iot-data-plane": "^3.1005.0",
+    "@aws-sdk/client-s3": "^3.1005.0",
+    "@aws-sdk/client-sns": "^3.1005.0",
+    "@aws-sdk/s3-request-presigner": "^3.1005.0"
   }
 }

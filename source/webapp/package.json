@@ -23,6 +23,6 @@
   },
   "author": "aws-mediaent-solutions",
   "devDependencies": {
-    "@babel/plugin-transform-modules-commonjs": "^7.24.1"
+    "@babel/plugin-transform-modules-commonjs": "^7.28.6"
   }
 }

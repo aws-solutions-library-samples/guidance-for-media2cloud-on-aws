@@ -7,7 +7,7 @@
   "author": "aws-mediaent-sa-emea",
   "license": "Apache-2.0",
   "dependencies": {
-    "gremlin": "^3.7.3"
+    "gremlin": "^3.8.0"
   },
   "scripts": {
     "pretest": "npm install",
