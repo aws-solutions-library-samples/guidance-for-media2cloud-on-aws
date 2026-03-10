@@ -39,7 +39,7 @@ const DEFAULT_PARAMS = {
 class Claude extends BaseModel {
   static canSupport(modelId) {
     return (
-      modelId.startsWith('anthropic.claude') &&
+      modelId.indexOf('anthropic.claude') >= 0 &&
       BaseModel.canSupport(modelId)
     );
   }
