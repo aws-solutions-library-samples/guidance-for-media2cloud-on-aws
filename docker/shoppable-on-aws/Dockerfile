@@ -5,7 +5,7 @@
 # Build Stage: install packages and preload models from HF
 #
 #####################################################################
-FROM public.ecr.aws/lambda/python:3.10 AS build
+FROM public.ecr.aws/lambda/python:3.10.2026.02.27.23 AS build
 
 ENV \
     PYTHONPATH=/opt/packages \
@@ -20,16 +20,16 @@ COPY requirements.txt .version app.py app.test.py utils.py demo.jpg ./
 RUN \
     yum update -y && \
     yum install -y gcc unzip && \
-    python3.10 -m pip install --no-cache-dir --upgrade pip && \
-    python3.10 -m pip install --no-cache-dir --retries 10 --timeout 60 \
+    python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir --retries 10 --timeout 60 \
     -r requirements.txt \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     -t /opt/packages && \
-    python3.10 -m pip cache purge --no-input
+    python3 -m pip cache purge --no-input
 
 # Run script to pre-cache configuration files
 RUN \
-    python3.10 app.test.py demo.jpg && \
+    python3 app.test.py demo.jpg && \
     echo "== Build stage completed =="
 
 #####################################################################
@@ -37,7 +37,7 @@ RUN \
 # Release Stage: copy python packages and models from build stage
 #
 #####################################################################
-FROM public.ecr.aws/lambda/python:3.10 AS release
+FROM public.ecr.aws/lambda/python:3.10.2026.02.27.23 AS release
 
 ENV \
     PYTHONPATH=/opt/packages \
@@ -51,12 +51,14 @@ ENV \
 RUN \
     yum update -y && \
     yum clean all && \
-    python3.10 -m pip install --no-cache-dir --upgrade pip
+    python3 -m pip install --no-cache-dir --upgrade pip
 
 # Copy packages and models from build
 COPY --from=build /opt /opt
 
 COPY requirements.txt .version app.py app.test.py utils.py demo.jpg ./
+
+USER 1001
 
 # Set entrypoint
 CMD [ "app.lambda_handler" ]

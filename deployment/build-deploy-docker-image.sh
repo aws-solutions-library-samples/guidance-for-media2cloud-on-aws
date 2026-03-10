@@ -11,6 +11,8 @@ ACCOUNT=
 REGION=
 IMAGE_TAG=
 IMAGE_NAME=
+PLATFORM="linux/amd64"
+KEEP_IMAGE=false
 DEPLOY_DIR="$PWD"
 DOCKER_DIR=
 
@@ -21,6 +23,11 @@ function on_exit_trap() {
   [[ -z "${IMAGE_TAG}" ]] && \
     return 0
 
+  if [[ "$KEEP_IMAGE" == true ]]; then
+    info ">> skipping local image cleanup (--keep-image)"
+    return 0
+  fi
+
   highlight "== Clean up before exiting =="
   clean_up "${IMAGE_TAG}"
 }
@@ -28,9 +35,9 @@ function on_exit_trap() {
 function clean_up() {
   local images=($@)
 
-  for image in ${images[@]}; do
+  for image in "${images[@]}"; do
     info ">> deleting ${image}"
-    docker rmi $image
+    docker rmi "$image"
   done
 }
 
@@ -63,28 +70,38 @@ This script should be run from the repo's apptek directory. It also requires
 
 ------------------------------------------------------------------------------
 cd apptek
-bash $(basename $0) --image-name IMAGE_NAME [--profile PROFILE] [--region REGION]
+bash $(basename $0) --image-name IMAGE_NAME [--profile PROFILE] [--region REGION] [--platform PLATFORM]
 
 where
   --image-name IMAGE_NAME [REQUIRED]  specify docker image name; ex., blip-on-aws, face-api-on-aws
 
   --profile PROFILE [OPTIONAL]        AWS profile of the AWS account that hosts the ECR image.
-                                      If not specified, assume 'default'
+                                      If not specified, falls back to environment variables
+                                      (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN).
                                       ex., --profile Admin
 
   --region REGION [OPTIONAL]          set region where the image is pushed to.
-                                      If not specified, use default region from your AWS configure
+                                      If not specified, use default region from your AWS configure.
+
+  --platform PLATFORM [OPTIONAL]      target platform for the docker image.
+                                      Supported: linux/amd64, linux/arm64
+                                      Default: linux/amd64
+
+  --keep-image [OPTIONAL]             skip deleting the local docker image after push.
+                                      Useful for local testing or caching.
 
 Example:
   bash $(basename $0) \\
     --image-name \"blip-on-aws\" \\
     --profile default \\
-    --region eu-west-1
+    --region eu-west-1 \\
+    --platform linux/arm64 \\
+    --keep-image
 "
 }
 
 #
-# check image tp see if it is already on ECR repository
+# check image to see if it is already on ECR repository
 #
 function check_docker_image() {
   local tag=$1
@@ -94,12 +111,16 @@ function check_docker_image() {
   local repo=${image%:*}
   local version=${image#*:}
 
+  local profile_option=()
+  if [[ -n "$profile" ]]; then
+    profile_option=(--profile "$profile")
+  fi
+
   aws ecr describe-images \
-  --region $region \
-  --profile $profile \
-  --repository-name=$repo \
-  --image-ids=imageTag=$version \
-  2>/dev/null
+    --region "$region" "${profile_option[@]}" \
+    --repository-name="$repo" \
+    --image-ids=imageTag="$version" \
+    2>/dev/null
 
   local response=$?
 
@@ -119,21 +140,26 @@ function check_docker_image() {
 #
 function build_docker_image() {
   local tag=$1
+  local platform=$2
   local image=${tag#*\/}
 
-  docker build -t ${tag} .
+  info ">> building for platform: ${platform}"
+  docker buildx build \
+    --platform "$platform" \
+    --provenance=false \
+    --output type=docker \
+    -t "$tag" .
   if [[ $? -ne 0 ]]; then
     error "fail to build $tag"
     return 1
   fi
 
-  info $image
-
+  info "$image"
   return 0
 }
 
 #
-# build docker image
+# push docker image to ECR
 #
 function push_docker_image() {
   local tag=$1
@@ -143,9 +169,13 @@ function push_docker_image() {
   local image=${tag#*\/}
   local repo=${image%:*}
 
-  aws ecr get-login-password --region ${region} --profile ${profile} \
-  | docker login --username AWS --password-stdin ${uri}
+  local profile_option=()
+  if [[ -n "$profile" ]]; then
+    profile_option=(--profile "$profile")
+  fi
 
+  aws ecr get-login-password --region "$region" "${profile_option[@]}" \
+    | docker login --username AWS --password-stdin "$uri"
   if [[ $? -ne 0 ]]; then
     error "fail to login to target account"
     return 1
@@ -154,22 +184,19 @@ function push_docker_image() {
   # create repo, ignore any error as the repo could already exist
   info ">> make sure remote repository (${repo}) exists..."
   aws ecr create-repository \
-    --region $region \
-    --profile $profile \
-    --repository-name ${repo} \
+    --region "$region" "${profile_option[@]}" \
+    --repository-name "$repo" \
     --image-scanning-configuration scanOnPush=true \
     --encryption-configuration encryptionType=AES256
 
   # push image
-  docker push $tag
-
+  docker push "$tag"
   if [[ $? -ne 0 ]]; then
     error "fail to push $tag"
     return 1
   fi
 
-  info $image
-
+  info "$image"
   return 0
 }
 
@@ -185,7 +212,7 @@ trap on_exit_trap EXIT
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
-      -r|--image-name)
+      -n|--image-name)
       IMAGE_NAME="$2"
       shift # past key
       shift # past value
@@ -199,6 +226,15 @@ while [[ $# -gt 0 ]]; do
       REGION="$2"
       shift # past key
       shift # past value
+      ;;
+      --platform)
+      PLATFORM="$2"
+      shift # past key
+      shift # past value
+      ;;
+      --keep-image)
+      KEEP_IMAGE=true
+      shift # past key
       ;;
       *)
       shift
@@ -220,24 +256,39 @@ which docker jq aws > /dev/null
   usage && \
   exit 1
 
+# Validate platform
+if [[ "$PLATFORM" != "linux/amd64" && "$PLATFORM" != "linux/arm64" ]]; then
+  error "unsupported platform '$PLATFORM'. Supported: linux/amd64, linux/arm64"
+  usage
+  exit 1
+fi
+
 #
 # source account settings
 #
-[[ -z "$PROFILE" ]] && \
-  PROFILE=default && \
-  info "--profile not specified. Assume 'default' AWS profile"
-
 highlight "== Checking source profile settings =="
 
-ACCOUNT=$(aws sts get-caller-identity --profile $PROFILE | jq -r .Account)
+# Build a reusable profile_option array for use in the main routine
+profile_option=()
+if [[ -n "$PROFILE" ]]; then
+  profile_option=(--profile "$PROFILE")
+  info "Using AWS profile: $PROFILE"
+elif [[ -n "$AWS_ACCESS_KEY_ID" ]]; then
+  info "Using AWS credentials from environment variables"
+else
+  info "No --profile specified and no environment credentials found. Falling back to default AWS profile"
+  profile_option=(--profile default)
+fi
+
+ACCOUNT=$(aws sts get-caller-identity "${profile_option[@]}" | jq -r .Account)
 [[ -z "$ACCOUNT" ]] && \
   error "failed to get your AWS account ID. Make sure you have the correct profile settings or run 'aws configure' to configure your environment" && \
   usage && \
   exit 1
 
-[[ -z "$REGION" ]] && \
-  REGION=$(aws configure get region --profile $PROFILE)
-
+if [[ -z "$REGION" ]]; then
+  REGION=$(aws configure get region "${profile_option[@]}")
+fi
 [[ -z "$REGION" ]] && \
   error "failed to get AWS region. Use '--region' option to force the region" && \
   usage && \
@@ -261,7 +312,7 @@ IMAGE_TAG="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}:${VERSION}"
 # Docker image already exists?
 #
 highlight "== Checking docker image '${IMAGE_TAG}' on ECR =="
-check_docker_image $IMAGE_TAG $REGION $PROFILE
+check_docker_image "$IMAGE_TAG" "$REGION" "$PROFILE"
 [[ $? -eq 0 ]] && \
   highlight "${IMAGE_TAG}" && \
   info "== Skipped ==" && \
@@ -270,16 +321,16 @@ check_docker_image $IMAGE_TAG $REGION $PROFILE
 #
 # Build image
 #
-highlight "== Building docker image '${IMAGE_TAG}' =="
-build_docker_image "${IMAGE_TAG}"
+highlight "== Building docker image '${IMAGE_TAG}' for platform '${PLATFORM}' =="
+build_docker_image "${IMAGE_TAG}" "${PLATFORM}"
 [[ $? -ne 0 ]] && \
   exit 1
 
 #
 # Push image
 #
-highlight "== Pushing docker image '${IMAGE_TAG} to ECR' =="
-push_docker_image $IMAGE_TAG $REGION $PROFILE
+highlight "== Pushing docker image '${IMAGE_TAG}' to ECR =="
+push_docker_image "$IMAGE_TAG" "$REGION" "$PROFILE"
 [[ $? -ne 0 ]] && \
   exit 1
 
