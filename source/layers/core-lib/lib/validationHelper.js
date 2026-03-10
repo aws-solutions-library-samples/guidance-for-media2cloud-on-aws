@@ -190,6 +190,28 @@ class ValidationHelper {
       ALL_CHARACTER_SETS.test(val)
     );
   }
+
+  static validateFilepath(filePath) {
+    if (typeof filePath !== 'string' || filePath.length === 0) {
+      return false;
+    }
+
+    const normalized = filePath.normalize('NFC');
+
+    /**
+     * Regex Breakdown:
+     * [\p{L}\p{N}                : Unicode letters and numbers
+     * [._\-\(\)'\u2018\u2019 \/] : dot, dash, parenthesis, single quote, smart quote, forward slash
+     */
+    const safePattern = /^[\p{L}\p{N}._\-\(\)'\u2018\u2019 \/]+$/u;
+
+    return (
+      safePattern.test(normalized) &&
+      !normalized.includes('..') &&    // Block directory traversal
+      !normalized.includes('//') &&    // Block empty path segments
+      normalized.trim() === normalized // Block leading/trailing space tricks
+    );
+  }
 }
 
 module.exports = ValidationHelper;

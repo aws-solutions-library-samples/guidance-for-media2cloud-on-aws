@@ -231,15 +231,15 @@ export default class BaseAnalysisTab extends mxReadable(BaseTab) {
 
   createListTitle(title) {
     return $('<dt/>').addClass(this.css.dl.dt)
-      .addClass('text-capitalize text-truncate').append(title);
+      .addClass('text-capitalize text-truncate').text(title);
   }
 
   createListData(data) {
     const dd = $('<dd/>').addClass(this.css.dl.dd);
     if (!Array.isArray(data)) {
-      return dd.append(data);
+      return dd.text(data);
     }
-    data.forEach(x => dd.append(x));
+    data.forEach(x => dd.text(x));
     return dd;
   }
 

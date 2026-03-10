@@ -15,7 +15,7 @@ export default Base => class extends Base {
   createDropzone(message) {
     const background = $('<div/>').addClass('d-flex justify-content-center dropzone-bg')
       .append($('<span/>').addClass('align-self-center')
-        .html(message));
+        .text(message));
 
     const dropzone = $('<div/>').addClass('dropzone')
       .append($('<p>').addClass('lead m-auto')
@@ -80,8 +80,10 @@ export default Base => class extends Base {
     }
     const files = await Promise.all(promiseFiles);
     const dirs = await Promise.all(promiseDirs);
-    const all = dirs.reduce((acc, cur) =>
+    let all = dirs.reduce((acc, cur) =>
       acc.concat(cur), files).filter(x => x);
+    // Filter files that are not supported.
+    all = all.filter((file) => file.canSupport);
     return all;
   }
 
@@ -142,7 +144,9 @@ export default Base => class extends Base {
     for (let i = 0; i < data.files.length; i++) {
       promises.push(this.readFile(data.files[i]));
     }
-    const files = await Promise.all(promises);
+    let files = await Promise.all(promises);
+    // Filter files that are not supported.
+    files = files.filter((file) => file.canSupport);
     return files;
   }
 

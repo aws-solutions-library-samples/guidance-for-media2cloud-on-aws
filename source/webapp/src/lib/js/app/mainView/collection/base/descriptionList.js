@@ -42,15 +42,15 @@ export default class DescriptionList extends mxReadable(class {}) {
 
   createListTitle(title) {
     return $('<dt/>').addClass(this.cssOptions.dt)
-      .addClass('text-capitalize text-truncate').append(title);
+      .addClass('text-capitalize text-truncate').text(title);
   }
 
   createListData(data) {
     const dd = $('<dd/>').addClass(this.cssOptions.dd);
     if (!Array.isArray(data)) {
-      return dd.append(data);
+      return dd.text(data);
     }
-    data.forEach(x => dd.append(x));
+    data.forEach(x => dd.text(x));
     return dd;
   }
 
@@ -77,7 +77,7 @@ export default class DescriptionList extends mxReadable(class {}) {
     const details = $('<details/>').addClass(css.margin)
       .append($('<summary/>').addClass('my-2')
         .append($('<span/>').addClass(`${css.lead} text-capitalize`)
-          .append(name)));
+          .text(name)));
     return details;
   }
 
@@ -99,7 +99,7 @@ export default class DescriptionList extends mxReadable(class {}) {
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
         .attr('title', MSG_DOWNLOAD_FILE)
-        .append(data.key)
+        .text(data.key)
         .tooltip({
           trigger: 'hover',
         });
@@ -136,7 +136,7 @@ export default class DescriptionList extends mxReadable(class {}) {
         .attr('data-toggle', 'tooltip')
         .attr('data-placement', 'bottom')
         .attr('title', MSG_VIEW_ON_CONSOLE)
-        .html(data[name].split(':').pop())
+        .text(data[name].split(':').pop())
         .tooltip({
           trigger: 'hover',
         });

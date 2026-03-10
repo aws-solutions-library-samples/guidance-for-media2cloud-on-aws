@@ -59,17 +59,17 @@ class BaseFile extends mxReadable(class {}) {
 
     const dl = $('<dl/>').addClass('row lead-xs ml-2 col-9 no-gutters')
       .append($('<dt/>').addClass('text-left col-sm-1')
-        .append(Localization.Messages.FileName))
+        .text(Localization.Messages.FileName))
       .append($('<dd/>').addClass('col-sm-11 my-0')
-        .append(this.displayName))
+        .text(this.displayName))
       .append($('<dt/>').addClass('text-left col-sm-1 my-0')
-        .append(Localization.Messages.FileSize))
+        .text(Localization.Messages.FileSize))
       .append($('<dd/>').addClass('col-sm-11 my-0')
-        .append(BaseFile.readableFileSize(this.file.size)))
+        .text(BaseFile.readableFileSize(this.file.size)))
       .append($('<dt/>').addClass('text-left col-sm-1 my-0')
-        .append(Localization.Messages.FileType))
+        .text(Localization.Messages.FileType))
       .append($('<dd/>').addClass('col-sm-11 my-0')
-        .append(this.mime || '--'));
+        .text(this.mime || '--'));
 
     const btnRemove = $('<button/>').addClass('btn btn-sm btn-secondary text-capitalize mb-1 ml-1')
       .attr('data-toggle', 'tooltip')
