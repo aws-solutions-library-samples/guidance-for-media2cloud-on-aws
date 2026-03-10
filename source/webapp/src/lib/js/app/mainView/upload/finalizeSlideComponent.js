@@ -275,10 +275,10 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       .attr('href', `#${id}`)
       .append($('<div/>').addClass('marquee')
         .append($('<span/>').addClass('marquee-target')
-          .append(name)))
+          .text(name)))
       .append(($('<span/>').addClass('badge badge-light badge-custom')
         .attr('data-status', status)
-        .html(status)));
+        .text(status)));
     return item;
   }
 
@@ -323,13 +323,13 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
       const details = $('<details/>').addClass('p-2 my-1')
         .append($('<summary/>')
           .append($('<span/>').addClass('lead')
-            .html(cat)));
+            .text(cat)));
 
       const form = $('<form/>').addClass('form-inline mt-2');
       Object.keys(data[cat]).forEach((k0) => {
         form
           .append($('<label/>').addClass('col-3 justify-content-start')
-            .html(k0))
+            .text(k0))
           .append($('<input/>').addClass('form-control form-control-sm col-9')
             .attr('type', 'text')
             .attr('disabled', 'disabled')
@@ -665,7 +665,7 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
     uploads3 = $('<a/>')
       .attr('href', `https://s3.console.aws.amazon.com/s3/object/${bucket}/${key}?region=${SolutionManifest.Region}`)
       .attr('target', '_blank')
-      .html(`s3://${bucket}/${key}`)
+      .text(`s3://${bucket}/${key}`)
       .prop('outerHTML');
 
     this.showResult(
@@ -745,10 +745,10 @@ export default class FinalizeSlideComponent extends BaseUploadSlideComponent {
 
     const desc = $('<span/>')
       .addClass(cssText)
-      .html(text);
+      .text(text);
 
     result
-      .html('')
+      .text('')
       .append(desc);
 
     progressbar.parent()
