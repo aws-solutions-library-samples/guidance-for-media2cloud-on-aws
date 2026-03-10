@@ -7,7 +7,7 @@
   "dependencies": {
     "@rollup/stream": "^2.0.0",
     "glob": "^7.2.3",
-    "rollup": "^2.79.1",
+    "rollup": "^2.80.0",
     "terser": "^4.8.1"
   },
   "scripts": {},

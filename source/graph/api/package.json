@@ -17,6 +17,6 @@
   "devDependencies": {
     "@smithy/smithy-client": "^2.5.1",
     "core-lib": "file:../../layers/core-lib",
-    "gremlin": "^3.7.3"
+    "gremlin": "^3.8.0"
   }
 }

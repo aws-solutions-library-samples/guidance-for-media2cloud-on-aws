@@ -9,9 +9,5 @@
   },
   "author": "aws-mediaent-solutions",
   "license": "ISC",
-  "dependencies": {
-    "canvas": "^2.11.2",
-    "pdfjs-dist": "^3.11.174",
-    "path2d-polyfill": "2.0.1"
-  }
+  "dependencies": {}
 }

@@ -14,7 +14,7 @@
   "author": "",
   "license": "Apache 2.0",
   "dependencies": {
-    "videojs-contrib-ads": "^7.5.0",
+    "videojs-contrib-ads": "^7.5.2",
     "videojs-overlay": "^3.1.0"
   }
 }
