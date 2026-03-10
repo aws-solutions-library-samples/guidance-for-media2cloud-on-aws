@@ -145,10 +145,10 @@ Parameters:
     BedrockSecondaryRegionAccess:
         Type: String
         Description: Allow Amazon Bedrock to use Global Inference Profile for the models.
-        Default: YES
+        Default: "YES"
         AllowedValues:
-            - YES
-            - NO
+            - "YES"
+            - "NO"
     # Bedrock models
     BedrockModel:
         Type: String
