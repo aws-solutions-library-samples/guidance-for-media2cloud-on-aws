@@ -63,12 +63,12 @@ Mappings:
             Version: "%%FACEAPI_VER%%"
     AnthropicClaude:
         Sonnet:
-            Name: Anthropic Claude 3 Sonnet
-            ModelId: anthropic.claude-3-sonnet-20240229-v1:0
+            Name: Anthropic Claude Sonnet 4.6
+            ModelId: global.anthropic.claude-sonnet-4-6
             ModelVersion: bedrock-2023-05-31
         Haiku:
-            Name: Anthropic Claude 3 Haiku
-            ModelId: anthropic.claude-3-haiku-20240307-v1:0
+            Name: Anthropic Claude Haiku 4.5
+            ModelId: global.anthropic.claude-haiku-4-5-20251001-v1:0
             ModelVersion: bedrock-2023-05-31
 
 Parameters:
@@ -125,7 +125,7 @@ Parameters:
     StartOnObjectCreation:
         Type: String
         Description: Start workflow when directly upload assets to ingest S3 bucket
-        Default: "YES"
+        Default: "NO"
         AllowedValues:
             - "NO"
             - "YES"
@@ -141,28 +141,22 @@ Parameters:
         Type: String
         Description: Specify CIDR block of an Amazon VPC where the Amazon Neptune Serverless db cluster of the knowledge graph will run on.
         Default: 172.31.0.0/16
-    # Amazon Bedrock secondary region access
+    # Amazon Bedrock global inference profile
     BedrockSecondaryRegionAccess:
         Type: String
-        Description: If Amazon Bedrock service is not available in your current AWS region, you can select a nearby region to try out the Generative AI feature. You would also need to grant model access for Anthropic Claude 3 models through Amazon Bedrock console, Model access page.
-        Default: North Virginia [US East] (us-east-1)
+        Description: Allow Amazon Bedrock to use Global Inference Profile for the models.
+        Default: YES
         AllowedValues:
-            - North Virginia [US East] (us-east-1)
-            - Oregon [US West] (us-west-2)
-            - Paris [Europe] (eu-west-3)
-            - Sydney [Asia Pacific] (ap-southeast-2)
-            - No, do not enable Amazon Bedrock
-            # - Frankfurt [Europe] (eu-central-1)
-            # - Tokyo [Asia Pacific] (ap-northeast-1)
-            # - Singapore [Asia Pacific] (ap-southeast-1)
+            - YES
+            - NO
     # Bedrock models
     BedrockModel:
         Type: String
-        Description: Select a foundation model of Amazon Bedrock to use. Make sure you have granted model access to use these models through Amazon Bedrock console, Model access page.
-        Default: Anthropic Claude 3 Haiku
+        Description: Select a foundation model of Amazon Bedrock to use.
+        Default: Anthropic Claude Haiku 4.5
         AllowedValues:
-            - Anthropic Claude 3 Haiku
-            - Anthropic Claude 3 Sonnet
+            - Anthropic Claude Haiku 4.5
+            - Anthropic Claude Sonnet 4.6
     # Version compatibility statement
     VersionCompatibilityStatement:
         Type: String
@@ -237,7 +231,7 @@ Metadata:
             CidrBlock:
                 default: VPC CIDR Settings
             BedrockSecondaryRegionAccess:
-                default: Allow access to Amazon Bedrock service in a different region.
+                default: Allow access to Amazon Bedrock service in other regions.
             BedrockModel:
                 default: Foundation Model (Text & Vision)
 
@@ -280,13 +274,12 @@ Conditions:
     bEnableKnowledgeGraph: !Equals
         - !Ref EnableKnowledgeGraph
         - "YES"
-    bBedrockSecondaryRegionAccess: !Not
-        - !Equals
-            - !Ref BedrockSecondaryRegionAccess
-            - "No, do not enable Amazon Bedrock"
-    bAnthropicClaude3Sonnet: !Equals
+    bBedrockSecondaryRegionAccess: !Equals
+        - !Ref BedrockSecondaryRegionAccess
+        - "YES"
+    bAnthropicClaudeSonnet: !Equals
         - !Ref BedrockModel
-        - Anthropic Claude 3 Sonnet
+        - Anthropic Claude Sonnet 4.6
     bEnableShoppable: !Equals
         - !FindInMap
             - Workflow
@@ -744,18 +737,10 @@ Resources:
                     - S3Key
                 BedrockSecondaryRegionAccess: !If
                     - bBedrockSecondaryRegionAccess
-                    - !Select
-                        - 0
-                        - !Split
-                            - ")"
-                            - !Select
-                                - 1
-                                - !Split
-                                    - "("
-                                    - !Ref BedrockSecondaryRegionAccess
+                    - !Ref AWS::Region
                     - ""
                 BedrockModelName: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet
@@ -765,7 +750,7 @@ Resources:
                         - Haiku
                         - Name
                 BedrockModelId: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet
@@ -775,7 +760,7 @@ Resources:
                         - Haiku
                         - ModelId
                 BedrockModelVersion: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet
@@ -901,18 +886,10 @@ Resources:
                 FaissImageUri: !GetAtt CodeBuildStack.Outputs.FaissImageUri
                 BedrockSecondaryRegionAccess: !If
                     - bBedrockSecondaryRegionAccess
-                    - !Select
-                        - 0
-                        - !Split
-                            - ")"
-                            - !Select
-                                - 1
-                                - !Split
-                                    - "("
-                                    - !Ref BedrockSecondaryRegionAccess
+                    - !Ref AWS::Region
                     - ""
                 BedrockModelName: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet
@@ -922,7 +899,7 @@ Resources:
                         - Haiku
                         - Name
                 BedrockModelId: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet
@@ -932,7 +909,7 @@ Resources:
                         - Haiku
                         - ModelId
                 BedrockModelVersion: !If
-                    - bAnthropicClaude3Sonnet
+                    - bAnthropicClaudeSonnet
                     - !FindInMap
                         - AnthropicClaude
                         - Sonnet

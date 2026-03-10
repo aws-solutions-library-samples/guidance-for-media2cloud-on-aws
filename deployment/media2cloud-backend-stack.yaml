@@ -8065,11 +8065,14 @@ Resources:
                         Effect: Allow
                         Action: bedrock:ListFoundationModels
                         Resource: "*"
-                    # Bedrock models: Anthropic Claude 3 models
+                    # Bedrock models: Anthropic Claude (global inference profile)
                     -
                         Effect: Allow
                         Action: bedrock:InvokeModel
-                        Resource: !Sub arn:aws:bedrock:${BedrockSecondaryRegionAccess}::foundation-model/${BedrockModelId}
+                        Resource:
+                            # Anthropic Claude family
+                            - arn:aws:bedrock:*::foundation-model/anthropic.claude-*
+                            - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*.anthropic.claude-*
 
     ################################################################################
     #
