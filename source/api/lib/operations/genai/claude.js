@@ -31,8 +31,6 @@ const DEFAULT_PARAMS = {
   anthropic_version: MODEL_VERSION,
   max_tokens: 4096 * 4,
   temperature: 0.2,
-  top_p: 0.1,
-  top_k: 250,
   stop_sequences: ['\n\nHuman:'],
 };
 
@@ -92,20 +90,6 @@ function _parseOptions(defaultParams, options = {}) {
     const temperature = Number(options.temperature);
     if (temperature > 0 && temperature < 1.0) {
       params.temperature = temperature;
-    }
-  }
-
-  if (options.top_k) {
-    const topK = Number(options.top_k);
-    if (topK > 0 && topK < 500) {
-      params.top_k = topK;
-    }
-  }
-
-  if (options.top_p) {
-    const topP = Number(options.top_p);
-    if (topP > 0 && topP < 1.0) {
-      params.top_p = topP;
     }
   }
 

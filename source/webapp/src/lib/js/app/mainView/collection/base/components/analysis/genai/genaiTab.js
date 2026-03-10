@@ -34,8 +34,6 @@ const {
     Template: MSG_TEMPLATED_PROMPT,
     Prompt: MSG_PROMPT,
     Temperature: MSG_MODEL_TEMPERATURE,
-    TopK: MSG_MODEL_TOP_K,
-    TopP: MSG_MODEL_TOP_P,
     MaxLength: MSG_MODEL_MAX_LENGTH,
     OriginalTranscriptPlaceholder: MSG_TRANSCRIPT_PLACEHOLDER,
   },
@@ -46,8 +44,6 @@ const {
     SendRequest: TP_SEND_REQUEST,
     Prompt: TP_MODEL_PROMPT,
     Temperature: TP_MODEL_TEMPERATURE,
-    TopK: TP_MODEL_TOP_K,
-    TopP: TP_MODEL_TOP_P,
     MaxLength: TP_MODEL_MAX_LENGTH,
   },
   Alerts: {
@@ -169,8 +165,6 @@ export default class GenAITab extends BaseAnalysisTab {
     super(TITLE, previewComponent);
 
     this.$modelParameters = {
-      top_k: 50,
-      top_p: 80, // convert to 0.0 - 1.0 before sending request
       temperature: 60, // convert to 0.0 - 1.0 before sending request
       prompt: '',
       max_length: 4096,
@@ -224,22 +218,6 @@ export default class GenAITab extends BaseAnalysisTab {
 
   set temperature(val) {
     this.modelParameters.temperature = Number(val);
-  }
-
-  get topK() {
-    return this.modelParameters.top_k;
-  }
-
-  set topK(val) {
-    this.modelParameters.top_k = Number(val);
-  }
-
-  get topP() {
-    return this.modelParameters.top_p;
-  }
-
-  set topP(val) {
-    this.modelParameters.top_p = Number(val);
   }
 
   get maxLength() {
@@ -331,14 +309,6 @@ export default class GenAITab extends BaseAnalysisTab {
     // temperature
     const temperatureGroup = this.createTemperatureGroup();
     form.append(temperatureGroup);
-
-    // Top-K
-    const topKGroup = this.createTopKGroup();
-    form.append(topKGroup);
-
-    // Top-P
-    const topPGroup = this.createTopPGroup();
-    form.append(topPGroup);
 
     // Generate
     const submitBtn = this.createSubmitButton();
@@ -661,100 +631,6 @@ export default class GenAITab extends BaseAnalysisTab {
     return temperatureGroup;
   }
 
-  createTopKGroup() {
-    const topKGroup = $('<div/>')
-      .addClass('form-group')
-      .addClass('col-12 px-0 mt-2 mb-2');
-
-    const id = `topk-${this.id}`;
-    const topKLabel = $('<label/>')
-      .addClass('lead-s col-2 px-0 justify-content-start')
-      .attr('for', id)
-      .attr('data-toggle', 'tooltip')
-      .attr('data-placement', 'bottom')
-      .attr('title', TP_MODEL_TOP_K)
-      .html(MSG_MODEL_TOP_K);
-    topKLabel.tooltip({
-      trigger: 'hover',
-    });
-    topKGroup.append(topKLabel);
-
-    let topKValue = this.topK;
-    const topKRange = $('<input/>')
-      .addClass('custom-range')
-      .addClass('col-7 m-0 pr-2 ml-4')
-      .attr('type', 'range')
-      .attr('min', 0)
-      .attr('max', 100)
-      .attr('value', topKValue)
-      .attr('step', 1)
-      .attr('id', id);
-    topKGroup.append(topKRange);
-
-    const topKText = $('<input/>')
-      .addClass('col-2 text-center text-muted p-0 lead-xs b-500')
-      .attr('type', 'text')
-      .attr('value', topKValue)
-      .attr('disabled', 'disabled')
-      .attr('id', `${id}-text`);
-    topKGroup.append(topKText);
-
-    topKRange.on('input', () => {
-      topKValue = Number(topKRange.val());
-      topKText.val(topKValue);
-      this.topK = topKValue;
-    });
-
-    return topKGroup;
-  }
-
-  createTopPGroup() {
-    const topPGroup = $('<div/>')
-      .addClass('form-group')
-      .addClass('col-12 px-0 mt-2 mb-2');
-
-    const id = `topp-${this.id}`;
-    const topPLabel = $('<label/>')
-      .addClass('lead-s col-2 px-0 justify-content-start')
-      .attr('for', id)
-      .attr('data-toggle', 'tooltip')
-      .attr('data-placement', 'bottom')
-      .attr('title', TP_MODEL_TOP_P)
-      .html(MSG_MODEL_TOP_P);
-    topPLabel.tooltip({
-      trigger: 'hover',
-    });
-    topPGroup.append(topPLabel);
-
-    let topPValue = this.topP;
-    const topPRange = $('<input/>')
-      .addClass('custom-range')
-      .addClass('col-7 m-0 pr-2 ml-4')
-      .attr('type', 'range')
-      .attr('min', 0)
-      .attr('max', 100)
-      .attr('value', topPValue)
-      .attr('step', 1)
-      .attr('id', id);
-    topPGroup.append(topPRange);
-
-    const topPText = $('<input/>')
-      .addClass('col-2 text-center text-muted p-0 lead-xs b-500')
-      .attr('type', 'text')
-      .attr('value', topPValue / 100)
-      .attr('disabled', 'disabled')
-      .attr('id', `${id}-text`);
-    topPGroup.append(topPText);
-
-    topPRange.on('input', () => {
-      topPValue = Number(topPRange.val());
-      topPText.val(topPValue / 100);
-      this.topP = topPValue;
-    });
-
-    return topPGroup;
-  }
-
   createMaxLengthGroup() {
     const maxLenGroup = $('<div/>')
       .addClass('form-group')
@@ -844,14 +720,6 @@ export default class GenAITab extends BaseAnalysisTab {
 
     if (this.temperature > 0) {
       params.temperature = Number(this.temperature) / 100;
-    }
-
-    if (this.topK > 0) {
-      params.top_k = Number(this.topK);
-    }
-
-    if (this.topP > 0) {
-      params.top_p = Number(this.topP) / 100;
     }
 
     if (this.maxLength > 0) {

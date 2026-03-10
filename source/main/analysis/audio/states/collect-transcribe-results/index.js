@@ -56,8 +56,6 @@ const MODEL_PARAMS = {
   anthropic_version: MODEL_VERSION,
   max_tokens: 4096 * 4,
   temperature: 0.2,
-  top_p: 0.7,
-  top_k: 20,
   stop_sequences: ['\n\nHuman:'],
   system: SYSTEM,
 };
