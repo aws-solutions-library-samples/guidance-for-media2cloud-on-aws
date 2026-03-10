@@ -33,7 +33,7 @@ __
 
 - **Auto Face Indexer**: This feature automatically indexes `unrecognized faces` during the analysis workflow. After faces are identified, we use the `late binding` technique that allows you to tag the unrecognized faces after the video files have been analyzed. The tagged names are then automatically propagated to all the video files without the need to re-run the analysis workflow.
 
-- **Scene detection**: Using a combination of AWS Generative AI and AI/ML services, including Amazon Bedrock Text & Vision (Anthropic Claude 3 Haiku / Sonnet) model, Amazon Rekognition Segment API, Amazon Transcribe API, and an open-source machine learning model (to generate image embeddings of the frames) and an ephemeral vector store, V4 provides contextual scene change events along with detailed information such as scene description, IAB Content Taxonomies, GARM Taxonomies, scene sentiments, and brands and logos at the scene level.
+- **Scene detection**: Using a combination of AWS Generative AI and AI/ML services, including Amazon Bedrock Text & Vision (Anthropic Claude Haiku 4.5 / Sonnet) model, Amazon Rekognition Segment API, Amazon Transcribe API, and an open-source machine learning model (to generate image embeddings of the frames) and an ephemeral vector store, V4 provides contextual scene change events along with detailed information such as scene description, IAB Content Taxonomies, GARM Taxonomies, scene sentiments, and brands and logos at the scene level.
 
 - **Ad break detection**: Leveraging the scene change events derived from the Scene detection, V4 automatically derives and suggests relevant timestamps that are suitable for ad insertions.
 
@@ -113,11 +113,7 @@ __
 
 ### Prerequisite
 
-Before you create the Media2Cloud V4 stack, make sure you have enabled the Anthropic Claude 3 Haiku or Sonnet model through the **Amazon Bedrock** console under the `Manage model access` page.
-
-Currently, the Anthropic Claude 3 Haiku and Sonnet models are available in the US East (N. Virginia) [us-east-1], US West (Oregon) [us-west-2], Europe (Paris) [eu-west-3], and Asia Pacific (Sydney) [ap-southeast-2] regions. If you are creating the Media2Cloud V4 stack in other regions, such as Europe (Ireland), you can still try out the Anthropic Claude 3 Haiku and Sonnet models by choosing the model access in one of these regions: `us-east-1`, `us-west-2`, `eu-west-3`, or `ap-southeast-2`. Keep in mind that there will be additional Data Transfer cost across regions.
-
-![Amazon Bedrock](./deployment/tutorials/images/amazon-bedrock-model-access.gif)
+Select `YES` in `Allow access to Amazon Bedrock service in other regions` input field enables [Amazon Bedrock Global cross-Region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html) when Media2Cloud uses Anthropic Claude family models. Select `NO` implies disabling the use of Amazon Bedrock models.
 
 
 ### Create Media2Cloud V4 stack with AWS CloudFormation
@@ -139,13 +135,13 @@ aws cloudformation create-stack \
     "ParameterKey=Email,ParameterValue=\"YOUR@EMAIL.COM\"" \
     "ParameterKey=DefaultAIOptions,ParameterValue=\"Recommended V4 features (v4.default)\"" \
     "ParameterKey=PriceClass,ParameterValue=\"Use Only U.S., Canada and Europe (PriceClass_100)\"" \
-    "ParameterKey=StartOnObjectCreation,ParameterValue=\"YES\"" \
+    "ParameterKey=StartOnObjectCreation,ParameterValue=\"NO\"" \
     "ParameterKey=UserDefinedIngestBucket,ParameterValue=\"\"" \
     "ParameterKey=OpenSearchCluster,ParameterValue=\"Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)\"" \
     "ParameterKey=EnableKnowledgeGraph,ParameterValue=\"NO\"" \
     "ParameterKey=CidrBlock,ParameterValue=\"172.31.0.0/16\"" \
-    "ParameterKey=BedrockSecondaryRegionAccess,ParameterValue=\"North Virginia [US East] (us-east-1)\"" \
-    "ParameterKey=BedrockModel,ParameterValue=\"Anthropic Claude 3 Haiku\"" \
+    "ParameterKey=BedrockSecondaryRegionAccess,ParameterValue=\"YES\"" \
+    "ParameterKey=BedrockModel,ParameterValue=\"Anthropic Claude Haiku 4.5\"" \
   --tags \
     "Key=SolutionName,Value=Media2Cloud" \
     "Key=SolutionID,Value=SO0050" \
@@ -181,8 +177,8 @@ The stack creation takes about 30 minutes to complete. Upon completion, you shou
 |OpenSearchCluster|Development and Testing (t3.medium=0,m5.large=1,gp2=10,az=1)|For testing and evaluation purpose, recommed to use a single instance. For stagging and production environment, consider to use the Production configuration.|
 |EnableKnowledgeGraph|NO|Select **YES** if you would like to enable Amazon Neptune graph database which allows you to visualize how your contents are connected in some ways.|
 |CidrBlock|172.31.0.0/16|Applicable only if you enable Amazon Neptune graph|
-|BedrockSecondaryRegionAccess|North Virginia [US East] (us-east-1)|Choose between `us-east-1` or `us-west-2` region to try out the Generative AI features in Media2Cloud V4. Highly recommended.|
-|BedrockModel|Anthropic Claude 3 Haiku|Choose between `Anthropic Claude 3 Haiku` or `Anthropic Claude 3 Sonnet`. Both models are Text & Vision capable.|
+|BedrockSecondaryRegionAccess|YES|`YES` allows Bedrock to use global cross-region inference. `NO` disables Generative AI models|
+|BedrockModel|Anthropic Claude Haiku 4.5|Choose between `Anthropic Claude Haiku 4.5` or `Anthropic Claude Sonnet 4.6`. Both models are Text & Vision capable.|
 
 __
 

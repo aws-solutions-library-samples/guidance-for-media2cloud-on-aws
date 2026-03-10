@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.9] - 2026-03-10
+### Bugfixes
+- Updated node package versions to the latest
+- Updated Anthropic Claude models to the latest. Use global cross-region inference profile
+- Enhanced input encoder to prevent XSS
+- Updated docker images to pin specific base image version and updated package versions
+- Updated build and deploy docker image script to allow cross-platform (linux/amd64 or linux/arm64) build
+- Updated README to reflect BedrockSecondaryRegionAccess CFN input parameters (YES/NO)
+
 ## [4.0.8] - 2025-11-10
 ### Bugfixes
 - Remove OutputEncryptionKMSKeyId from Amazon Transcribe StartTranscriptionJob api as alias/aws/s3 is no longer required.
