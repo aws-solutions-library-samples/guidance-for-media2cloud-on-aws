@@ -125,7 +125,7 @@ Parameters:
     StartOnObjectCreation:
         Type: String
         Description: Start workflow when directly upload assets to ingest S3 bucket
-        Default: "YES"
+        Default: "NO"
         AllowedValues:
             - "NO"
             - "YES"
