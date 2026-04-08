@@ -18,7 +18,7 @@ pillow==12.1.1
 python-dateutil==2.9.0.post0
 PyYAML==6.0.2
 regex==2025.9.1
-requests==2.32.5
+requests==2.33.0
 s3transfer==0.16.0
 safetensors==0.6.2
 six==1.17.0
