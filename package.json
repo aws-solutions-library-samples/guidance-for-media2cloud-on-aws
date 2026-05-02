@@ -37,7 +37,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1005.0",
     "@aws-sdk/util-dynamodb": "^3.996.2",
     "@opensearch-project/opensearch": "^2.13.0",
-    "@smithy/middleware-retry": "^2.3.1",
+    "@smithy/middleware-retry": "^4.5.7",
     "@smithy/service-error-classification": "^2.1.5",
     "@smithy/smithy-client": "^2.5.1",
     "any-base": "^1.1.0",
