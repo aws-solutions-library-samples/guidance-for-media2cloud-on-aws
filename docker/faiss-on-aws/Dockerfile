@@ -17,6 +17,7 @@ COPY requirements.txt .version app.py app.test.py utils.py ./
 # Install packages required for the build process
 RUN \
     yum update -y && \
+    yum install -y gcc zlib-devel libjpeg-turbo-devel && \
     python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
     -r requirements.txt \
