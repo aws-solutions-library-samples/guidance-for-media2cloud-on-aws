@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.11] - 2026-08-10
+### Security
+- Patched torch/transformers RCE (critical) and Pillow/urllib3 vulnerabilities in the zero-shot-object, zero-shot-classifier, shoppable, and faiss docker images
+- Bumped AWS SDK v3 and related @smithy packages to the latest, removing fast-xml-parser, fast-xml-builder, and adm-zip as transitive dependencies
+- Downgraded gremlin to 3.7.1 to drop a vulnerable uuid dependency
+
+### Bugfixes
+- Removed Service Catalog AppRegistry integration, which failed to deploy with a 403 error since AppRegistry stopped accepting new customers
+- Fixed webpack build failure in aws-sdk-js-v3-bundle caused by importing the @aws-sdk/credential-providers barrel package
+- Installed libjpeg-turbo runtime library in docker release images so Pillow can load after the version bump
+- Stopped deleting package-lock.json files on every build so builds are reproducible against committed lockfiles
+- Removed stale embedded.html reference from webapp's build:copy step that broke the build
+- Bumped babel packages to the latest
+
 ## [4.0.10] - 2026-04-07
 ### Bugfixes
 - Removed embedded token logic that was intended for QuickSight to render embedded URL

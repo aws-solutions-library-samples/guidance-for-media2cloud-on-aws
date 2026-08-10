@@ -17,6 +17,7 @@ COPY requirements.txt .version app.py app.test.py utils.py ./
 # Install packages required for the build process
 RUN \
     yum update -y && \
+    yum install -y gcc zlib-devel libjpeg-turbo-devel && \
     python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
     -r requirements.txt \
@@ -43,6 +44,7 @@ ENV PYTHONPATH=/opt/packages
 # Update system libraries and pip
 RUN \
     yum update -y && \
+    yum install -y libjpeg-turbo && \
     yum clean all && \
     python3 -m pip install --no-cache-dir --upgrade pip
 

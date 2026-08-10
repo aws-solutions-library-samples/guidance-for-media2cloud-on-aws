@@ -19,7 +19,7 @@ COPY requirements.txt .version app.py app.test.py utils.py default_classes.json 
 
 RUN \
     yum update -y && \
-    yum install -y gcc unzip && \
+    yum install -y gcc unzip zlib-devel libjpeg-turbo-devel && \
     python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir --retries 10 --timeout 60 \
     -r requirements.txt \
@@ -51,6 +51,7 @@ ENV \
 # Update system libraries and pip
 RUN \
     yum update -y && \
+    yum install -y libjpeg-turbo && \
     yum clean all && \
     python3 -m pip install --no-cache-dir --upgrade pip
 

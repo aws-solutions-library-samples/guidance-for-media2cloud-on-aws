@@ -77,7 +77,7 @@ def run_object_detection(
         outputs = model(**inputs)
 
     target_sizes = torch.tensor([image.size[::-1]])
-    results = processor.post_process_object_detection(outputs, threshold=0.1, target_sizes=target_sizes)[0]
+    results = processor.post_process_grounded_object_detection(outputs, threshold=0.1, target_sizes=target_sizes)[0]
 
     boxes = results["boxes"].tolist()
     labels = results["labels"].tolist()
