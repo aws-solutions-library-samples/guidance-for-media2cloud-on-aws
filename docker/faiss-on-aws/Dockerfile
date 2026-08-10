@@ -44,6 +44,7 @@ ENV PYTHONPATH=/opt/packages
 # Update system libraries and pip
 RUN \
     yum update -y && \
+    yum install -y libjpeg-turbo && \
     yum clean all && \
     python3 -m pip install --no-cache-dir --upgrade pip
 
