@@ -43,7 +43,7 @@ const {
 const {
   fromCognitoIdentity,
   fromCognitoIdentityPool,
-} = require('@aws-sdk/credential-providers');
+} = require('@aws-sdk/credential-provider-cognito-identity');
 const {
   FetchHttpHandler,
   streamCollector,
