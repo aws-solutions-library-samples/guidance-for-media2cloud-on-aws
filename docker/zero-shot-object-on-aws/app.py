@@ -46,7 +46,7 @@ def run_model(
     with torch.no_grad():
         outputs = model(**inputs)
         target_sizes = torch.tensor([_image.size[::-1]])
-        outputs = processor.post_process_object_detection(
+        outputs = processor.post_process_grounded_object_detection(
             outputs,
             threshold=0.1,
             target_sizes=target_sizes

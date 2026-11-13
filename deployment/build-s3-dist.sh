@@ -250,8 +250,8 @@ function clean_start() {
   for dir in "$DEPLOY_DIR" "$SOURCE_DIR"; do
     find "$dir" -name '.DS_Store' -type f -delete
   done
-  # delete all package-lock.json
-  find "$SOURCE_DIR" -name 'package-lock.json' -type f -delete
+  # # delete all package-lock.json
+  # find "$SOURCE_DIR" -name 'package-lock.json' -type f -delete
 }
 
 function install_dev_dependencies() {
